@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getWeaponDetails, getAllMods } from '../services/api';
-import { calculateBestBuild } from '../utils/calculator';
+import { calculateBestBuild } from '../domain/calculator.js';
 
 function formatPartName(name) {
   if (!name) return '';

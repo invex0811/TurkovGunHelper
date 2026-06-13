@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-import { calculateBestBuild } from '../src/utils/calculator.js';
+import { calculateBestBuild } from '../../src/domain/calculator.js';
 
-const modsFixture = JSON.parse(fs.readFileSync(new URL('../mods.json', import.meta.url), 'utf8'));
-const weaponFixture = JSON.parse(fs.readFileSync(new URL('../weapon.json', import.meta.url), 'utf8'));
+const modsFixture = JSON.parse(fs.readFileSync(new URL('../fixtures/mods.json', import.meta.url), 'utf8'));
+const weaponFixture = JSON.parse(fs.readFileSync(new URL('../fixtures/weapon.json', import.meta.url), 'utf8'));
 
 const mods = modsFixture.data.items;
 const weapon = weaponFixture.data.item;
@@ -22,6 +22,7 @@ function assertNoDuplicateParts(result) {
 
 function assertNoInstalledConflicts(result) {
   const installedIds = new Set([weapon.id, ...result.build.map(part => part.item.id)]);
+
   for (const part of result.build) {
     for (const conflict of part.item.conflictingItems || []) {
       assert.equal(
