@@ -1,8 +1,8 @@
 # TarkovGunHelper Development Roadmap
 
-Документ описывает черновую дорожную карту дальнейшей разработки проекта TarkovGunHelper после проверки текущего baseline.
+Документ описывает актуальную дорожную карту дальнейшей разработки проекта TarkovGunHelper после первичного ревью, настройки локального окружения и обновления структуры проекта.
 
-RoadMap фиксирует текущее состояние проекта как рабочую отправную точку и группирует дальнейшие задачи по этапам: стабилизация калькулятора, конфигурация источника цен, расширение модели расчёта билдов, улучшение UI/UX, кэширование данных, документация и developer workflow.
+RoadMap фиксирует текущее состояние проекта как рабочую отправную точку и оставляет в плане только актуальные нереализованные или частично реализованные задачи: выравнивание структуры после переноса файлов, стабилизация калькулятора, конфигурация источника цен, расширение модели расчёта билдов, улучшение UI/UX, кэширование данных, документация и developer workflow.
 
 ---
 
@@ -13,9 +13,10 @@ RoadMap фиксирует текущее состояние проекта ка
 Целевая архитектура:
 
 - **UI layer** отвечает только за отображение, пользовательский ввод и навигацию.
-- **API/data layer** отвечает за загрузку данных из внешних источников.
+- **API/data layer** отвечает за загрузку, нормализацию и кэширование данных из внешних источников.
 - **Domain/calculation layer** отвечает за расчёт билдов, constraints, scoring и итоговую структуру результата.
 - **Tests layer** фиксирует ожидаемое поведение калькулятора и критичных data-transform сценариев.
+- **Research layer** содержит экспериментальные скрипты и не считается production/test source.
 - UI не должен содержать сложную business logic расчёта билдов.
 - Калькулятор не должен зависеть от React, DOM или browser state.
 - Источник цен должен быть явной частью конфигурации, а не неявным полем внутри данных item.
@@ -41,20 +42,28 @@ RoadMap фиксирует текущее состояние проекта ка
 - Главную страницу со списком оружия.
 - Страницу конфигуратора оружия.
 - API layer для работы с внешним GraphQL API.
-- Calculator layer для подбора модов оружия.
+- Domain calculator layer для подбора модов оружия.
 - Unit tests для calculator logic.
+- Fixtures для calculator tests.
+- Research scripts для ручной проверки API/calculator scenarios.
 - ESLint configuration.
 - Production build через Vite.
 - GitHub Pages deploy script.
 
-Подтверждённый локальный baseline:
+Подтверждённый локальный baseline до структурного обновления:
 
-- `npm.cmd ci` успешно устанавливает зависимости.
-- `npm.cmd run dev` успешно запускает dev server.
-- `npm.cmd run lint` проходит без ошибок.
-- `npm.cmd run build` успешно собирает production bundle.
-- `npm.cmd test` запускает calculator tests.
-- Текущее состояние тестов: 7 passed / 1 failed.
+- `npm.cmd ci` успешно устанавливал зависимости.
+- `npm.cmd run dev` успешно запускал dev server.
+- `npm.cmd run lint` проходил без ошибок.
+- `npm.cmd run build` успешно собирал production bundle.
+- `npm.cmd test` запускал calculator tests.
+- Состояние тестов до calculator fix: 7 passed / 1 failed.
+
+После обновления структуры требуется перепроверить:
+
+- `npm.cmd test`;
+- `npm.cmd run lint`;
+- `npm.cmd run build`.
 
 Известная failing regression:
 
@@ -68,6 +77,10 @@ RoadMap фиксирует текущее состояние проекта ка
 
 Текущие ограничения проекта:
 
+- Test workflow нужно выровнять после переноса тестов/fixtures в вложенные директории.
+- ESLint ignores нужно выровнять после переноса research scripts.
+- `gh-pages` используется как deploy tooling и должен находиться в devDependencies.
+- README остаётся шаблоном Vite и не описывает реальный проект.
 - Calculator использует слишком greedy-подход для задачи с nested slots, adapters и conflicting items.
 - `requireSuppressor` фактически работает недостаточно строго.
 - Suppressor mode в UI/logic требует уточнения: allow / forbid / require.
@@ -75,8 +88,90 @@ RoadMap фиксирует текущее состояние проекта ка
 - Budget mode зависит от текущей price model без явного выбора PvP/PvE.
 - API cache существует только на уровне runtime memory.
 - UI error handling минимальный.
-- README остаётся недостаточным для нового разработчика.
-- В проекте есть fixture/research файлы, которые стоит структурировать аккуратнее.
+- Configurator остаётся крупным компонентом с несколькими ответственностями.
+- API layer всё ещё монолитный и смешивает GraphQL client, queries, cache и repository-like functions.
+- Domain calculator уже вынесен из `utils`, но всё ещё требует дальнейшего разделения на внутренние модули.
+
+---
+
+## Current structure direction
+
+Текущая структура уже движется к целевому виду:
+
+```text
+docs/
+  development-roadmap.md
+
+research/
+  calculator/
+    test_*.js
+
+src/
+  domain/
+    calculator.js
+
+tests/
+  fixtures/
+    mods.json
+    weapon.json
+  calculator/
+    calculator.test.js
+```
+
+Целевая структура на ближайшие этапы:
+
+```text
+docs/
+  development-roadmap.md
+  calculation-model.md
+  price-sources.md
+  development-workflow.md
+
+src/
+  app/
+    App.jsx
+    routes.jsx
+
+  features/
+    weapons/
+    configurator/
+
+  domain/
+    calculator/
+      index.js
+      calculateBestBuild.js
+      scoring.js
+      constraints.js
+      stats.js
+      categories.js
+
+  data/
+    tarkovApi/
+      client.js
+      queries.js
+      repository.js
+      mappers.js
+
+    price/
+      priceModes.js
+      priceMapper.js
+      priceProvider.js
+
+  shared/
+    components/
+    formatters/
+    constants/
+
+tests/
+  fixtures/
+  calculator/
+  data/
+
+research/
+  calculator/
+```
+
+Эта структура не должна вводиться одним большим коммитом. Переход должен быть постепенным и без изменения поведения там, где задача является refactor/chore.
 
 ---
 
@@ -84,21 +179,122 @@ RoadMap фиксирует текущее состояние проекта ка
 
 Актуальные приоритеты дальнейшей разработки:
 
-1. Стабилизировать calculator baseline и получить полностью зелёные тесты.
-2. Сделать suppressor behavior явным и предсказуемым.
-3. Подготовить calculator к более сложным constraints и nested slot chains.
-4. Добавить возможность конфигурации PvP/PvE источника цен.
-5. Исследовать доступные источники PvE price data и ограничения внешних API.
-6. Нормализовать price model для budget/scoring расчётов.
-7. Исследовать и постепенно расширить набор параметров, влияющих на расчёт билдов.
-8. Разделить UI, API и calculation responsibilities более явно.
-9. Улучшить UX ошибок, warning states и explainability результата.
+1. Выровнять test/lint/dependency workflow после обновления структуры.
+2. Стабилизировать calculator baseline и получить полностью зелёные тесты.
+3. Сделать suppressor behavior явным и предсказуемым.
+4. Подготовить calculator к более сложным constraints и nested slot chains.
+5. Добавить возможность конфигурации PvP/PvE источника цен.
+6. Исследовать доступные источники PvE price data и ограничения внешних API.
+7. Нормализовать price model для budget/scoring расчётов.
+8. Исследовать и постепенно расширить набор параметров, влияющих на расчёт билдов.
+9. Разделить UI, API и calculation responsibilities более явно.
+10. Улучшить UX ошибок, warning states и explainability результата.
+11. Заменить Vite template README на документацию проекта.
 
 ---
 
-# Stage 0. Baseline stabilization and first calculator fix
+# Stage 0. Structure alignment and baseline restoration
 
-Цель этапа: привести проект к стабильной отправной точке, где dev/lint/build/test проходят полностью, а известный suppressor bug исправлен.
+Цель этапа: после обновления структуры привести test/lint/package workflow в согласованное состояние, чтобы последующие изменения делались поверх проверяемого baseline.
+
+## Commits
+
+### 1. `fix(test): restore nested calculator test workflow`
+
+Сделать:
+
+- Обновить `npm test` script для вложенной структуры tests.
+- Поддержать запуск calculator tests из `tests/calculator`.
+- Обновить import калькулятора в `tests/calculator/calculator.test.js`.
+- Обновить paths к fixtures после переноса в `tests/fixtures`.
+- Проверить, что `npm.cmd test` снова запускает calculator tests.
+- Не менять calculator behavior в этом коммите.
+
+Результат:
+
+- Тесты соответствуют новой структуре проекта.
+- Следующий suppressor fix можно делать поверх корректного test baseline.
+
+---
+
+### 2. `chore(lint): ignore research scripts`
+
+Сделать:
+
+- Добавить `research/**` в ESLint ignores.
+- Удалить устаревшее ignore-правило `test_*.js`, если root-level debug scripts больше не существуют.
+- Сохранить lint coverage для `src` и `tests`.
+- Проверить `npm.cmd run lint`.
+
+Результат:
+
+- Research scripts не считаются production/test source.
+- `npm.cmd run lint` проверяет только поддерживаемые части проекта.
+
+---
+
+### 3. `chore(deps): move gh-pages to dev dependencies`
+
+Сделать:
+
+- Перенести `gh-pages` из `dependencies` в `devDependencies`.
+- Сохранить текущий `deploy` script.
+- Обновить lockfile через npm.
+- Проверить `npm.cmd ci`.
+- Проверить `npm.cmd run build`.
+
+Результат:
+
+- Runtime dependencies содержат только зависимости приложения.
+- Deploy tooling находится в devDependencies.
+
+---
+
+### 4. `docs: replace vite template readme`
+
+Сделать:
+
+- Описать назначение проекта.
+- Описать tech stack:
+  - Vite;
+  - React;
+  - React Router;
+  - Node test runner;
+  - ESLint.
+
+- Добавить setup instructions для Windows/PowerShell:
+  - `npm.cmd ci`;
+  - `npm.cmd run dev`;
+  - `npm.cmd test`;
+  - `npm.cmd run lint`;
+  - `npm.cmd run build`.
+
+- Добавить troubleshooting:
+  - PowerShell execution policy;
+  - `#` in project path;
+  - dependency install issues.
+
+- Описать структуру проекта:
+  - `src/domain`;
+  - `tests/fixtures`;
+  - `research/calculator`;
+  - `docs`.
+
+- Описать текущие ограничения calculator.
+- Описать known data/API assumptions.
+- Указать, что research scripts не входят в normal test workflow.
+
+Результат:
+
+- Проект становится удобнее для нового разработчика.
+- Базовые проблемы запуска документированы.
+- README соответствует текущей структуре, а не Vite template.
+
+---
+
+# Stage 1. Calculator baseline stabilization
+
+Цель этапа: привести calculator к стабильной отправной точке, где dev/lint/build/test проходят полностью, а известный suppressor bug исправлен.
 
 ## Commits
 
@@ -128,9 +324,7 @@ RoadMap фиксирует текущее состояние проекта ка
 Сделать:
 
 - Переработать evaluator так, чтобы он возвращал не только score, но и конкретный набор выбранных parts.
-
 - Устранить расхождение между “веткой, которую algorithm оценил” и “деталями, которые реально попали в build”.
-
 - Ввести промежуточную структуру результата branch evaluation:
   - `score`;
   - `items`;
@@ -164,9 +358,7 @@ RoadMap фиксирует текущее состояние проекта ка
   - suppressor conflicts with another selected part.
 
 - Добавить тесты для warning/error behavior.
-
 - Зафиксировать expected result structure для impossible build.
-
 - Убедиться, что budget/meta/min_recoil/max_ergo modes продолжают работать.
 
 Результат:
@@ -186,11 +378,8 @@ RoadMap фиксирует текущее состояние проекта ка
   - `require`.
 
 - Обновить UI controls в Configurator.
-
 - Обновить mapping UI options → calculator options.
-
 - Не превращать “не require suppressor” в автоматический запрет suppressor.
-
 - Добавить понятные подписи для пользователя:
   - Allow suppressors;
   - Forbid suppressors;
@@ -211,11 +400,8 @@ RoadMap фиксирует текущее состояние проекта ка
 Сделать:
 
 - Заменить `alert`-подход на inline error/warning state в Configurator.
-
 - Показывать controlled message, если build невозможно собрать.
-
 - Показывать warning, если часть пользовательских constraints была недостижима.
-
 - Разделить:
   - API loading error;
   - missing weapon data;
@@ -233,65 +419,7 @@ RoadMap фиксирует текущее состояние проекта ка
 
 ---
 
-### 6. `chore(repo): organize calculator fixtures and research scripts`
-
-Сделать:
-
-- Перенести test fixtures в `tests/fixtures`.
-- Отделить research/debug scripts от production source.
-- Убедиться, что test fixtures не используются runtime UI.
-- Обновить test imports.
-- Проверить `npm.cmd test`.
-- Проверить `npm.cmd run lint`.
-- Проверить `npm.cmd run build`.
-
-Результат:
-
-- Корень проекта становится чище.
-- Тестовые данные отделены от application source.
-- Новому разработчику проще ориентироваться в репозитории.
-
----
-
-### 7. `docs: replace vite template readme`
-
-Сделать:
-
-- Описать назначение проекта.
-
-- Описать tech stack:
-  - Vite;
-  - React;
-  - React Router;
-  - Node test runner;
-  - ESLint.
-
-- Добавить setup instructions для Windows/PowerShell:
-  - `npm.cmd ci`;
-  - `npm.cmd run dev`;
-  - `npm.cmd test`;
-  - `npm.cmd run lint`;
-  - `npm.cmd run build`.
-
-- Добавить troubleshooting:
-  - PowerShell execution policy;
-  - `#` in project path;
-  - dependency install issues.
-
-- Описать структуру проекта.
-
-- Описать текущие ограничения calculator.
-
-- Описать known data/API assumptions.
-
-Результат:
-
-- Проект становится удобнее для нового разработчика.
-- Базовые проблемы запуска документированы.
-
----
-
-# Stage 1. Price source configuration and data foundation
+# Stage 2. Price source configuration and data foundation
 
 Цель этапа: добавить явную конфигурацию источника цен, подготовить поддержку PvP/PvE price mode и убрать жёсткую зависимость budget scoring от одного неявного поля цены.
 
@@ -308,8 +436,6 @@ RoadMap фиксирует текущее состояние проекта ка
 - Можно ли использовать trader prices как fallback.
 - Нужно ли показывать пользователю source/freshness рядом с итоговой ценой билда.
 
----
-
 ## Commits
 
 ### 1. `research(data): evaluate pvp and pve price sources`
@@ -317,11 +443,8 @@ RoadMap фиксирует текущее состояние проекта ка
 Сделать:
 
 - Изучить текущие поля item price data.
-
 - Проверить наличие или отсутствие PvE-specific price fields.
-
 - Проверить альтернативные источники PvE цен.
-
 - Описать ограничения каждого источника:
   - доступность;
   - бесплатность;
@@ -333,7 +456,6 @@ RoadMap фиксирует текущее состояние проекта ка
   - legal/ToS considerations.
 
 - Зафиксировать вывод в `docs/price-sources.md`.
-
 - Не менять runtime logic в этом коммите.
 
 Результат:
@@ -343,12 +465,51 @@ RoadMap фиксирует текущее состояние проекта ка
 
 ---
 
-### 2. `refactor(api): introduce item data repository`
+### 2. `refactor(api): move tarkov api into data layer`
+
+Сделать:
+
+- Перенести текущий `src/services/api.js` в `src/data/tarkovApi`.
+- Сохранить публичные функции:
+  - `getWeapons`;
+  - `getWeaponDetails`;
+  - `getAllMods`.
+
+- Обновить imports в UI.
+- Не менять GraphQL queries.
+- Не менять runtime behavior.
+- Проверить lint/build.
+
+Результат:
+
+- Data/API layer получает явное место в структуре проекта.
+- Следующие price provider и repository changes ложатся в правильный слой.
+
+---
+
+### 3. `refactor(api): isolate graphql query definitions`
+
+Сделать:
+
+- Вынести GraphQL query strings в отдельный модуль.
+- Добавить понятные names для queries.
+- Упростить API client/repository file.
+- Подготовить tests/mocks для API layer.
+- Не менять shape данных, который получает UI/calculator.
+
+Результат:
+
+- API layer становится легче поддерживать.
+- Изменения схемы API проще локализовать.
+
+---
+
+### 4. `refactor(api): introduce item data repository`
 
 Сделать:
 
 - Ввести промежуточный data access layer поверх raw API functions.
-- Отделить GraphQL queries от потребностей UI/calculator.
+- Отделить GraphQL client от потребностей UI/calculator.
 - Подготовить normalized item shape.
 - Скрыть API-specific field names внутри repository/mapper.
 - Сохранить текущие публичные функции или добавить совместимые wrappers.
@@ -361,7 +522,7 @@ RoadMap фиксирует текущее состояние проекта ка
 
 ---
 
-### 3. `refactor(data): normalize mod price model`
+### 5. `refactor(data): normalize mod price model`
 
 Сделать:
 
@@ -375,11 +536,8 @@ RoadMap фиксирует текущее состояние проекта ка
   - `confidence`.
 
 - Поддержать fallback, если цена недоступна.
-
 - Не смешивать raw API fields и normalized calculator input.
-
 - Обновить budget scoring так, чтобы он работал через normalized price.
-
 - Сохранить текущие результаты там, где данные совпадают.
 
 Результат:
@@ -389,7 +547,7 @@ RoadMap фиксирует текущее состояние проекта ка
 
 ---
 
-### 4. `feat(settings): add price mode selector`
+### 6. `feat(settings): add price mode selector`
 
 Сделать:
 
@@ -399,13 +557,9 @@ RoadMap фиксирует текущее состояние проекта ка
   - Auto/fallback, если потребуется после research.
 
 - Добавить UI control в Configurator или общий settings area.
-
 - Сохранять выбор пользователя локально.
-
 - Применять выбранный mode при генерации билда.
-
 - Показывать текущий mode рядом с итоговой ценой.
-
 - Не ломать default behavior для существующих пользователей.
 
 Результат:
@@ -415,7 +569,7 @@ RoadMap фиксирует текущее состояние проекта ка
 
 ---
 
-### 5. `feat(api): support configurable price provider`
+### 7. `feat(api): support configurable price provider`
 
 Сделать:
 
@@ -433,7 +587,7 @@ RoadMap фиксирует текущее состояние проекта ка
 
 ---
 
-### 6. `feat(calculator): use selected price mode in budget scoring`
+### 8. `feat(calculator): use selected price mode in budget scoring`
 
 Сделать:
 
@@ -450,7 +604,7 @@ RoadMap фиксирует текущее состояние проекта ка
 
 ---
 
-### 7. `test(data): add price mode fixtures`
+### 9. `test(data): add price mode fixtures`
 
 Сделать:
 
@@ -462,9 +616,7 @@ RoadMap фиксирует текущее состояние проекта ка
   - mixed source build.
 
 - Добавить tests для normalized price mapper.
-
 - Добавить tests для budget scoring с разными price modes.
-
 - Проверить, что отсутствующая цена не ломает build generation.
 
 Результат:
@@ -474,7 +626,7 @@ RoadMap фиксирует текущее состояние проекта ка
 
 ---
 
-### 8. `feat(ui): show price source and fallback warnings`
+### 10. `feat(ui): show price source and fallback warnings`
 
 Сделать:
 
@@ -485,9 +637,7 @@ RoadMap фиксирует текущее состояние проекта ка
   - warning при mixed/fallback prices.
 
 - В списке parts показывать цену детали из выбранного source.
-
 - Если цена отсутствует, показывать аккуратный placeholder.
-
 - Не перегружать UI техническими деталями.
 
 Результат:
@@ -497,7 +647,7 @@ RoadMap фиксирует текущее состояние проекта ка
 
 ---
 
-# Stage 2. Build calculation model research
+# Stage 3. Build calculation model research and domain cleanup
 
 Цель этапа: исследовать возможность учёта большего количества параметров при расчёте сборок и подготовить calculator к расширяемой scoring model.
 
@@ -539,8 +689,6 @@ RoadMap фиксирует текущее состояние проекта ка
 - слишком дорогие/сложные для ближайшей версии;
 - нецелесообразные для MVP.
 
----
-
 ## Commits
 
 ### 1. `research(calculator): document extended scoring parameters`
@@ -548,9 +696,7 @@ RoadMap фиксирует текущее состояние проекта ка
 Сделать:
 
 - Создать `docs/calculation-model.md`.
-
 - Описать текущую scoring model.
-
 - Описать текущие calculator modes:
   - meta;
   - max_ergo;
@@ -559,7 +705,6 @@ RoadMap фиксирует текущее состояние проекта ка
   - custom.
 
 - Составить таблицу candidate parameters.
-
 - Для каждого параметра указать:
   - gameplay value;
   - source data;
@@ -577,14 +722,33 @@ RoadMap фиксирует текущее состояние проекта ка
 
 ---
 
-### 2. `refactor(calculator): introduce scoring profile model`
+### 2. `refactor(calculator): split domain module boundaries`
+
+Сделать:
+
+- Разделить текущий calculator domain file на небольшой calculator module.
+- Вынести public export `calculateBestBuild` в `index.js`.
+- Вынести scoring helpers.
+- Вынести constraint helpers.
+- Вынести stats calculation.
+- Вынести category checks.
+- Сохранить текущее public API калькулятора.
+- Не менять поведение calculator.
+
+Результат:
+
+- Следующие изменения branch plan/scoring profiles становятся проще.
+- Domain layer становится читаемее.
+- Calculator перестаёт быть одним монолитным файлом.
+
+---
+
+### 3. `refactor(calculator): introduce scoring profile model`
 
 Сделать:
 
 - Ввести структуру `scoringProfile`.
-
 - Перенести текущие mode-specific веса в явную модель.
-
 - Разделить:
   - hard constraints;
   - soft weights;
@@ -593,7 +757,6 @@ RoadMap фиксирует текущее состояние проекта ка
   - fallback policy.
 
 - Сохранить текущее поведение modes.
-
 - Добавить tests, подтверждающие backward compatibility.
 
 Результат:
@@ -603,7 +766,7 @@ RoadMap фиксирует текущее состояние проекта ка
 
 ---
 
-### 3. `refactor(calculator): normalize mod attributes for scoring`
+### 4. `refactor(calculator): normalize mod attributes for scoring`
 
 Сделать:
 
@@ -619,9 +782,7 @@ RoadMap фиксирует текущее состояние проекта ка
   - availability metadata, если есть.
 
 - Скрыть raw API structure за mapper.
-
 - Упростить scoring function.
-
 - Добавить tests для mapper.
 
 Результат:
@@ -631,12 +792,11 @@ RoadMap фиксирует текущее состояние проекта ка
 
 ---
 
-### 4. `feat(calculator): add weighted custom scoring`
+### 5. `feat(calculator): add weighted custom scoring`
 
 Сделать:
 
 - Расширить custom mode.
-
 - Разрешить пользователю настраивать веса:
   - recoil;
   - ergonomics;
@@ -645,9 +805,7 @@ RoadMap фиксирует текущее состояние проекта ка
   - accuracy.
 
 - Задать безопасные min/max ranges.
-
 - Добавить reset to default.
-
 - Не добавлять слишком много controls без группировки.
 
 Результат:
@@ -657,14 +815,12 @@ RoadMap фиксирует текущее состояние проекта ка
 
 ---
 
-### 5. `feat(configurator): add advanced calculation options`
+### 6. `feat(configurator): add advanced calculation options`
 
 Сделать:
 
 - Добавить collapsible Advanced section.
-
 - Перенести туда расширенные параметры.
-
 - Поддержать:
   - max weight;
   - suppressor mode;
@@ -674,7 +830,6 @@ RoadMap фиксирует текущее состояние проекта ка
   - optional required tactical device.
 
 - Не перегружать основной экран.
-
 - Сохранять default flow простым.
 
 Результат:
@@ -683,7 +838,7 @@ RoadMap фиксирует текущее состояние проекта ка
 
 ---
 
-### 6. `test(calculator): cover weighted scoring profiles`
+### 7. `test(calculator): cover weighted scoring profiles`
 
 Сделать:
 
@@ -699,7 +854,7 @@ RoadMap фиксирует текущее состояние проекта ка
 
 ---
 
-# Stage 3. Search algorithm robustness and performance
+# Stage 4. Search algorithm robustness and performance
 
 Цель этапа: сделать алгоритм подбора билдов более устойчивым к nested slots, conflicting items, adapters и будущему росту параметров.
 
@@ -710,7 +865,6 @@ RoadMap фиксирует текущее состояние проекта ка
 Сделать:
 
 - Формализовать build search как обход candidate graph.
-
 - Явно моделировать:
   - root weapon slots;
   - nested item slots;
@@ -721,9 +875,7 @@ RoadMap фиксирует текущее состояние проекта ка
   - accumulated stats.
 
 - Убрать неявные side effects из scoring.
-
 - Сделать branch result immutable или максимально близким к immutable.
-
 - Подготовить pruning rules.
 
 Результат:
@@ -801,9 +953,7 @@ RoadMap фиксирует текущее состояние проекта ка
   - conflicting barrel/handguard options.
 
 - Проверить корректность итоговых stats.
-
 - Проверить отсутствие duplicate parts.
-
 - Проверить correct warning behavior.
 
 Результат:
@@ -812,7 +962,7 @@ RoadMap фиксирует текущее состояние проекта ка
 
 ---
 
-# Stage 4. Configurator UI/UX cleanup
+# Stage 5. Configurator UI/UX cleanup
 
 Цель этапа: улучшить читаемость Configurator, разделить большой компонент на части и сделать результат расчёта более понятным.
 
@@ -833,9 +983,7 @@ RoadMap фиксирует текущее состояние проекта ка
   - `ErrorState`.
 
 - Оставить data flow в Configurator.
-
 - Не менять calculation behavior.
-
 - Проверить lint/build.
 
 Результат:
@@ -850,7 +998,6 @@ RoadMap фиксирует текущее состояние проекта ка
 Сделать:
 
 - Показывать пользователю, почему build выбран.
-
 - Добавить breakdown:
   - recoil contribution;
   - ergonomics contribution;
@@ -860,7 +1007,6 @@ RoadMap фиксирует текущее состояние проекта ка
   - warnings/fallbacks.
 
 - Для простого режима показывать compact summary.
-
 - Для advanced/debug режима показывать больше деталей.
 
 Результат:
@@ -915,9 +1061,7 @@ RoadMap фиксирует текущее состояние проекта ка
   - max weight.
 
 - Использовать localStorage только для UI preferences.
-
 - Добавить reset preferences action.
-
 - Не сохранять временные calculation results как source of truth.
 
 Результат:
@@ -927,7 +1071,7 @@ RoadMap фиксирует текущее состояние проекта ка
 
 ---
 
-# Stage 5. Data cache, reliability and API boundaries
+# Stage 6. Data cache, reliability and API boundaries
 
 Цель этапа: сделать работу с внешними данными более устойчивой, диагностируемой и удобной для пользователя.
 
@@ -938,7 +1082,6 @@ RoadMap фиксирует текущее состояние проекта ка
 Сделать:
 
 - Добавить persistent cache для item/mod data.
-
 - Хранить metadata:
   - source;
   - fetchedAt;
@@ -947,9 +1090,7 @@ RoadMap фиксирует текущее состояние проекта ка
   - priceMode, если применимо.
 
 - Использовать in-memory cache поверх persistent cache.
-
 - Добавить safe invalidation.
-
 - Не использовать stale price data без visible warning.
 
 Результат:
@@ -976,23 +1117,7 @@ RoadMap фиксирует текущее состояние проекта ка
 
 ---
 
-### 3. `refactor(api): isolate graphql query definitions`
-
-Сделать:
-
-- Вынести GraphQL query strings в отдельный модуль.
-- Добавить понятные names для queries.
-- Упростить `api.js`.
-- Подготовить tests/mocks для API layer.
-
-Результат:
-
-- API layer становится легче поддерживать.
-- Изменения схемы API проще локализовать.
-
----
-
-### 4. `test(api): add mocked graphql response tests`
+### 3. `test(api): add mocked graphql response tests`
 
 Сделать:
 
@@ -1009,28 +1134,113 @@ RoadMap фиксирует текущее состояние проекта ка
 
 ---
 
+# Stage 7. Developer workflow and release hygiene
+
+Цель этапа: улучшить workflow дальнейшей разработки, чтобы проект было проще поддерживать и безопаснее изменять.
+
+## Commits
+
+### 1. `ci: add test lint build workflow`
+
+Сделать:
+
+- Добавить GitHub Actions workflow.
+- Запускать:
+  - `npm ci`;
+  - `npm test`;
+  - `npm run lint`;
+  - `npm run build`.
+
+- Проверять pull requests и main branch.
+- Не добавлять deploy в этот workflow, если release flow ещё не формализован.
+
+Результат:
+
+- Регрессии видны до merge.
+- Baseline автоматически проверяется.
+
+---
+
+### 2. `docs(dev): add development workflow guide`
+
+Сделать:
+
+- Создать `docs/development-workflow.md`.
+- Описать recommended branch workflow.
+- Описать порядок проверок перед commit.
+- Описать conventions для commit messages.
+- Описать структуру проекта.
+- Описать где менять UI/API/calculator/tests.
+
+Результат:
+
+- Новому разработчику проще начать работу.
+- Разработка становится последовательнее.
+
+---
+
+### 3. `docs(calculator): document known limitations`
+
+Сделать:
+
+- Описать текущие ограничения алгоритма.
+- Описать known trade-offs.
+- Описать, какие constraints являются hard.
+- Описать, какие preferences являются soft.
+- Описать, какие параметры пока не учитываются.
+- Описать, какие данные зависят от внешнего API.
+
+Результат:
+
+- Пользовательские ожидания и developer assumptions становятся явными.
+- Будущие изменения calculator проще планировать.
+
+---
+
+### 4. `chore(release): document github pages deploy flow`
+
+Сделать:
+
+- Описать production build.
+- Описать preview.
+- Описать deploy через `gh-pages`.
+- Уточнить, какие файлы не нужно коммитить.
+- Добавить troubleshooting для deploy.
+
+Результат:
+
+- Release flow становится понятным и повторяемым.
+
+---
+
 ## Recommended implementation order
 
 Рекомендуемый порядок реализации:
 
-1. Stage 0 — Baseline stabilization and first calculator fix.
-2. Stage 1 — Price source configuration and data foundation.
-3. Stage 2 — Build calculation model research.
-4. Stage 3 — Search algorithm robustness and performance.
-5. Stage 4 — Configurator UI/UX cleanup.
-6. Stage 5 — Data cache, reliability and API boundaries.
+1. Stage 0 — Structure alignment and baseline restoration.
+2. Stage 1 — Calculator baseline stabilization.
+3. Stage 2 — Price source configuration and data foundation.
+4. Stage 3 — Build calculation model research and domain cleanup.
+5. Stage 4 — Search algorithm robustness and performance.
+6. Stage 5 — Configurator UI/UX cleanup.
+7. Stage 6 — Data cache, reliability and API boundaries.
+8. Stage 7 — Developer workflow and release hygiene.
 
-Stage 0 стоит сделать первым, потому что нельзя развивать calculator поверх failing regression.
+Stage 0 стоит сделать первым, потому что после изменения структуры нужно восстановить проверяемый baseline.
 
-Stage 1 стоит делать до полноценного budget/scoring расширения, потому что цена является одним из ключевых параметров расчёта.
+Stage 1 стоит делать до новых фич, потому что нельзя развивать calculator поверх failing regression.
 
-Stage 2 стоит делать до больших алгоритмических изменений, чтобы заранее понять, какие параметры действительно имеют смысл.
+Stage 2 стоит делать до полноценного budget/scoring расширения, потому что цена является одним из ключевых параметров расчёта.
 
-Stage 3 стоит делать после уточнения scoring model, потому что более сложный search algorithm должен обслуживать уже понятные constraints и weights.
+Stage 3 стоит делать до больших алгоритмических изменений, чтобы заранее понять, какие параметры действительно имеют смысл, и подготовить domain module boundaries.
 
-Stage 4 можно частично делать параллельно, но крупный UI cleanup лучше не смешивать с изменениями calculator.
+Stage 4 стоит делать после уточнения scoring model, потому что более сложный search algorithm должен обслуживать уже понятные constraints и weights.
 
-Stage 5 логично делать после уточнения data needs.
+Stage 5 можно частично делать параллельно, но крупный UI cleanup лучше не смешивать с изменениями calculator.
+
+Stage 6 логично делать после уточнения data needs и price source model.
+
+Stage 7 можно начинать постепенно, но CI желательно добавить после получения зелёного baseline.
 
 ---
 
@@ -1038,41 +1248,49 @@ Stage 5 логично делать после уточнения data needs.
 
 Единый список актуальных запланированных коммитов:
 
-1. `fix(calculator): enforce required suppressor builds`
-2. `refactor(calculator): return selected branch plan from evaluator`
-3. `test(calculator): cover suppressor chains and impossible constraints`
-4. `refactor(configurator): split suppressor mode options`
-5. `feat(ui): show build warnings and calculation errors inline`
-6. `chore(repo): organize calculator fixtures and research scripts`
-7. `docs: replace vite template readme`
-8. `research(data): evaluate pvp and pve price sources`
-9. `refactor(api): introduce item data repository`
-10. `refactor(data): normalize mod price model`
-11. `feat(settings): add price mode selector`
-12. `feat(api): support configurable price provider`
-13. `feat(calculator): use selected price mode in budget scoring`
-14. `test(data): add price mode fixtures`
-15. `feat(ui): show price source and fallback warnings`
-16. `research(calculator): document extended scoring parameters`
-17. `refactor(calculator): introduce scoring profile model`
-18. `refactor(calculator): normalize mod attributes for scoring`
-19. `feat(calculator): add weighted custom scoring`
-20. `feat(configurator): add advanced calculation options`
-21. `test(calculator): cover weighted scoring profiles`
-22. `refactor(calculator): model build search as candidate graph`
-23. `perf(calculator): prune incompatible branches early`
-24. `feat(calculator): return top build alternatives`
-25. `perf(calculator): move build generation to web worker`
-26. `test(calculator): add complex nested slot regression fixtures`
-27. `refactor(ui): split configurator into focused components`
-28. `feat(ui): add score breakdown to build result`
-29. `feat(ui): add empty states and api failure states`
-30. `style(ui): move inline styles to reusable classes`
-31. `feat(ui): persist user build preferences`
-32. `feat(api): add persistent item cache with metadata`
-33. `feat(api): add manual data refresh action`
-34. `refactor(api): isolate graphql query definitions`
-35. `test(api): add mocked graphql response tests`
+1. `fix(test): restore nested calculator test workflow`
+2. `chore(lint): ignore research scripts`
+3. `chore(deps): move gh-pages to dev dependencies`
+4. `docs: replace vite template readme`
+5. `fix(calculator): enforce required suppressor builds`
+6. `refactor(calculator): return selected branch plan from evaluator`
+7. `test(calculator): cover suppressor chains and impossible constraints`
+8. `refactor(configurator): split suppressor mode options`
+9. `feat(ui): show build warnings and calculation errors inline`
+10. `research(data): evaluate pvp and pve price sources`
+11. `refactor(api): move tarkov api into data layer`
+12. `refactor(api): isolate graphql query definitions`
+13. `refactor(api): introduce item data repository`
+14. `refactor(data): normalize mod price model`
+15. `feat(settings): add price mode selector`
+16. `feat(api): support configurable price provider`
+17. `feat(calculator): use selected price mode in budget scoring`
+18. `test(data): add price mode fixtures`
+19. `feat(ui): show price source and fallback warnings`
+20. `research(calculator): document extended scoring parameters`
+21. `refactor(calculator): split domain module boundaries`
+22. `refactor(calculator): introduce scoring profile model`
+23. `refactor(calculator): normalize mod attributes for scoring`
+24. `feat(calculator): add weighted custom scoring`
+25. `feat(configurator): add advanced calculation options`
+26. `test(calculator): cover weighted scoring profiles`
+27. `refactor(calculator): model build search as candidate graph`
+28. `perf(calculator): prune incompatible branches early`
+29. `feat(calculator): return top build alternatives`
+30. `perf(calculator): move build generation to web worker`
+31. `test(calculator): add complex nested slot regression fixtures`
+32. `refactor(ui): split configurator into focused components`
+33. `feat(ui): add score breakdown to build result`
+34. `feat(ui): add empty states and api failure states`
+35. `style(ui): move inline styles to reusable classes`
+36. `feat(ui): persist user build preferences`
+37. `feat(api): add persistent item cache with metadata`
+38. `feat(api): add manual data refresh action`
+39. `test(api): add mocked graphql response tests`
+40. `ci: add test lint build workflow`
+41. `docs(dev): add development workflow guide`
+42. `docs(calculator): document known limitations`
+43. `chore(release): document github pages deploy flow`
 
 ---
 
