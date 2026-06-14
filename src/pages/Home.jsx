@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getWeapons } from '../services/api';
+import { getWeapons } from '../data/tarkovApi';
 
 function Home() {
   const [weapons, setWeapons] = useState([]);
@@ -100,6 +100,21 @@ function Home() {
           ))}
         </div>
       )}
+      <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+        <span style={{ 
+          display: 'inline-flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          width: '18px', 
+          height: '18px', 
+          borderRadius: '50%', 
+          border: '1px solid var(--color-text-muted)', 
+          fontSize: '0.75rem', 
+          fontWeight: 'bold',
+          fontFamily: 'monospace'
+        }}>i</span>
+        <span>All data is sourced from <a href="https://tarkov.dev" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent-gold)', textDecoration: 'none', borderBottom: '1px dotted var(--color-accent-gold)' }}>tarkov.dev</a></span>
+      </div>
     </div>
   );
 }
