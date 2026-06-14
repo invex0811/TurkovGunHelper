@@ -303,7 +303,8 @@ function Configurator() {
   const [suppressorMode, setSuppressorMode] = useState('allow');
   const [priceMode, setPriceMode] = useState(loadPriceModePreference);
   const [maxWeight, setMaxWeight] = useState('');
-  const [magazineCapacity, setMagazineCapacity] = useState('30');
+  const [magazineCapacity, setMagazineCapacity] = useState(30);
+  const [allMods, setAllMods] = useState(null);
   const [showAdditionalOptions, setShowAdditionalOptions] = useState(false);
   const [buildResult, setBuildResult] = useState(null);
   const [loadError, setLoadError] = useState(null);
@@ -316,11 +317,26 @@ function Configurator() {
   
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
 
-    getWeaponDetails(weaponId, priceMode).then(data => {
+    Promise.all([
+      getWeaponDetails(weaponId, priceMode),
+      getAllMods(priceMode)
+    ]).then(([weaponData, modsData]) => {
       if (cancelled) return;
 
-      setWeapon(data);
+      setWeapon(weaponData);
+      setAllMods(modsData);
+      
+      const capacities = getAvailableCapacities(weaponData, modsData);
+      if (capacities.length > 0) {
+        if (capacities.includes(30)) {
+          setMagazineCapacity(30);
+        } else {
+          setMagazineCapacity(capacities[0]);
+        }
+      }
+
       setBuildResult(null);
       setLoadError(null);
       setGenerationError(null);
@@ -330,6 +346,7 @@ function Configurator() {
 
       console.error(err);
       setWeapon(null);
+      setAllMods(null);
       setLoadError('Failed to load weapon details. Please go back to the weapon list and try again.');
       setBuildResult(null);
       setGenerationError(null);
@@ -342,20 +359,20 @@ function Configurator() {
   }, [weaponId, priceMode]);
 
   const handleGenerate = async () => {
+  if (!allMods) return;
   setGenerating(true);
   setGenerationError(null);
   setBuildResult(null);
 
   try {
-    const modMap = await getAllMods(priceMode);
     const options = {
       ...getSuppressorOptions(suppressorMode),
       maxWeight: parseFloat(maxWeight) || 0,
-      magazineCapacity: parseInt(magazineCapacity) || 30,
+      magazineCapacity: Number(magazineCapacity) || 30,
       priceMode,
     };
 
-    const result = calculateBestBuild(weapon, targetType, customErgo, customRecoil, modMap, options);
+    const result = calculateBestBuild(weapon, targetType, customErgo, customRecoil, allMods, options);
     setBuildResult(result);
 
     console.log(`=== GENERATED BUILD (${weapon.shortName} - ${targetType}) ===`);
@@ -567,23 +584,33 @@ function Configurator() {
               </div>
 
               <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>Magazine Capacity</label>
-                <input 
-                  type="number" 
-                  placeholder="30" 
-                  value={magazineCapacity} 
-                  onChange={e => setMagazineCapacity(e.target.value)} 
-                  style={{ 
-                    width: '100%', 
-                    padding: '0.75rem', 
-                    backgroundColor: 'rgba(0,0,0,0.5)', 
-                    border: '1px solid var(--color-border)', 
-                    color: 'var(--color-text)',
-                    borderRadius: 'var(--radius-sm)',
-                    outline: 'none',
-                    boxSizing: 'border-box'
-                  }} 
-                />
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+                  Magazine Capacity (rounds)
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {getAvailableCapacities(weapon, allMods).map(capacity => {
+                    const isSelected = Number(magazineCapacity) === capacity;
+
+                    return (
+                      <button
+                        key={capacity}
+                        type="button"
+                        className={`btn ${isSelected ? '' : 'btn-outline'}`}
+                        onClick={() => setMagazineCapacity(capacity)}
+                        style={{
+                          minWidth: '50px',
+                          padding: '0.75rem 1rem',
+                          fontSize: '0.85rem',
+                          borderColor: 'var(--color-accent-gold-dark)',
+                          color: isSelected ? 'var(--color-bg-base)' : 'var(--color-accent-gold)',
+                          background: isSelected ? 'var(--color-accent-gold-dark)' : 'transparent',
+                        }}
+                      >
+                        {capacity}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
