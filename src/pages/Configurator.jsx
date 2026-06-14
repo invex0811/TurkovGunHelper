@@ -303,6 +303,7 @@ function Configurator() {
   const [suppressorMode, setSuppressorMode] = useState('allow');
   const [priceMode, setPriceMode] = useState(loadPriceModePreference);
   const [maxWeight, setMaxWeight] = useState('');
+  const [magazineCapacity, setMagazineCapacity] = useState('30');
   const [showAdditionalOptions, setShowAdditionalOptions] = useState(false);
   const [buildResult, setBuildResult] = useState(null);
   const [loadError, setLoadError] = useState(null);
@@ -350,6 +351,7 @@ function Configurator() {
     const options = {
       ...getSuppressorOptions(suppressorMode),
       maxWeight: parseFloat(maxWeight) || 0,
+      magazineCapacity: parseInt(magazineCapacity) || 30,
       priceMode,
     };
 
@@ -551,6 +553,26 @@ function Configurator() {
                   placeholder="No limit" 
                   value={maxWeight} 
                   onChange={e => setMaxWeight(e.target.value)} 
+                  style={{ 
+                    width: '100%', 
+                    padding: '0.75rem', 
+                    backgroundColor: 'rgba(0,0,0,0.5)', 
+                    border: '1px solid var(--color-border)', 
+                    color: 'var(--color-text)',
+                    borderRadius: 'var(--radius-sm)',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }} 
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>Magazine Capacity</label>
+                <input 
+                  type="number" 
+                  placeholder="30" 
+                  value={magazineCapacity} 
+                  onChange={e => setMagazineCapacity(e.target.value)} 
                   style={{ 
                     width: '100%', 
                     padding: '0.75rem', 
