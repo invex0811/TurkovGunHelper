@@ -58,6 +58,19 @@ export const GET_ALL_MODS_QUERY = `
             }
           }
         }
+        ... on ItemPropertiesMagazine {
+          capacity
+          loadModifier
+          ammoCheckModifier
+          malfunctionChance
+          slots {
+            name
+            nameId
+            filters {
+              allowedItems { id }
+            }
+          }
+        }
       }
     }
   }

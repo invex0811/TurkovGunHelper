@@ -293,6 +293,28 @@ function InlineMessage({ type = 'info', title, children }) {
   );
 }
 
+function getAvailableCapacities(weapon, allMods) {
+  if (!weapon || !allMods) return [30];
+
+  const magSlot = weapon.properties?.slots?.find(slot => {
+    const name = (slot.name || '').toLowerCase();
+    const nameId = (slot.nameId || '').toLowerCase();
+    return name === 'mag' || name === 'magazine' || nameId === 'mod_magazine';
+  });
+
+  if (!magSlot) return [30];
+
+  const allowedIds = magSlot.filters?.allowedItems || [];
+  const capacities = allowedIds
+    .map(shallowItem => allMods[shallowItem.id])
+    .filter(mod => mod && mod.properties?.capacity !== undefined)
+    .map(mod => mod.properties.capacity);
+
+  if (capacities.length === 0) return [30];
+
+  return Array.from(new Set(capacities)).sort((a, b) => a - b);
+}
+
 function Configurator() {
   const { weaponId } = useParams();
   const [weapon, setWeapon] = useState(null);
