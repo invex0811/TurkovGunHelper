@@ -8,6 +8,8 @@ import {
 import {
   loadPriceModePreference,
   savePriceModePreference,
+  loadTargetTypePreference,
+  saveTargetTypePreference,
 } from '../data/settings/buildPreferences.js';
 import { getWeaponDetails, getAllMods } from '../data/tarkovApi';
 import { calculateBestBuild } from '../domain/calculator.js';
@@ -319,7 +321,7 @@ function Configurator() {
   const { weaponId } = useParams();
   const [weapon, setWeapon] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [targetType, setTargetType] = useState('meta'); // meta, max_ergo, min_recoil, custom
+  const [targetType, setTargetType] = useState(loadTargetTypePreference); // meta, max_ergo, min_recoil, custom
   const [customErgo, setCustomErgo] = useState(50);
   const [customRecoil, setCustomRecoil] = useState(50);
   const [suppressorMode, setSuppressorMode] = useState('allow');
@@ -327,7 +329,6 @@ function Configurator() {
   const [maxWeight, setMaxWeight] = useState('');
   const [magazineCapacity, setMagazineCapacity] = useState(30);
   const [allMods, setAllMods] = useState(null);
-  const [showAdditionalOptions, setShowAdditionalOptions] = useState(false);
   const [buildResult, setBuildResult] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [generationError, setGenerationError] = useState(null);
@@ -336,6 +337,10 @@ function Configurator() {
   useEffect(() => {
     savePriceModePreference(priceMode);
   }, [priceMode]);
+
+  useEffect(() => {
+    saveTargetTypePreference(targetType);
+  }, [targetType]);
   
   useEffect(() => {
     let cancelled = false;
@@ -431,8 +436,8 @@ function Configurator() {
 }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-      <div className="glass-panel" style={{ padding: '2rem' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '2rem' }}>
+      <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
         <Link to="/" className="btn" style={{ textDecoration: 'none', marginBottom: '1.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)' }}>
           <span>&larr;</span> <span>Back to Weapons</span>
         </Link>
@@ -450,9 +455,187 @@ function Configurator() {
             <li style={{ padding: '0.5rem 0', borderBottom: '1px solid var(--color-border)' }}>Horizontal Recoil: {weapon.properties?.recoilHorizontal ?? 'N/A'}</li>
           </ul>
         </div>
+        <div style={{ marginTop: 'auto', paddingTop: '2rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+          <span style={{ 
+            display: 'inline-flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            width: '18px', 
+            height: '18px', 
+            borderRadius: '50%', 
+            border: '1px solid var(--color-text-muted)', 
+            fontSize: '0.75rem', 
+            fontWeight: 'bold',
+            fontFamily: 'monospace'
+          }}>i</span>
+          <span>All data is sourced from <a href="https://tarkov.dev" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent-gold)', textDecoration: 'none', borderBottom: '1px dotted var(--color-accent-gold)' }}>tarkov.dev</a></span>
+        </div>
       </div>
 
-      <div className="glass-panel" style={{ padding: '2rem' }}>
+      <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', minHeight: '500px' }}>
+        <h3 style={{ color: 'var(--color-accent-green)', marginTop: 0, marginBottom: '1.5rem', fontSize: '1.5rem', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem' }}>
+          Build Results
+        </h3>
+        
+        {generating && (
+          <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)' }}>
+            Calculating optimal build...
+          </div>
+        )}
+
+        {!generating && !buildResult && (
+          <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '2rem', border: '1px dashed var(--color-border)', borderRadius: 'var(--radius-md)', color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>
+            Configure parameters and click "GENERATE BUILD" to see the results and parts list here.
+          </div>
+        )}
+
+        {!generating && buildResult && (() => {
+          const hasCalculationError = Boolean(buildResult.error);
+          const hasBuildParts = Array.isArray(buildResult.build) && buildResult.build.length > 0;
+          const canShowBuildDetails = !hasCalculationError && hasBuildParts;
+          const priceDiagnostics = canShowBuildDetails
+            ? collectBuildPriceDiagnostics(weapon, buildResult, priceMode)
+            : null;
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+              {hasCalculationError && (
+                <InlineMessage type="error" title="Build cannot satisfy current constraints">
+                  {buildResult.error}
+                </InlineMessage>
+              )}
+
+              {!hasCalculationError && buildResult.warning && (
+                <InlineMessage type="warning" title="Build warning">
+                  {buildResult.warning}
+                </InlineMessage>
+              )}
+
+              {!hasCalculationError && !hasBuildParts && (
+                <InlineMessage type="warning" title="No build parts selected">
+                  The calculator did not find any compatible parts for the current configuration.
+                </InlineMessage>
+              )}
+
+              {canShowBuildDetails && (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <span>Ergonomics: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.ergonomics}</strong></span>
+                    <span>Weight: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.weight} kg</strong></span>
+                    <span>V. Recoil: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.recoilVertical}</strong></span>
+                    <span>H. Recoil: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.recoilHorizontal}</strong></span>
+                    <span style={{ gridColumn: 'span 2', marginTop: '0.25rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.5rem' }}>
+                      Estimated Price:{' '}
+                      <strong style={{ color: 'var(--color-accent-gold)', fontSize: '1.1rem' }}>
+                        {formatCurrency(buildResult.stats.price, 'RUB')}
+                      </strong>
+                      {priceDiagnostics && (
+                        <span
+                          style={{
+                            display: 'block',
+                            color: 'var(--color-text-muted)',
+                            fontSize: '0.78rem',
+                            marginTop: '0.25rem',
+                          }}
+                        >
+                          {priceDiagnostics.summaryLabel}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+
+                  {priceDiagnostics?.warningMessages.length > 0 && (
+                    <InlineMessage type="warning" title="Price data notice">
+                      {priceDiagnostics.warningMessages.join(' ')}
+                    </InlineMessage>
+                  )}
+
+                  <h4 style={{ marginTop: '1rem', marginBottom: '0.5rem', color: 'var(--color-accent-gold)', fontSize: '1.1rem' }}>Parts List</h4>
+                  <div style={{ overflowY: 'auto', flex: 1, paddingRight: '0.5rem' }}>
+                    <ul style={{ listStyleType: 'none', padding: 0, margin: 0, width: '100%' }}>
+                      {buildResult.build.map((part, idx) => {
+                        const priceInfo = getSelectedPriceInfo(part.item, priceMode);
+                        const priceMetaColor = priceInfo.isMissing
+                          ? 'var(--color-accent-red)'
+                          : priceInfo.fallbackUsed
+                            ? 'var(--color-accent-gold-dark)'
+                            : 'var(--color-text-muted)';
+
+                        return (
+                          <li
+                            key={idx}
+                            style={{
+                              padding: '0.75rem 0',
+                              borderBottom: '1px solid rgba(255,255,255,0.05)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              width: '100%',
+                              boxSizing: 'border-box',
+                            }}
+                          >
+                            <img
+                              src={part.item.image512pxLink || part.item.iconLink || 'https://via.placeholder.com/30'}
+                              alt=""
+                              style={{
+                                width: '40px',
+                                height: '40px',
+                                objectFit: 'contain',
+                                marginRight: '1rem',
+                                background: 'rgba(255,255,255,0.02)',
+                                borderRadius: 'var(--radius-sm)',
+                                border: '1px solid rgba(255,255,255,0.05)'
+                              }}
+                            />
+
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '0.95rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {formatPartName(part.item.shortName)}
+                              </div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                Slot: {part.slotName}
+                              </div>
+                            </div>
+
+                            <div
+                              style={{
+                                textAlign: 'right',
+                                whiteSpace: 'nowrap',
+                                marginLeft: '1rem',
+                              }}
+                            >
+                              <div
+                                style={{
+                                  color: priceInfo.isMissing ? 'var(--color-text-muted)' : 'var(--color-accent-gold)',
+                                  fontSize: '0.9rem',
+                                  fontWeight: 'bold',
+                                }}
+                              >
+                                {formatCurrency(priceInfo.value, priceInfo.currency)}
+                              </div>
+                              <div
+                                title={`${getPriceConfidenceLabel(priceInfo)} · ${getPriceFieldLabel(priceInfo.field)}`}
+                                style={{
+                                  color: priceMetaColor,
+                                  fontSize: '0.72rem',
+                                  marginTop: '0.15rem',
+                                }}
+                              >
+                                {getPartPriceMetaLabel(priceInfo, priceMode)}
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
+      </div>
+
+      <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
         <h3>Build Configuration</h3>
         <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <button 
@@ -501,144 +684,119 @@ function Configurator() {
           </div>
         )}
 
-        <div style={{ marginTop: '2rem', background: 'rgba(255,255,255,0.05)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
-          <button 
-            onClick={() => setShowAdditionalOptions(!showAdditionalOptions)}
-            style={{ 
-              width: '100%', 
-              padding: '1rem', 
-              background: 'transparent', 
-              border: 'none', 
-              color: 'var(--color-text)', 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              cursor: 'pointer',
-              fontWeight: 'bold'
-            }}
-          >
-            <span>Additional Options</span>
-            <span style={{ transform: showAdditionalOptions ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s ease' }}>v</span>
-          </button>
-          
-          {showAdditionalOptions && (
-            <div style={{ padding: '1.5rem', borderTop: '1px solid var(--color-border)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', alignItems: 'end' }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
-                  Suppressor Mode
-                </label>
-
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  {SUPPRESSOR_MODE_OPTIONS.map(option => {
-                    const isSelected = suppressorMode === option.value;
-
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        className={`btn ${isSelected ? '' : 'btn-outline'}`}
-                        onClick={() => setSuppressorMode(option.value)}
-                        style={{
-                          flex: '1 1 140px',
-                          padding: '0.75rem 1rem',
-                          fontSize: '0.85rem',
-                          borderColor: 'var(--color-accent-gold-dark)',
-                          color: isSelected ? 'var(--color-bg-base)' : 'var(--color-accent-gold)',
-                          background: isSelected ? 'var(--color-accent-gold-dark)' : 'transparent',
-                        }}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
-                  Price Mode
-                </label>
-
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  {PRICE_MODE_OPTIONS.map(option => {
-                    const isSelected = priceMode === option.value;
-
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        className={`btn ${isSelected ? '' : 'btn-outline'}`}
-                        onClick={() => setPriceMode(option.value)}
-                        style={{
-                          flex: '1 1 140px',
-                          padding: '0.75rem 1rem',
-                          fontSize: '0.85rem',
-                          borderColor: 'var(--color-accent-gold-dark)',
-                          color: isSelected ? 'var(--color-bg-base)' : 'var(--color-accent-gold)',
-                          background: isSelected ? 'var(--color-accent-gold-dark)' : 'transparent',
-                        }}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>Max Weight (kg)</label>
-                <input 
-                  type="number" 
-                  placeholder="No limit" 
-                  value={maxWeight} 
-                  onChange={e => setMaxWeight(e.target.value)} 
-                  style={{ 
-                    width: '100%', 
-                    padding: '0.75rem', 
-                    backgroundColor: 'rgba(0,0,0,0.5)', 
-                    border: '1px solid var(--color-border)', 
-                    color: 'var(--color-text)',
-                    borderRadius: 'var(--radius-sm)',
-                    outline: 'none',
-                    boxSizing: 'border-box'
-                  }} 
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
-                  Magazine Capacity (rounds)
-                </label>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  {getAvailableCapacities(weapon, allMods).map(capacity => {
-                    const isSelected = Number(magazineCapacity) === capacity;
-
-                    return (
-                      <button
-                        key={capacity}
-                        type="button"
-                        className={`btn ${isSelected ? '' : 'btn-outline'}`}
-                        onClick={() => setMagazineCapacity(capacity)}
-                        style={{
-                          minWidth: '50px',
-                          padding: '0.75rem 1rem',
-                          fontSize: '0.85rem',
-                          borderColor: 'var(--color-accent-gold-dark)',
-                          color: isSelected ? 'var(--color-bg-base)' : 'var(--color-accent-gold)',
-                          background: isSelected ? 'var(--color-accent-gold-dark)' : 'transparent',
-                        }}
-                      >
-                        {capacity}
-                      </button>
-                    );
-                  })}
-                </div>
+        <div style={{ marginTop: '2.5rem', padding: '1.5rem', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'rgba(255,255,255,0.02)' }}>
+          <h4 style={{ margin: '0 0 1.5rem 0', color: 'var(--color-accent-gold)', fontSize: '1.1rem' }}>Additional Parameters</h4>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', alignItems: 'end' }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+                Suppressor Mode
+              </label>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {SUPPRESSOR_MODE_OPTIONS.map(option => {
+                  const isSelected = suppressorMode === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`btn ${isSelected ? '' : 'btn-outline'}`}
+                      onClick={() => setSuppressorMode(option.value)}
+                      style={{
+                        flex: '1 1 140px',
+                        padding: '0.75rem 1rem',
+                        fontSize: '0.85rem',
+                        borderColor: 'var(--color-accent-gold-dark)',
+                        color: isSelected ? 'var(--color-bg-base)' : 'var(--color-accent-gold)',
+                        background: isSelected ? 'var(--color-accent-gold-dark)' : 'transparent',
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
-          )}
+            
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+                Price Mode
+              </label>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {PRICE_MODE_OPTIONS.map(option => {
+                  const isSelected = priceMode === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`btn ${isSelected ? '' : 'btn-outline'}`}
+                      onClick={() => setPriceMode(option.value)}
+                      style={{
+                        flex: '1 1 140px',
+                        padding: '0.75rem 1rem',
+                        fontSize: '0.85rem',
+                        borderColor: 'var(--color-accent-gold-dark)',
+                        color: isSelected ? 'var(--color-bg-base)' : 'var(--color-accent-gold)',
+                        background: isSelected ? 'var(--color-accent-gold-dark)' : 'transparent',
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>Max Weight (kg)</label>
+              <input 
+                type="number" 
+                placeholder="No limit" 
+                value={maxWeight} 
+                onChange={e => setMaxWeight(e.target.value)} 
+                style={{ 
+                  width: '100%', 
+                  padding: '0.75rem', 
+                  backgroundColor: 'rgba(0,0,0,0.5)', 
+                  border: '1px solid var(--color-border)', 
+                  color: 'var(--color-text)',
+                  borderRadius: 'var(--radius-sm)',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }} 
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+                Magazine Capacity (rounds)
+              </label>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {getAvailableCapacities(weapon, allMods).map(capacity => {
+                  const isSelected = Number(magazineCapacity) === capacity;
+                  return (
+                    <button
+                      key={capacity}
+                      type="button"
+                      className={`btn ${isSelected ? '' : 'btn-outline'}`}
+                      onClick={() => setMagazineCapacity(capacity)}
+                      style={{
+                        minWidth: '50px',
+                        padding: '0.75rem 1rem',
+                        fontSize: '0.85rem',
+                        borderColor: 'var(--color-accent-gold-dark)',
+                        color: isSelected ? 'var(--color-bg-base)' : 'var(--color-accent-gold)',
+                        background: isSelected ? 'var(--color-accent-gold-dark)' : 'transparent',
+                      }}
+                    >
+                      {capacity}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div style={{ marginTop: '2rem' }}>
+        <div style={{ marginTop: 'auto', paddingTop: '2rem' }}>
           <button className="btn" style={{ width: '100%', padding: '1rem', fontSize: '1.2rem' }} onClick={handleGenerate} disabled={generating}>
             {generating ? 'LOADING MODS...' : 'GENERATE BUILD'}
           </button>
@@ -651,148 +809,6 @@ function Configurator() {
             </InlineMessage>
           </div>
         )}
-
-        {buildResult && (() => {
-          const hasCalculationError = Boolean(buildResult.error);
-          const hasBuildParts = Array.isArray(buildResult.build) && buildResult.build.length > 0;
-          const canShowBuildDetails = !hasCalculationError && hasBuildParts;
-          const priceDiagnostics = canShowBuildDetails
-            ? collectBuildPriceDiagnostics(weapon, buildResult, priceMode)
-            : null;
-
-          return (
-            <div style={{ marginTop: '2rem', padding: '1rem', background: 'rgba(0,0,0,0.3)', borderRadius: 'var(--radius-md)' }}>
-              <h4 style={{ color: 'var(--color-accent-green)', marginBottom: '1rem' }}>Build Results</h4>
-
-              {hasCalculationError && (
-                <InlineMessage type="error" title="Build cannot satisfy current constraints">
-                  {buildResult.error}
-                </InlineMessage>
-              )}
-
-              {!hasCalculationError && buildResult.warning && (
-                <InlineMessage type="warning" title="Build warning">
-                  {buildResult.warning}
-                </InlineMessage>
-              )}
-
-              {!hasCalculationError && !hasBuildParts && (
-                <InlineMessage type="warning" title="No build parts selected">
-                  The calculator did not find any compatible parts for the current configuration.
-                </InlineMessage>
-              )}
-
-              {canShowBuildDetails && (
-                <>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '1.5rem' }}>
-                    <span>Ergonomics: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.ergonomics}</strong></span>
-                    <span>Weight: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.weight} kg</strong></span>
-                    <span>V. Recoil: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.recoilVertical}</strong></span>
-                    <span>H. Recoil: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.recoilHorizontal}</strong></span>
-                    <span style={{ gridColumn: 'span 2' }}>
-                      Estimated Price:{' '}
-                      <strong style={{ color: 'var(--color-accent-gold)' }}>
-                        {formatCurrency(buildResult.stats.price, 'RUB')}
-                      </strong>
-                      {priceDiagnostics && (
-                        <span
-                          style={{
-                            display: 'block',
-                            color: 'var(--color-text-muted)',
-                            fontSize: '0.78rem',
-                            marginTop: '0.25rem',
-                          }}
-                        >
-                          {priceDiagnostics.summaryLabel}
-                        </span>
-                      )}
-                    </span>
-                  </div>
-
-                  {priceDiagnostics?.warningMessages.length > 0 && (
-                    <InlineMessage type="warning" title="Price data notice">
-                      {priceDiagnostics.warningMessages.join(' ')}
-                    </InlineMessage>
-                  )}
-
-                  <h5 style={{ marginTop: '1rem', marginBottom: '0.5rem', color: 'var(--color-text-muted)' }}>Parts List</h5>
-                  <ul style={{ listStyleType: 'none', padding: 0, maxHeight: '400px', overflowY: 'auto', width: '100%' }}>
-                    {buildResult.build.map((part, idx) => {
-                      const priceInfo = getSelectedPriceInfo(part.item, priceMode);
-                      const priceMetaColor = priceInfo.isMissing
-                        ? 'var(--color-accent-red)'
-                        : priceInfo.fallbackUsed
-                          ? 'var(--color-accent-gold-dark)'
-                          : 'var(--color-text-muted)';
-
-                      return (
-                        <li
-                          key={idx}
-                          style={{
-                            padding: '0.75rem',
-                            borderBottom: '1px solid rgba(255,255,255,0.05)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            width: '100%',
-                            boxSizing: 'border-box',
-                          }}
-                        >
-                          <img
-                            src={part.item.image512pxLink || part.item.iconLink || 'https://via.placeholder.com/30'}
-                            alt=""
-                            style={{
-                              width: '40px',
-                              height: '40px',
-                              objectFit: 'contain',
-                              marginRight: '1rem',
-                            }}
-                          />
-
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '1rem', fontWeight: 'bold' }}>
-                              {formatPartName(part.item.shortName)}
-                            </div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                              Slot: {part.slotName}
-                            </div>
-                          </div>
-
-                          <div
-                            style={{
-                              textAlign: 'right',
-                              whiteSpace: 'nowrap',
-                              marginLeft: '1rem',
-                            }}
-                          >
-                            <div
-                              style={{
-                                color: priceInfo.isMissing ? 'var(--color-text-muted)' : 'var(--color-accent-gold)',
-                                fontSize: '0.9rem',
-                                fontWeight: 'bold',
-                              }}
-                            >
-                              {formatCurrency(priceInfo.value, priceInfo.currency)}
-                            </div>
-                            <div
-                              title={`${getPriceConfidenceLabel(priceInfo)} · ${getPriceFieldLabel(priceInfo.field)}`}
-                              style={{
-                                color: priceMetaColor,
-                                fontSize: '0.72rem',
-                                marginTop: '0.15rem',
-                              }}
-                            >
-                              {getPartPriceMetaLabel(priceInfo, priceMode)}
-                            </div>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </>
-              )}
-            </div>
-          );
-        })()}
       </div>
     </div>
   );
