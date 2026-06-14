@@ -1,0 +1,223 @@
+{
+  "rawItems": {
+    "primaryPrice": {
+      "id": "primary-price-item",
+      "name": "Primary Price Item",
+      "shortName": "PPI",
+      "avg24hPrice": 12345,
+      "lastLowPrice": 23456,
+      "low24hPrice": 34567,
+      "basePrice": 45678,
+      "updated": "2026-06-01T10:00:00.000Z"
+    },
+    "lastLowFallback": {
+      "id": "last-low-fallback-item",
+      "name": "Last Low Fallback Item",
+      "shortName": "LLF",
+      "avg24hPrice": 0,
+      "lastLowPrice": 23456,
+      "low24hPrice": 34567,
+      "basePrice": 45678,
+      "updated": "2026-06-01T11:00:00.000Z"
+    },
+    "low24hFallback": {
+      "id": "low-24h-fallback-item",
+      "name": "Low 24h Fallback Item",
+      "shortName": "L24F",
+      "avg24hPrice": null,
+      "lastLowPrice": 0,
+      "low24hPrice": 34567,
+      "basePrice": 45678,
+      "updated": "2026-06-01T12:00:00.000Z"
+    },
+    "basePriceFallback": {
+      "id": "base-price-fallback-item",
+      "name": "Base Price Fallback Item",
+      "shortName": "BPF",
+      "avg24hPrice": 0,
+      "lastLowPrice": null,
+      "low24hPrice": -1,
+      "basePrice": 45678,
+      "updated": "2026-06-01T13:00:00.000Z"
+    },
+    "missingPrice": {
+      "id": "missing-price-item",
+      "name": "Missing Price Item",
+      "shortName": "MPI",
+      "avg24hPrice": 0,
+      "lastLowPrice": null,
+      "low24hPrice": -1,
+      "basePrice": 0,
+      "updated": "2026-06-01T14:00:00.000Z"
+    }
+  },
+  "budgetScenarios": {
+    "pvp": {
+      "priceMode": "pvp",
+      "expectedItemId": "pvp-cheap-raw-expensive",
+      "slotGroups": [["pvp-cheap-raw-expensive", "pvp-expensive-raw-cheap"]],
+      "mods": [
+        {
+          "id": "pvp-cheap-raw-expensive",
+          "shortName": "PCRX",
+          "rawPrice": 100000,
+          "price": {
+            "value": 100,
+            "mode": "pvp",
+            "field": "avg24hPrice",
+            "fallbackUsed": false,
+            "confidence": "high"
+          }
+        },
+        {
+          "id": "pvp-expensive-raw-cheap",
+          "shortName": "PERC",
+          "rawPrice": 1,
+          "price": {
+            "value": 50000,
+            "mode": "pvp",
+            "field": "avg24hPrice",
+            "fallbackUsed": false,
+            "confidence": "high"
+          }
+        }
+      ]
+    },
+    "pve": {
+      "priceMode": "pve",
+      "expectedItemId": "pve-cheap-raw-expensive",
+      "slotGroups": [["pve-expensive-raw-cheap", "pve-cheap-raw-expensive"]],
+      "mods": [
+        {
+          "id": "pve-expensive-raw-cheap",
+          "shortName": "PEEC",
+          "rawPrice": 1,
+          "price": {
+            "value": 50000,
+            "mode": "pve",
+            "field": "avg24hPrice",
+            "fallbackUsed": false,
+            "confidence": "high"
+          }
+        },
+        {
+          "id": "pve-cheap-raw-expensive",
+          "shortName": "PECRX",
+          "rawPrice": 100000,
+          "price": {
+            "value": 100,
+            "mode": "pve",
+            "field": "avg24hPrice",
+            "fallbackUsed": false,
+            "confidence": "high"
+          }
+        }
+      ]
+    },
+    "wrongMode": {
+      "priceMode": "pvp",
+      "expectedItemId": "selected-mode-mod",
+      "rejectedItemId": "wrong-mode-cheap-mod",
+      "slotGroups": [["wrong-mode-cheap-mod", "selected-mode-mod"]],
+      "mods": [
+        {
+          "id": "wrong-mode-cheap-mod",
+          "shortName": "WMCM",
+          "rawPrice": 100000,
+          "price": {
+            "value": 1,
+            "mode": "pve",
+            "field": "avg24hPrice",
+            "fallbackUsed": false,
+            "confidence": "high"
+          }
+        },
+        {
+          "id": "selected-mode-mod",
+          "shortName": "SMM",
+          "rawPrice": 1000,
+          "price": {
+            "value": 1000,
+            "mode": "pvp",
+            "field": "avg24hPrice",
+            "fallbackUsed": false,
+            "confidence": "high"
+          }
+        }
+      ]
+    },
+    "missingPrice": {
+      "priceMode": "pvp",
+      "expectedItemId": "missing-selected-price-mod",
+      "slotGroups": [["missing-selected-price-mod"]],
+      "mods": [
+        {
+          "id": "missing-selected-price-mod",
+          "shortName": "MSPM",
+          "rawPrice": 100000,
+          "price": {
+            "value": 0,
+            "mode": "pvp",
+            "field": null,
+            "fallbackUsed": true,
+            "confidence": "missing"
+          }
+        }
+      ]
+    },
+    "mixedSource": {
+      "priceMode": "pvp",
+      "expectedItemIds": [
+        "high-confidence-price-mod",
+        "fallback-price-mod",
+        "missing-price-mod"
+      ],
+      "slotGroups": [
+        ["high-confidence-price-mod"],
+        ["fallback-price-mod"],
+        ["missing-price-mod"]
+      ],
+      "mods": [
+        {
+          "id": "high-confidence-price-mod",
+          "shortName": "HCPM",
+          "rawPrice": 300,
+          "price": {
+            "value": 300,
+            "mode": "pvp",
+            "field": "avg24hPrice",
+            "fallbackUsed": false,
+            "confidence": "high"
+          }
+        },
+        {
+          "id": "fallback-price-mod",
+          "shortName": "FPM",
+          "rawPrice": 0,
+          "lastLowPrice": 500,
+          "basePrice": 1000,
+          "price": {
+            "value": 500,
+            "mode": "pvp",
+            "field": "lastLowPrice",
+            "fallbackUsed": true,
+            "confidence": "fallback"
+          }
+        },
+        {
+          "id": "missing-price-mod",
+          "shortName": "MPM",
+          "rawPrice": 0,
+          "basePrice": 100000,
+          "price": {
+            "value": 0,
+            "mode": "pvp",
+            "field": null,
+            "fallbackUsed": true,
+            "confidence": "missing"
+          }
+        }
+      ]
+    }
+  }
+}

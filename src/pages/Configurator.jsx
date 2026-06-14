@@ -1,6 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getWeaponDetails, getAllMods } from '../services/api';
+import {
+  PRICE_CONFIDENCE,
+  PRICE_MODE_LABELS,
+  PRICE_MODE_OPTIONS,
+} from '../data/price/priceModes.js';
+import {
+  loadPriceModePreference,
+  savePriceModePreference,
+} from '../data/settings/buildPreferences.js';
+import { getWeaponDetails, getAllMods } from '../data/tarkovApi';
 import { calculateBestBuild } from '../domain/calculator.js';
 
 function formatPartName(name) {
@@ -8,6 +17,222 @@ function formatPartName(name) {
   return name.replace(/(\d+(?:\.\d+)?)\s*(?:"|inch(?:es)?)/ig, (match, p1) => {
     return Math.round(parseFloat(p1) * 25.4) + ' mm';
   });
+}
+
+function isPositivePrice(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+function getRawFallbackPrice(item) {
+  const candidates = [
+    { field: 'avg24hPrice', value: item?.avg24hPrice },
+    { field: 'lastLowPrice', value: item?.lastLowPrice },
+    { field: 'low24hPrice', value: item?.low24hPrice },
+    { field: 'basePrice', value: item?.basePrice },
+  ];
+
+  return candidates.find(candidate => isPositivePrice(candidate.value)) ?? {
+    field: null,
+    value: 0,
+  };
+}
+
+function formatCurrency(value, currency = 'RUB') {
+  if (!isPositivePrice(value)) return 'N/A';
+  return `${Math.round(value).toLocaleString()} ${currency}`;
+}
+
+function getPriceFieldLabel(field) {
+  if (field === 'avg24hPrice') return '24h avg';
+  if (field === 'lastLowPrice') return 'Last low';
+  if (field === 'low24hPrice') return '24h low';
+  if (field === 'basePrice') return 'Base price';
+  return 'No price field';
+}
+
+function getPriceConfidenceLabel(priceInfo) {
+  if (priceInfo.isMissing) return 'Missing';
+  if (priceInfo.usesRawFallback) return 'Raw fallback';
+  if (priceInfo.confidence === PRICE_CONFIDENCE.FALLBACK) return 'Fallback';
+  if (priceInfo.confidence === PRICE_CONFIDENCE.HIGH) return 'Market';
+  return 'Price';
+}
+
+function getItemDisplayName(item, fallbackLabel = 'Item') {
+  return item?.shortName || item?.name || fallbackLabel;
+}
+
+function getSelectedPriceInfo(item, selectedPriceMode) {
+  const normalizedPrice = item?.price;
+  const rawFallback = getRawFallbackPrice(item);
+  const modeMismatch = Boolean(
+    normalizedPrice?.mode
+    && selectedPriceMode
+    && normalizedPrice.mode !== selectedPriceMode,
+  );
+
+  if (normalizedPrice && !modeMismatch) {
+    const value = isPositivePrice(normalizedPrice.value) ? normalizedPrice.value : 0;
+    const confidence = normalizedPrice.confidence
+      ?? (normalizedPrice.fallbackUsed ? PRICE_CONFIDENCE.FALLBACK : PRICE_CONFIDENCE.HIGH);
+    const isMissing = confidence === PRICE_CONFIDENCE.MISSING || !isPositivePrice(value);
+
+    return {
+      value,
+      currency: normalizedPrice.currency ?? 'RUB',
+      mode: normalizedPrice.mode ?? selectedPriceMode,
+      source: normalizedPrice.source ?? 'Unknown source',
+      field: normalizedPrice.field ?? null,
+      fallbackUsed: Boolean(normalizedPrice.fallbackUsed),
+      updatedAt: normalizedPrice.updatedAt ?? null,
+      confidence: isMissing ? PRICE_CONFIDENCE.MISSING : confidence,
+      usesSelectedMode: true,
+      usesRawFallback: false,
+      modeMismatch: false,
+      isMissing,
+    };
+  }
+
+  if (isPositivePrice(rawFallback.value)) {
+    return {
+      value: rawFallback.value,
+      currency: normalizedPrice?.currency ?? 'RUB',
+      mode: selectedPriceMode,
+      source: normalizedPrice?.source ?? 'Raw item fields',
+      field: rawFallback.field,
+      fallbackUsed: true,
+      updatedAt: normalizedPrice?.updatedAt ?? item?.updated ?? null,
+      confidence: PRICE_CONFIDENCE.FALLBACK,
+      usesSelectedMode: false,
+      usesRawFallback: true,
+      modeMismatch,
+      isMissing: false,
+    };
+  }
+
+  return {
+    value: 0,
+    currency: normalizedPrice?.currency ?? 'RUB',
+    mode: selectedPriceMode,
+    source: normalizedPrice?.source ?? 'Unknown source',
+    field: null,
+    fallbackUsed: true,
+    updatedAt: normalizedPrice?.updatedAt ?? item?.updated ?? null,
+    confidence: PRICE_CONFIDENCE.MISSING,
+    usesSelectedMode: false,
+    usesRawFallback: true,
+    modeMismatch,
+    isMissing: true,
+  };
+}
+
+function formatDiagnosticsList(entries, limit = 3) {
+  const names = entries
+    .slice(0, limit)
+    .map(entry => entry.label);
+
+  const remainingCount = entries.length - names.length;
+
+  if (remainingCount > 0) {
+    return `${names.join(', ')} and ${remainingCount} more`;
+  }
+
+  return names.join(', ');
+}
+
+function getPriceSummaryStatus(diagnostics) {
+  if (diagnostics.missingEntries.length > 0) return 'some prices missing';
+  if (diagnostics.fallbackEntries.length > 0) return 'includes fallback prices';
+  return 'primary market prices';
+}
+
+function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode) {
+  const entries = [
+    {
+      label: 'Base weapon',
+      item: weapon,
+    },
+    ...buildResult.build.map(part => ({
+      label: getItemDisplayName(part.item, part.slotName),
+      item: part.item,
+    })),
+  ].map(entry => ({
+    ...entry,
+    priceInfo: getSelectedPriceInfo(entry.item, selectedPriceMode),
+  }));
+
+  const fallbackEntries = entries.filter(entry => (
+    entry.priceInfo.fallbackUsed
+    && !entry.priceInfo.isMissing
+  ));
+  const missingEntries = entries.filter(entry => entry.priceInfo.isMissing);
+  const modeMismatchEntries = entries.filter(entry => entry.priceInfo.modeMismatch);
+  const sourceLabels = Array.from(new Set(
+    entries
+      .filter(entry => !entry.priceInfo.isMissing)
+      .map(entry => entry.priceInfo.source)
+      .filter(Boolean),
+  ));
+
+  const warningMessages = [];
+
+  if (missingEntries.length > 0) {
+    warningMessages.push(
+      `Missing prices: ${formatDiagnosticsList(missingEntries)}. Total price may be incomplete.`,
+    );
+  }
+
+  if (fallbackEntries.length > 0) {
+    warningMessages.push(
+      `Fallback prices: ${formatDiagnosticsList(fallbackEntries)}.`,
+    );
+  }
+
+  if (modeMismatchEntries.length > 0) {
+    warningMessages.push(
+      `Price mode fallback used for: ${formatDiagnosticsList(modeMismatchEntries)}.`,
+    );
+  }
+
+  if (sourceLabels.length > 1) {
+    warningMessages.push(`Mixed price sources: ${sourceLabels.join(', ')}.`);
+  }
+
+  const modeLabel = PRICE_MODE_LABELS[selectedPriceMode] ?? selectedPriceMode;
+  const sourceLabel = sourceLabels.length > 0 ? sourceLabels.join(' + ') : 'No source';
+
+  return {
+    entries,
+    fallbackEntries,
+    missingEntries,
+    modeMismatchEntries,
+    sourceLabels,
+    warningMessages,
+    summaryLabel: `${modeLabel} · ${sourceLabel} · ${getPriceSummaryStatus({
+      fallbackEntries,
+      missingEntries,
+    })}`,
+  };
+}
+
+function getPartPriceMetaLabel(priceInfo, selectedPriceMode) {
+  if (priceInfo.isMissing) return 'Price missing';
+
+  const modeLabel = PRICE_MODE_LABELS[priceInfo.mode]
+    ?? PRICE_MODE_LABELS[selectedPriceMode]
+    ?? selectedPriceMode
+    ?? 'Price mode';
+  const fieldLabel = getPriceFieldLabel(priceInfo.field);
+
+  if (priceInfo.modeMismatch) {
+    return `${fieldLabel} · mode fallback`;
+  }
+
+  if (priceInfo.confidence === PRICE_CONFIDENCE.FALLBACK || priceInfo.usesRawFallback) {
+    return `Fallback · ${fieldLabel}`;
+  }
+
+  return `${modeLabel} · ${priceInfo.source}`;
 }
 
 const SUPPRESSOR_MODE_OPTIONS = [
@@ -76,17 +301,22 @@ function Configurator() {
   const [customErgo, setCustomErgo] = useState(50);
   const [customRecoil, setCustomRecoil] = useState(50);
   const [suppressorMode, setSuppressorMode] = useState('allow');
+  const [priceMode, setPriceMode] = useState(loadPriceModePreference);
   const [maxWeight, setMaxWeight] = useState('');
   const [showAdditionalOptions, setShowAdditionalOptions] = useState(false);
   const [buildResult, setBuildResult] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [generationError, setGenerationError] = useState(null);
   const [generating, setGenerating] = useState(false);
-
+  
+  useEffect(() => {
+    savePriceModePreference(priceMode);
+  }, [priceMode]);
+  
   useEffect(() => {
     let cancelled = false;
 
-    getWeaponDetails(weaponId).then(data => {
+    getWeaponDetails(weaponId, priceMode).then(data => {
       if (cancelled) return;
 
       setWeapon(data);
@@ -108,7 +338,7 @@ function Configurator() {
     return () => {
       cancelled = true;
     };
-  }, [weaponId]);
+  }, [weaponId, priceMode]);
 
   const handleGenerate = async () => {
   setGenerating(true);
@@ -116,10 +346,11 @@ function Configurator() {
   setBuildResult(null);
 
   try {
-    const modMap = await getAllMods();
+    const modMap = await getAllMods(priceMode);
     const options = {
       ...getSuppressorOptions(suppressorMode),
       maxWeight: parseFloat(maxWeight) || 0,
+      priceMode,
     };
 
     const result = calculateBestBuild(weapon, targetType, customErgo, customRecoil, modMap, options);
@@ -250,7 +481,7 @@ function Configurator() {
           </button>
           
           {showAdditionalOptions && (
-            <div style={{ padding: '1.5rem', borderTop: '1px solid var(--color-border)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', alignItems: 'end' }}>
+            <div style={{ padding: '1.5rem', borderTop: '1px solid var(--color-border)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', alignItems: 'end' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
                   Suppressor Mode
@@ -281,6 +512,38 @@ function Configurator() {
                   })}
                 </div>
               </div>
+              
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+                  Price Mode
+                </label>
+
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {PRICE_MODE_OPTIONS.map(option => {
+                    const isSelected = priceMode === option.value;
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={`btn ${isSelected ? '' : 'btn-outline'}`}
+                        onClick={() => setPriceMode(option.value)}
+                        style={{
+                          flex: '1 1 140px',
+                          padding: '0.75rem 1rem',
+                          fontSize: '0.85rem',
+                          borderColor: 'var(--color-accent-gold-dark)',
+                          color: isSelected ? 'var(--color-bg-base)' : 'var(--color-accent-gold)',
+                          background: isSelected ? 'var(--color-accent-gold-dark)' : 'transparent',
+                        }}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>Max Weight (kg)</label>
                 <input 
@@ -322,6 +585,9 @@ function Configurator() {
           const hasCalculationError = Boolean(buildResult.error);
           const hasBuildParts = Array.isArray(buildResult.build) && buildResult.build.length > 0;
           const canShowBuildDetails = !hasCalculationError && hasBuildParts;
+          const priceDiagnostics = canShowBuildDetails
+            ? collectBuildPriceDiagnostics(weapon, buildResult, priceMode)
+            : null;
 
           return (
             <div style={{ marginTop: '2rem', padding: '1rem', background: 'rgba(0,0,0,0.3)', borderRadius: 'var(--radius-md)' }}>
@@ -352,23 +618,100 @@ function Configurator() {
                     <span>Weight: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.weight} kg</strong></span>
                     <span>V. Recoil: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.recoilVertical}</strong></span>
                     <span>H. Recoil: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.recoilHorizontal}</strong></span>
-                    <span style={{ gridColumn: 'span 2' }}>Estimated Price: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.price?.toLocaleString()} RUB</strong></span>
+                    <span style={{ gridColumn: 'span 2' }}>
+                      Estimated Price:{' '}
+                      <strong style={{ color: 'var(--color-accent-gold)' }}>
+                        {formatCurrency(buildResult.stats.price, 'RUB')}
+                      </strong>
+                      {priceDiagnostics && (
+                        <span
+                          style={{
+                            display: 'block',
+                            color: 'var(--color-text-muted)',
+                            fontSize: '0.78rem',
+                            marginTop: '0.25rem',
+                          }}
+                        >
+                          {priceDiagnostics.summaryLabel}
+                        </span>
+                      )}
+                    </span>
                   </div>
+
+                  {priceDiagnostics?.warningMessages.length > 0 && (
+                    <InlineMessage type="warning" title="Price data notice">
+                      {priceDiagnostics.warningMessages.join(' ')}
+                    </InlineMessage>
+                  )}
 
                   <h5 style={{ marginTop: '1rem', marginBottom: '0.5rem', color: 'var(--color-text-muted)' }}>Parts List</h5>
                   <ul style={{ listStyleType: 'none', padding: 0, maxHeight: '400px', overflowY: 'auto', width: '100%' }}>
                     {buildResult.build.map((part, idx) => {
-                      const price = part.item.avg24hPrice || part.item.basePrice || 0;
+                      const priceInfo = getSelectedPriceInfo(part.item, priceMode);
+                      const priceMetaColor = priceInfo.isMissing
+                        ? 'var(--color-accent-red)'
+                        : priceInfo.fallbackUsed
+                          ? 'var(--color-accent-gold-dark)'
+                          : 'var(--color-text-muted)';
 
                       return (
-                        <li key={idx} style={{ padding: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', width: '100%', boxSizing: 'border-box' }}>
-                          <img src={part.item.image512pxLink || part.item.iconLink || 'https://via.placeholder.com/30'} alt="" style={{ width: '40px', height: '40px', objectFit: 'contain', marginRight: '1rem' }} />
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: '1rem', fontWeight: 'bold' }}>{formatPartName(part.item.shortName)}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Slot: {part.slotName}</div>
+                        <li
+                          key={idx}
+                          style={{
+                            padding: '0.75rem',
+                            borderBottom: '1px solid rgba(255,255,255,0.05)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            width: '100%',
+                            boxSizing: 'border-box',
+                          }}
+                        >
+                          <img
+                            src={part.item.image512pxLink || part.item.iconLink || 'https://via.placeholder.com/30'}
+                            alt=""
+                            style={{
+                              width: '40px',
+                              height: '40px',
+                              objectFit: 'contain',
+                              marginRight: '1rem',
+                            }}
+                          />
+
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '1rem', fontWeight: 'bold' }}>
+                              {formatPartName(part.item.shortName)}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                              Slot: {part.slotName}
+                            </div>
                           </div>
-                          <div style={{ color: 'var(--color-accent-gold)', fontSize: '0.9rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
-                            {price > 0 ? `${price.toLocaleString()} RUB` : 'N/A'}
+
+                          <div
+                            style={{
+                              textAlign: 'right',
+                              whiteSpace: 'nowrap',
+                              marginLeft: '1rem',
+                            }}
+                          >
+                            <div
+                              style={{
+                                color: priceInfo.isMissing ? 'var(--color-text-muted)' : 'var(--color-accent-gold)',
+                                fontSize: '0.9rem',
+                                fontWeight: 'bold',
+                              }}
+                            >
+                              {formatCurrency(priceInfo.value, priceInfo.currency)}
+                            </div>
+                            <div
+                              title={`${getPriceConfidenceLabel(priceInfo)} · ${getPriceFieldLabel(priceInfo.field)}`}
+                              style={{
+                                color: priceMetaColor,
+                                fontSize: '0.72rem',
+                                marginTop: '0.15rem',
+                              }}
+                            >
+                              {getPartPriceMetaLabel(priceInfo, priceMode)}
+                            </div>
                           </div>
                         </li>
                       );

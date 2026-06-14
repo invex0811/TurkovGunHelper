@@ -15,6 +15,20 @@ function hasCategory(item, categoryName) {
   return item.categories?.some(category => category.name === categoryName) || false;
 }
 
+function getExpectedItemPrice(item, priceMode) {
+  const rawPrice = item.avg24hPrice
+    || item.lastLowPrice
+    || item.low24hPrice
+    || item.basePrice
+    || 0;
+
+  if (!priceMode || item.price?.mode === priceMode) {
+    return item.price?.value ?? rawPrice;
+  }
+
+  return rawPrice;
+}
+
 function assertNoDuplicateParts(result) {
   const ids = result.build.map(part => part.item.id);
   assert.equal(new Set(ids).size, ids.length, 'build must not install the same item twice');
@@ -144,13 +158,13 @@ function assertNoInstalledConflictsForWeapon(baseWeapon, result) {
   }
 }
 
-function assertStatsMatchPartsForWeapon(baseWeapon, result) {
+function assertStatsMatchPartsForWeapon(baseWeapon, result, options = {}) {
   const totalErgo = baseWeapon.properties.ergonomics
     + result.build.reduce((sum, part) => sum + (part.item.ergonomicsModifier || 0), 0);
   const totalRecoilMod = result.build.reduce((sum, part) => sum + (part.item.recoilModifier || 0), 0);
   const totalWeight = baseWeapon.weight + result.build.reduce((sum, part) => sum + (part.item.weight || 0), 0);
-  const totalPrice = (baseWeapon.avg24hPrice || baseWeapon.basePrice || 0)
-    + result.build.reduce((sum, part) => sum + (part.item.avg24hPrice || part.item.basePrice || 0), 0);
+  const totalPrice = getExpectedItemPrice(baseWeapon, options.priceMode)
+    + result.build.reduce((sum, part) => sum + getExpectedItemPrice(part.item, options.priceMode), 0);
 
   assert.equal(result.stats.ergonomics, Math.min(100, Math.round(totalErgo)));
   assert.equal(result.stats.recoilVertical, Math.round(baseWeapon.properties.recoilVertical * (1 + totalRecoilMod / 100)));
@@ -412,4 +426,110 @@ test('requireSuppressor returns error when compatible silencer exceeds max weigh
   assert.ok(Number(result.stats.weight) <= 1.1, `weight ${result.stats.weight} exceeds 1.1`);
   assertNoDuplicatePartsForResult(result);
   assertStatsMatchPartsForWeapon(testWeapon, result);
+});
+
+test('budget scoring uses normalized price for selected price mode', () => {
+  const normalizedCheapMod = createTestMod({
+    id: 'normalized-cheap-mod',
+    shortName: 'NCM',
+    avg24hPrice: 100000,
+    basePrice: 100000,
+    ergonomicsModifier: 0,
+    recoilModifier: 0,
+    weight: 0.1,
+  });
+
+  normalizedCheapMod.price = {
+    value: 100,
+    mode: 'pvp',
+  };
+
+  const normalizedExpensiveMod = createTestMod({
+    id: 'normalized-expensive-mod',
+    shortName: 'NEM',
+    avg24hPrice: 1,
+    basePrice: 1,
+    ergonomicsModifier: 0,
+    recoilModifier: 0,
+    weight: 0.1,
+  });
+
+  normalizedExpensiveMod.price = {
+    value: 100000,
+    mode: 'pvp',
+  };
+
+  const testWeapon = createTestWeapon({
+    slots: [createSlot('Stock', [normalizedCheapMod.id, normalizedExpensiveMod.id])],
+  });
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'budget',
+    70,
+    50,
+    createModMap(normalizedCheapMod, normalizedExpensiveMod),
+    {
+      ...defaultOptions,
+      priceMode: 'pvp',
+    },
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, normalizedCheapMod.id);
+  assertNotInstalled(result, normalizedExpensiveMod.id);
+  assertStatsMatchPartsForWeapon(testWeapon, result, { priceMode: 'pvp' });
+});
+
+test('budget scoring ignores normalized price from a different price mode', () => {
+  const wrongModeCheapMod = createTestMod({
+    id: 'wrong-mode-cheap-mod',
+    shortName: 'WMCM',
+    avg24hPrice: 100000,
+    basePrice: 100000,
+    ergonomicsModifier: 0,
+    recoilModifier: 0,
+    weight: 0.1,
+  });
+
+  wrongModeCheapMod.price = {
+    value: 1,
+    mode: 'pve',
+  };
+
+  const selectedModeMod = createTestMod({
+    id: 'selected-mode-mod',
+    shortName: 'SMM',
+    avg24hPrice: 1000,
+    basePrice: 1000,
+    ergonomicsModifier: 0,
+    recoilModifier: 0,
+    weight: 0.1,
+  });
+
+  selectedModeMod.price = {
+    value: 1000,
+    mode: 'pvp',
+  };
+
+  const testWeapon = createTestWeapon({
+    slots: [createSlot('Stock', [wrongModeCheapMod.id, selectedModeMod.id])],
+  });
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'budget',
+    70,
+    50,
+    createModMap(wrongModeCheapMod, selectedModeMod),
+    {
+      ...defaultOptions,
+      priceMode: 'pvp',
+    },
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, selectedModeMod.id);
+  assertNotInstalled(result, wrongModeCheapMod.id);
+  assertStatsMatchPartsForWeapon(testWeapon, result, { priceMode: 'pvp' });
 });

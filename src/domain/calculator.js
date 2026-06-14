@@ -3,7 +3,7 @@ function _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMa
   let totalErgo = weapon.properties.ergonomics || 0;
   let totalRecoilMod = 0;
   let totalWeight = weapon.weight || 0;
-  let totalPrice = weapon.avg24hPrice || weapon.basePrice || 0;
+  let totalPrice = getItemPrice(weapon);
   let hasSight = false;
   let hasSuppressorGlobal = hasCategory(weapon, 'Silencer');
   const maxWeight = Number(options.maxWeight) || 0;
@@ -39,9 +39,23 @@ function _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMa
     return hasCategory(item, 'Silencer');
   }
 
-  function getItemPrice(item) {
-    return item.avg24hPrice || item.basePrice || 0;
+  function getRawItemPrice(item) {
+    return item.avg24hPrice
+      || item.lastLowPrice
+      || item.low24hPrice
+      || item.basePrice
+      || 0;
   }
+
+function getItemPrice(item) {
+  const expectedPriceMode = options.priceMode;
+
+  if (!expectedPriceMode || item.price?.mode === expectedPriceMode) {
+    return item.price?.value ?? getRawItemPrice(item);
+  }
+
+  return getRawItemPrice(item);
+}
 
   function getItemConflictIds(item) {
     return (item.conflictingItems || []).map(conflict => conflict.id);

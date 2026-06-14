@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getWeapons } from '../services/api';
+import { getWeapons } from '../data/tarkovApi';
 
 function Home() {
   const [weapons, setWeapons] = useState([]);
