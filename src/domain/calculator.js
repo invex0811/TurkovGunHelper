@@ -1,4 +1,4 @@
-function _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMap, options = {}, ergoCap = 100) {
+function _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMap, options = {}, ergoCap = 100, targetType = 'custom') {
   const build = [];
   let totalErgo = weapon.properties.ergonomics || 0;
   let totalRecoilMod = 0;
@@ -8,6 +8,14 @@ function _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMa
   let hasSuppressorGlobal = hasCategory(weapon, 'Silencer');
   const maxWeight = Number(options.maxWeight) || 0;
   const weightEpsilon = 0.0001;
+
+  let targetCapacity = 30;
+  if (options.magazineCapacity !== undefined) {
+    const parsed = Number(options.magazineCapacity);
+    if (!isNaN(parsed) && parsed > 0) {
+      targetCapacity = parsed;
+    }
+  }
 
   const baseRecoilV = weapon.properties.recoilVertical || 0;
   const baseRecoilH = weapon.properties.recoilHorizontal || 0;
@@ -37,6 +45,41 @@ function _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMa
 
   function isSuppressor(item) {
     return hasCategory(item, 'Silencer');
+  }
+
+  function filterAllowedItems(allowedItems, targetCap) {
+    if (!allowedItems || allowedItems.length === 0) return allowedItems;
+
+    const magazines = allowedItems
+      .map(child => modMap[child.id])
+      .filter(item => item && hasCategory(item, 'Magazine'));
+
+    if (magazines.length === 0) {
+      return allowedItems;
+    }
+
+    const exactMatch = magazines.filter(m => m.properties?.capacity === targetCap);
+    if (exactMatch.length > 0) {
+      const exactIds = new Set(exactMatch.map(m => m.id));
+      return allowedItems.filter(child => exactIds.has(child.id));
+    }
+
+    let minDiff = Infinity;
+    magazines.forEach(m => {
+      const cap = m.properties?.capacity ?? 30;
+      const diff = Math.abs(cap - targetCap);
+      if (diff < minDiff) {
+        minDiff = diff;
+      }
+    });
+
+    const nearestMags = magazines.filter(m => {
+      const cap = m.properties?.capacity ?? 30;
+      return Math.abs(cap - targetCap) === minDiff;
+    });
+
+    const nearestIds = new Set(nearestMags.map(m => m.id));
+    return allowedItems.filter(child => nearestIds.has(child.id));
   }
 
   function getRawItemPrice(item) {
@@ -202,10 +245,29 @@ function getItemPrice(item) {
     const newUsableErgo = Math.min(ergoCap, currentErgo + ergoMod);
     const effectiveErgoMod = newUsableErgo - currentUsableErgo;
 
-    const branchScore = (effectiveErgoMod * ergoWeight)
+    let branchScore = (effectiveErgoMod * ergoWeight)
       - (recoilMod * recoilWeight)
       - (price * priceWeight)
       - (itemWeight * 0.001);
+
+    if (hasCategory(item, 'Magazine')) {
+      const recoil = item.recoilModifier || 0;
+      const loadMod = item.properties?.loadModifier || 0;
+      const ammoCheckMod = item.properties?.ammoCheckModifier || 0;
+      const ergoM = item.ergonomicsModifier || 0;
+      const lowPrice = getItemPrice(item) || 1;
+
+      if (targetType === 'meta' || targetType === 'min_recoil') {
+        branchScore = (recoil * 100) - (loadMod * 10) - (ammoCheckMod * 10) + (ergoM * 0.2);
+      } else if (targetType === 'max_ergo') {
+        branchScore = ergoM - (loadMod * 0.1);
+      } else if (targetType === 'budget') {
+        const baseScoring = (recoil * 100) - (loadMod * 10) - (ammoCheckMod * 10) + (ergoM * 0.2) + 200;
+        branchScore = baseScoring / lowPrice;
+      } else {
+        branchScore = (ergoM * 1.0) - (recoil * 100) - (loadMod * 10) - (ammoCheckMod * 10);
+      }
+    }
 
     const branchEval = createBranchEvaluation(slotName, item, branchScore);
 
@@ -227,8 +289,16 @@ function getItemPrice(item) {
       sortedSlots.forEach(slot => {
         if (isSkippedSlot(slot)) return;
 
-        const allowed = slot.filters?.allowedItems;
+        let allowed = slot.filters?.allowedItems;
         if (!allowed || allowed.length === 0) return;
+
+        const isMagSlot = slot.name.toLowerCase() === 'mag'
+          || slot.name.toLowerCase() === 'magazine'
+          || slot.nameId === 'mod_magazine';
+
+        if (isMagSlot) {
+          allowed = filterAllowedItems(allowed, targetCapacity);
+        }
 
         let bestChildEval = null;
         const mustFindSuppressor = options.requireSuppressor && !branchEval.hasSuppressor;
@@ -291,8 +361,16 @@ function getItemPrice(item) {
     sortedSlots.forEach(slot => {
       if (isSkippedSlot(slot)) return;
 
-      const allowed = slot.filters?.allowedItems;
+      let allowed = slot.filters?.allowedItems;
       if (!allowed || allowed.length === 0) return;
+
+      const isMagSlot = slot.name.toLowerCase() === 'mag'
+        || slot.name.toLowerCase() === 'magazine'
+        || slot.nameId === 'mod_magazine';
+
+      if (isMagSlot) {
+        allowed = filterAllowedItems(allowed, targetCapacity);
+      }
 
       let bestCandidate = null;
       const mustFindSuppressor = options.requireSuppressor && !hasSuppressorGlobal;
@@ -388,7 +466,7 @@ export function calculateBestBuild(weapon, targetType, minErgo, maxRecoil, modMa
        priceWeight = 0.0001; 
      }
      
-     return _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMap, options, ergoCap);
+     return _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMap, options, ergoCap, targetType);
   }
 
   let bestBuild = null;
@@ -398,7 +476,7 @@ export function calculateBestBuild(weapon, targetType, minErgo, maxRecoil, modMa
     const ergoWeight = i / 20;
     const recoilWeight = 1 - ergoWeight;
     const priceWeight = 0; 
-    const result = _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMap, options);
+    const result = _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMap, options, 100, 'custom');
     if (result.error) return result;
     
     const e = result.stats.ergonomics;

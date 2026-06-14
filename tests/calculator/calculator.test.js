@@ -114,6 +114,7 @@ function createTestMod(overrides = {}) {
     conflictingItems: overrides.conflictingItemIds?.map(conflictId => ({ id: conflictId })) ?? overrides.conflictingItems ?? [],
     properties: {
       slots: overrides.slots ?? [],
+      ...(overrides.properties ?? {}),
     },
   };
 }
@@ -532,4 +533,138 @@ test('budget scoring ignores normalized price from a different price mode', () =
   assertInstalled(result, selectedModeMod.id);
   assertNotInstalled(result, wrongModeCheapMod.id);
   assertStatsMatchPartsForWeapon(testWeapon, result, { priceMode: 'pvp' });
+});
+
+test('Magazine Selection Logic: should fallback to 30 capacity by default and select better candidate', () => {
+  const mag30Steel = createTestMod({
+    id: 'mag_30_steel',
+    categories: createCategories(['Magazine']),
+    ergonomicsModifier: -2,
+    recoilModifier: -0.01,
+    properties: { capacity: 30, loadModifier: 0.05, ammoCheckModifier: 0.1 }
+  });
+  const mag30Pmag = createTestMod({
+    id: 'mag_30_pmag',
+    categories: createCategories(['Magazine']),
+    ergonomicsModifier: -1,
+    recoilModifier: -0.01,
+    properties: { capacity: 30, loadModifier: 0.02, ammoCheckModifier: 0.05 }
+  });
+  const mag60Drum = createTestMod({
+    id: 'mag_60_drum',
+    categories: createCategories(['Magazine']),
+    ergonomicsModifier: -8,
+    recoilModifier: -0.03,
+    properties: { capacity: 60, loadModifier: 0.15, ammoCheckModifier: 0.25 }
+  });
+
+  const testWeapon = createTestWeapon({
+    slots: [createSlot('mag', [mag30Steel.id, mag30Pmag.id, mag60Drum.id])],
+  });
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'meta',
+    70,
+    50,
+    createModMap(mag30Steel, mag30Pmag, mag60Drum),
+    defaultOptions
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, mag30Pmag.id);
+  assertNotInstalled(result, mag30Steel.id);
+  assertNotInstalled(result, mag60Drum.id);
+});
+
+test('Magazine Selection Logic: should choose exact requested capacity', () => {
+  const mag30Pmag = createTestMod({
+    id: 'mag_30_pmag',
+    categories: createCategories(['Magazine']),
+    ergonomicsModifier: -1,
+    recoilModifier: -0.01,
+    properties: { capacity: 30, loadModifier: 0.02, ammoCheckModifier: 0.05 }
+  });
+  const mag60Drum = createTestMod({
+    id: 'mag_60_drum',
+    categories: createCategories(['Magazine']),
+    ergonomicsModifier: -8,
+    recoilModifier: -0.03,
+    properties: { capacity: 60, loadModifier: 0.15, ammoCheckModifier: 0.25 }
+  });
+
+  const testWeapon = createTestWeapon({
+    slots: [createSlot('mag', [mag30Pmag.id, mag60Drum.id])],
+  });
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'meta',
+    70,
+    50,
+    createModMap(mag30Pmag, mag60Drum),
+    {
+      ...defaultOptions,
+      magazineCapacity: 60,
+    }
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, mag60Drum.id);
+  assertNotInstalled(result, mag30Pmag.id);
+});
+
+test('Magazine Selection Logic: should fallback to nearest capacity if exact match is missing', () => {
+  const mag30Pmag = createTestMod({
+    id: 'mag_30_pmag',
+    categories: createCategories(['Magazine']),
+    ergonomicsModifier: -1,
+    recoilModifier: -0.01,
+    properties: { capacity: 30, loadModifier: 0.02, ammoCheckModifier: 0.05 }
+  });
+  const mag60Drum = createTestMod({
+    id: 'mag_60_drum',
+    categories: createCategories(['Magazine']),
+    ergonomicsModifier: -8,
+    recoilModifier: -0.03,
+    properties: { capacity: 60, loadModifier: 0.15, ammoCheckModifier: 0.25 }
+  });
+
+  const testWeapon = createTestWeapon({
+    slots: [createSlot('mag', [mag30Pmag.id, mag60Drum.id])],
+  });
+
+  // Requesting 40: 30 is closer (diff 10) than 60 (diff 20)
+  const result30 = calculateBestBuild(
+    testWeapon,
+    'meta',
+    70,
+    50,
+    createModMap(mag30Pmag, mag60Drum),
+    {
+      ...defaultOptions,
+      magazineCapacity: 40,
+    }
+  );
+
+  assert.equal(result30.error, undefined);
+  assertInstalled(result30, mag30Pmag.id);
+  assertNotInstalled(result30, mag60Drum.id);
+
+  // Requesting 50: 60 is closer (diff 10) than 30 (diff 20)
+  const result60 = calculateBestBuild(
+    testWeapon,
+    'meta',
+    70,
+    50,
+    createModMap(mag30Pmag, mag60Drum),
+    {
+      ...defaultOptions,
+      magazineCapacity: 50,
+    }
+  );
+
+  assert.equal(result60.error, undefined);
+  assertInstalled(result60, mag60Drum.id);
+  assertNotInstalled(result60, mag30Pmag.id);
 });
