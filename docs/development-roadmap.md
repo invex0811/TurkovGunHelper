@@ -1,8 +1,8 @@
-# TarkovGunHelper Development Roadmap
+# TarkovGunHelper Development RoadMap
 
-Документ описывает актуальную дорожную карту дальнейшей разработки проекта TarkovGunHelper после первичного ревью, настройки локального окружения и обновления структуры проекта.
+Документ описывает актуальную дорожную карту дальнейшей разработки проекта TarkovGunHelper после обновления структуры проекта, стабилизации baseline calculator logic, внедрения suppressor constraints и добавления конфигурируемого источника цен.
 
-RoadMap фиксирует текущее состояние проекта как рабочую отправную точку и оставляет в плане только актуальные нереализованные или частично реализованные задачи: выравнивание структуры после переноса файлов, стабилизация калькулятора, конфигурация источника цен, расширение модели расчёта билдов, улучшение UI/UX, кэширование данных, документация и developer workflow.
+RoadMap фиксирует текущее состояние проекта как рабочий baseline и оставляет в плане только актуальные нереализованные или частично реализованные задачи: расширение calculation model, разделение domain-модулей, улучшение search algorithm, UI/UX cleanup, persistent cache, API reliability, документация и developer workflow.
 
 ---
 
@@ -12,24 +12,27 @@ RoadMap фиксирует текущее состояние проекта ка
 
 Целевая архитектура:
 
-- **UI layer** отвечает только за отображение, пользовательский ввод и навигацию.
-- **API/data layer** отвечает за загрузку, нормализацию и кэширование данных из внешних источников.
-- **Domain/calculation layer** отвечает за расчёт билдов, constraints, scoring и итоговую структуру результата.
-- **Tests layer** фиксирует ожидаемое поведение калькулятора и критичных data-transform сценариев.
+- **UI layer** отвечает только за отображение, пользовательский ввод, состояние экрана и навигацию.
+- **API/data layer** отвечает за загрузку, нормализацию, кэширование и диагностику внешних данных.
+- **Price layer** отвечает за выбор price mode, нормализацию цены, fallback policy и price metadata.
+- **Domain/calculation layer** отвечает за расчёт билдов, hard constraints, soft preferences, scoring и итоговую структуру результата.
+- **Tests layer** фиксирует ожидаемое поведение calculator logic, price normalization и критичных data-transform сценариев.
 - **Research layer** содержит экспериментальные скрипты и не считается production/test source.
+
+Ключевые архитектурные правила:
+
 - UI не должен содержать сложную business logic расчёта билдов.
-- Калькулятор не должен зависеть от React, DOM или browser state.
-- Источник цен должен быть явной частью конфигурации, а не неявным полем внутри данных item.
-- PvP/PvE price mode должен быть выбран пользователем или настройкой приложения.
-- Budget/scoring logic должна получать уже нормализованную price model.
-- Hard constraints должны обрабатываться как обязательные условия валидности билда, а не как большие score-бонусы.
+- Calculator не должен зависеть от React, DOM, browser state или localStorage.
+- Источник цен должен быть явной частью конфигурации.
+- PvP/PvE price mode должен передаваться в data/calculation flow явно.
+- Budget/scoring logic должна работать через normalized price model.
+- Hard constraints должны обрабатываться как обязательные условия валидности билда.
 - Optional preferences должны влиять на scoring, но не подменять hard constraints.
-- Алгоритм выбора модов должен постепенно уходить от простого greedy-подхода к более явной модели candidate graph / branch plan.
-- Любое новое поведение калькулятора должно сопровождаться regression tests.
+- Новое поведение calculator должно сопровождаться regression tests.
 - Потенциально тяжёлые расчёты должны быть подготовлены к выносу из UI thread.
 - Документация проекта должна быть достаточной для нового разработчика без опыта с JS/Vite.
 
-Основная цель дальнейшей разработки — превратить текущий MVP в стабильный инструмент подбора билдов с предсказуемым алгоритмом, конфигурируемым источником цен и расширяемой scoring-моделью.
+Основная цель дальнейшей разработки — превратить текущий MVP в стабильный инструмент подбора билдов с предсказуемым алгоритмом, конфигурируемыми источниками данных и расширяемой scoring-моделью.
 
 ---
 
@@ -41,56 +44,82 @@ RoadMap фиксирует текущее состояние проекта ка
 - HashRouter-based navigation.
 - Главную страницу со списком оружия.
 - Страницу конфигуратора оружия.
-- API layer для работы с внешним GraphQL API.
+- API/data layer в `src/data/tarkovApi`.
+- GraphQL client, query definitions и repository functions, разделённые по файлам.
+- Price layer в `src/data/price`.
+- Settings helper для сохранения выбранного price mode.
 - Domain calculator layer для подбора модов оружия.
 - Unit tests для calculator logic.
-- Fixtures для calculator tests.
+- Unit tests для price mapper / price mode behavior.
+- Fixtures для calculator и data tests.
 - Research scripts для ручной проверки API/calculator scenarios.
 - ESLint configuration.
 - Production build через Vite.
 - GitHub Pages deploy script.
 
-Подтверждённый локальный baseline до структурного обновления:
+Подтверждённые реализованные направления:
 
-- `npm.cmd ci` успешно устанавливал зависимости.
-- `npm.cmd run dev` успешно запускал dev server.
-- `npm.cmd run lint` проходил без ошибок.
-- `npm.cmd run build` успешно собирал production bundle.
-- `npm.cmd test` запускал calculator tests.
-- Состояние тестов до calculator fix: 7 passed / 1 failed.
+- Test workflow восстановлен для вложенной структуры `tests/**/*.test.js`.
+- Research scripts исключены из ESLint checks.
+- `gh-pages` перенесён в `devDependencies`.
+- README заменён с Vite template на описание проекта.
+- `requireSuppressor` обрабатывается как hard constraint.
+- Suppressor logic покрыта regression tests:
+  - direct suppressor;
+  - suppressor через adapter/muzzle chain;
+  - impossible suppressor requirement;
+  - forbidden suppressor;
+  - optional suppressor;
+  - suppressor conflicts;
+  - max weight constraints.
 
-После обновления структуры требуется перепроверить:
+- Evaluator возвращает selected branch plan, а не только score.
+- UI suppressor setting заменён на явный mode:
+  - `allow`;
+  - `forbid`;
+  - `require`.
 
-- `npm.cmd test`;
-- `npm.cmd run lint`;
-- `npm.cmd run build`.
+- Configurator показывает inline warnings/errors вместо `alert`.
+- Price source research выполнен и зафиксирован.
+- API перенесён в data layer.
+- GraphQL queries вынесены отдельно.
+- Repository layer введён поверх GraphQL client.
+- Mod price model нормализована.
+- Добавлен price mode selector:
+  - PvP;
+  - PvE.
 
-Известная failing regression:
+- Price mode сохраняется локально.
+- Price provider выбирает соответствующий `gameMode` для tarkov.dev.
+- Budget scoring использует selected price mode.
+- Price mode behavior покрыт fixtures/tests.
+- UI показывает price source, fallback warnings и missing price warnings.
 
-- `requireSuppressor installs a compatible silencer`.
+---
 
-Смысл проблемы:
+## Current limitations
 
-- При `requireSuppressor: true` итоговый build должен содержать совместимый `Silencer`.
-- Сейчас calculator не гарантирует попадание suppressor в итоговый build.
-- Это core-logic bug, а не проблема окружения, сборки или линтера.
+Актуальные ограничения после обновления baseline:
 
-Текущие ограничения проекта:
+- Calculator всё ещё расположен в одном крупном domain-файле.
+- Scoring, constraints, stats calculation, category helpers и branch evaluation смешаны в одном модуле.
+- Search algorithm остаётся улучшенным branch-plan greedy approach, но ещё не полноценной candidate graph model.
+- Advanced options уже существуют, но требуют расширения:
+  - custom scoring weights;
+  - required sight;
+  - required tactical device;
+  - будущие hard/soft constraints.
 
-- Test workflow нужно выровнять после переноса тестов/fixtures в вложенные директории.
-- ESLint ignores нужно выровнять после переноса research scripts.
-- `gh-pages` используется как deploy tooling и должен находиться в devDependencies.
-- README остаётся шаблоном Vite и не описывает реальный проект.
-- Calculator использует слишком greedy-подход для задачи с nested slots, adapters и conflicting items.
-- `requireSuppressor` фактически работает недостаточно строго.
-- Suppressor mode в UI/logic требует уточнения: allow / forbid / require.
-- Price source пока не является явной пользовательской настройкой.
-- Budget mode зависит от текущей price model без явного выбора PvP/PvE.
-- API cache существует только на уровне runtime memory.
-- UI error handling минимальный.
+- Custom mode всё ещё основан на переборе соотношений ergo/recoil, а не на явном weighted scoring profile.
 - Configurator остаётся крупным компонентом с несколькими ответственностями.
-- API layer всё ещё монолитный и смешивает GraphQL client, queries, cache и repository-like functions.
-- Domain calculator уже вынесен из `utils`, но всё ещё требует дальнейшего разделения на внутренние модули.
+- Home page error/empty states требуют улучшения.
+- Inline styles всё ещё занимают значительную часть JSX.
+- Persisted preferences пока покрывают не все build settings.
+- API cache существует на runtime memory уровне.
+- Persistent cache, cache metadata, manual refresh и stale-data diagnostics ещё не реализованы.
+- API/data layer требует mocked GraphQL response tests.
+- CI workflow ещё не добавлен.
+- Development/release workflow documentation требует отдельного оформления.
 
 ---
 
@@ -101,21 +130,38 @@ RoadMap фиксирует текущее состояние проекта ка
 ```text
 docs/
   development-roadmap.md
+  price-sources.md
 
 research/
   calculator/
-    test_*.js
 
 src/
+  data/
+    price/
+      priceMapper.js
+      priceModes.js
+      priceProvider.js
+
+    settings/
+      buildPreferences.js
+
+    tarkovApi/
+      client.js
+      index.js
+      queries.js
+      repository.js
+
   domain/
     calculator.js
 
+  pages/
+    Configurator.jsx
+    Home.jsx
+
 tests/
-  fixtures/
-    mods.json
-    weapon.json
   calculator/
-    calculator.test.js
+  data/
+  fixtures/
 ```
 
 Целевая структура на ближайшие этапы:
@@ -135,15 +181,27 @@ src/
   features/
     weapons/
     configurator/
+      Configurator.jsx
+      WeaponSummary.jsx
+      BuildModeSelector.jsx
+      AdvancedBuildOptions.jsx
+      BuildResultSummary.jsx
+      BuildPartsList.jsx
+      BuildWarnings.jsx
+      LoadingState.jsx
+      ErrorState.jsx
 
   domain/
     calculator/
       index.js
       calculateBestBuild.js
+      branchEvaluation.js
       scoring.js
+      scoringProfiles.js
       constraints.js
       stats.js
       categories.js
+      itemAttributes.js
 
   data/
     tarkovApi/
@@ -157,18 +215,23 @@ src/
       priceMapper.js
       priceProvider.js
 
+    cache/
+      itemCache.js
+      cacheMetadata.js
+
+    settings/
+      buildPreferences.js
+
   shared/
     components/
     formatters/
     constants/
+    storage/
 
 tests/
   fixtures/
   calculator/
   data/
-
-research/
-  calculator/
 ```
 
 Эта структура не должна вводиться одним большим коммитом. Переход должен быть постепенным и без изменения поведения там, где задача является refactor/chore.
@@ -179,515 +242,27 @@ research/
 
 Актуальные приоритеты дальнейшей разработки:
 
-1. Выровнять test/lint/dependency workflow после обновления структуры.
-2. Стабилизировать calculator baseline и получить полностью зелёные тесты.
-3. Сделать suppressor behavior явным и предсказуемым.
-4. Подготовить calculator к более сложным constraints и nested slot chains.
-5. Добавить возможность конфигурации PvP/PvE источника цен.
-6. Исследовать доступные источники PvE price data и ограничения внешних API.
-7. Нормализовать price model для budget/scoring расчётов.
-8. Исследовать и постепенно расширить набор параметров, влияющих на расчёт билдов.
-9. Разделить UI, API и calculation responsibilities более явно.
-10. Улучшить UX ошибок, warning states и explainability результата.
-11. Заменить Vite template README на документацию проекта.
+1. Зафиксировать текущую calculation model в документации.
+2. Разделить calculator domain на поддерживаемые модули.
+3. Подготовить явную scoring profile model.
+4. Нормализовать mod attributes для расчётов.
+5. Расширить custom scoring и advanced options.
+6. Сделать search algorithm устойчивее к nested slots, conflicts и adapters.
+7. Добавить top build alternatives и score breakdown.
+8. Разделить Configurator на focused components.
+9. Улучшить Home/API empty/error/retry states.
+10. Перенести повторяющиеся inline styles в reusable classes.
+11. Расширить persisted build preferences.
+12. Добавить persistent item cache с metadata.
+13. Добавить manual data refresh.
+14. Покрыть API/data layer mocked GraphQL tests.
+15. Добавить CI для test/lint/build.
 
 ---
 
-# Stage 0. Structure alignment and baseline restoration
+# Stage 1. Calculation model specification and domain cleanup
 
-Цель этапа: после обновления структуры привести test/lint/package workflow в согласованное состояние, чтобы последующие изменения делались поверх проверяемого baseline.
-
-## Commits
-
-### 1. `fix(test): restore nested calculator test workflow`
-
-Сделать:
-
-- Обновить `npm test` script для вложенной структуры tests.
-- Поддержать запуск calculator tests из `tests/calculator`.
-- Обновить import калькулятора в `tests/calculator/calculator.test.js`.
-- Обновить paths к fixtures после переноса в `tests/fixtures`.
-- Проверить, что `npm.cmd test` снова запускает calculator tests.
-- Не менять calculator behavior в этом коммите.
-
-Результат:
-
-- Тесты соответствуют новой структуре проекта.
-- Следующий suppressor fix можно делать поверх корректного test baseline.
-
----
-
-### 2. `chore(lint): ignore research scripts`
-
-Сделать:
-
-- Добавить `research/**` в ESLint ignores.
-- Удалить устаревшее ignore-правило `test_*.js`, если root-level debug scripts больше не существуют.
-- Сохранить lint coverage для `src` и `tests`.
-- Проверить `npm.cmd run lint`.
-
-Результат:
-
-- Research scripts не считаются production/test source.
-- `npm.cmd run lint` проверяет только поддерживаемые части проекта.
-
----
-
-### 3. `chore(deps): move gh-pages to dev dependencies`
-
-Сделать:
-
-- Перенести `gh-pages` из `dependencies` в `devDependencies`.
-- Сохранить текущий `deploy` script.
-- Обновить lockfile через npm.
-- Проверить `npm.cmd ci`.
-- Проверить `npm.cmd run build`.
-
-Результат:
-
-- Runtime dependencies содержат только зависимости приложения.
-- Deploy tooling находится в devDependencies.
-
----
-
-### 4. `docs: replace vite template readme`
-
-Сделать:
-
-- Описать назначение проекта.
-- Описать tech stack:
-  - Vite;
-  - React;
-  - React Router;
-  - Node test runner;
-  - ESLint.
-
-- Добавить setup instructions для Windows/PowerShell:
-  - `npm.cmd ci`;
-  - `npm.cmd run dev`;
-  - `npm.cmd test`;
-  - `npm.cmd run lint`;
-  - `npm.cmd run build`.
-
-- Добавить troubleshooting:
-  - PowerShell execution policy;
-  - `#` in project path;
-  - dependency install issues.
-
-- Описать структуру проекта:
-  - `src/domain`;
-  - `tests/fixtures`;
-  - `research/calculator`;
-  - `docs`.
-
-- Описать текущие ограничения calculator.
-- Описать known data/API assumptions.
-- Указать, что research scripts не входят в normal test workflow.
-
-Результат:
-
-- Проект становится удобнее для нового разработчика.
-- Базовые проблемы запуска документированы.
-- README соответствует текущей структуре, а не Vite template.
-
----
-
-# Stage 1. Calculator baseline stabilization
-
-Цель этапа: привести calculator к стабильной отправной точке, где dev/lint/build/test проходят полностью, а известный suppressor bug исправлен.
-
-## Commits
-
-### 1. `fix(calculator): enforce required suppressor builds`
-
-Сделать:
-
-- Исправить failing test `requireSuppressor installs a compatible silencer`.
-- Рассматривать `requireSuppressor` как hard constraint.
-- Не считать билд валидным, если suppressor обязателен, но не установлен.
-- Не решать проблему только большим score-бонусом.
-- Проверять наличие suppressor по категории `Silencer`.
-- Учитывать suppressor, установленный через nested slot / adapter chain.
-- При невозможности собрать compatible suppressor build возвращать controlled warning/error result.
-- Сохранить текущее поведение для `forbidSuppressor`.
-
-Результат:
-
-- `npm.cmd test` проходит полностью.
-- Suppressor requirement становится реальным constraint.
-- Текущий baseline становится пригодным для дальнейшей разработки.
-
----
-
-### 2. `refactor(calculator): return selected branch plan from evaluator`
-
-Сделать:
-
-- Переработать evaluator так, чтобы он возвращал не только score, но и конкретный набор выбранных parts.
-- Устранить расхождение между “веткой, которую algorithm оценил” и “деталями, которые реально попали в build”.
-- Ввести промежуточную структуру результата branch evaluation:
-  - `score`;
-  - `items`;
-  - `statsDelta`;
-  - `hasSuppressor`;
-  - `hasSight`;
-  - `conflicts`;
-  - `isValid`;
-  - `warnings`.
-
-- Подготовить evaluator к constraints, которые зависят от всей цепочки выбранных модов.
-
-Результат:
-
-- Calculator становится предсказуемее.
-- Nested slot choices больше не теряются между scoring и build construction.
-- Будущие constraints проще добавлять и тестировать.
-
----
-
-### 3. `test(calculator): cover suppressor chains and impossible constraints`
-
-Сделать:
-
-- Добавить regression tests для suppressor scenarios:
-  - suppressor required and available directly;
-  - suppressor required through adapter/muzzle chain;
-  - suppressor required but impossible;
-  - suppressor forbidden;
-  - suppressor optional;
-  - suppressor conflicts with another selected part.
-
-- Добавить тесты для warning/error behavior.
-- Зафиксировать expected result structure для impossible build.
-- Убедиться, что budget/meta/min_recoil/max_ergo modes продолжают работать.
-
-Результат:
-
-- Suppressor behavior закреплён тестами.
-- Будущие изменения calculator не смогут случайно сломать этот сценарий.
-
----
-
-### 4. `refactor(configurator): split suppressor mode options`
-
-Сделать:
-
-- Заменить неоднозначную boolean-модель suppressor settings на явный mode:
-  - `allow`;
-  - `forbid`;
-  - `require`.
-
-- Обновить UI controls в Configurator.
-- Обновить mapping UI options → calculator options.
-- Не превращать “не require suppressor” в автоматический запрет suppressor.
-- Добавить понятные подписи для пользователя:
-  - Allow suppressors;
-  - Forbid suppressors;
-  - Require suppressor.
-
-- Сохранить backward-compatible defaults.
-
-Результат:
-
-- Поведение suppressor становится понятным.
-- Пользователь может разрешить suppressor без обязательного требования.
-- Calculator получает более точные options.
-
----
-
-### 5. `feat(ui): show build warnings and calculation errors inline`
-
-Сделать:
-
-- Заменить `alert`-подход на inline error/warning state в Configurator.
-- Показывать controlled message, если build невозможно собрать.
-- Показывать warning, если часть пользовательских constraints была недостижима.
-- Разделить:
-  - API loading error;
-  - missing weapon data;
-  - calculation error;
-  - impossible constraints;
-  - empty build result.
-
-- Добавить визуальный блок warning/error над результатом билда.
-
-Результат:
-
-- Пользователь понимает, почему билд не собран.
-- Ошибки calculator становятся видимыми и диагностируемыми.
-- UI готов к будущим constraints.
-
----
-
-# Stage 2. Price source configuration and data foundation
-
-Цель этапа: добавить явную конфигурацию источника цен, подготовить поддержку PvP/PvE price mode и убрать жёсткую зависимость budget scoring от одного неявного поля цены.
-
-## Research goals
-
-Перед реализацией необходимо выяснить:
-
-- Какие price fields доступны в текущем GraphQL API.
-- Есть ли надёжный PvE price source в текущем API.
-- Нужно ли подключать отдельный provider для PvE цен.
-- Как часто обновляются цены.
-- Есть ли metadata freshness/update timestamp.
-- Какой fallback использовать, если выбранный price source недоступен.
-- Можно ли использовать trader prices как fallback.
-- Нужно ли показывать пользователю source/freshness рядом с итоговой ценой билда.
-
-## Commits
-
-### 1. `research(data): evaluate pvp and pve price sources`
-
-Сделать:
-
-- Изучить текущие поля item price data.
-- Проверить наличие или отсутствие PvE-specific price fields.
-- Проверить альтернативные источники PvE цен.
-- Описать ограничения каждого источника:
-  - доступность;
-  - бесплатность;
-  - необходимость API key;
-  - freshness;
-  - rate limits;
-  - CORS;
-  - стабильность схемы;
-  - legal/ToS considerations.
-
-- Зафиксировать вывод в `docs/price-sources.md`.
-- Не менять runtime logic в этом коммите.
-
-Результат:
-
-- Принято осознанное решение, откуда брать PvP/PvE цены.
-- RoadMap по ценам не опирается на неподтверждённые API assumptions.
-
----
-
-### 2. `refactor(api): move tarkov api into data layer`
-
-Сделать:
-
-- Перенести текущий `src/services/api.js` в `src/data/tarkovApi`.
-- Сохранить публичные функции:
-  - `getWeapons`;
-  - `getWeaponDetails`;
-  - `getAllMods`.
-
-- Обновить imports в UI.
-- Не менять GraphQL queries.
-- Не менять runtime behavior.
-- Проверить lint/build.
-
-Результат:
-
-- Data/API layer получает явное место в структуре проекта.
-- Следующие price provider и repository changes ложатся в правильный слой.
-
----
-
-### 3. `refactor(api): isolate graphql query definitions`
-
-Сделать:
-
-- Вынести GraphQL query strings в отдельный модуль.
-- Добавить понятные names для queries.
-- Упростить API client/repository file.
-- Подготовить tests/mocks для API layer.
-- Не менять shape данных, который получает UI/calculator.
-
-Результат:
-
-- API layer становится легче поддерживать.
-- Изменения схемы API проще локализовать.
-
----
-
-### 4. `refactor(api): introduce item data repository`
-
-Сделать:
-
-- Ввести промежуточный data access layer поверх raw API functions.
-- Отделить GraphQL client от потребностей UI/calculator.
-- Подготовить normalized item shape.
-- Скрыть API-specific field names внутри repository/mapper.
-- Сохранить текущие публичные функции или добавить совместимые wrappers.
-- Не менять calculator behavior.
-
-Результат:
-
-- UI и calculator меньше зависят от конкретной схемы внешнего API.
-- Добавление альтернативного price source становится проще.
-
----
-
-### 5. `refactor(data): normalize mod price model`
-
-Сделать:
-
-- Ввести явную структуру цены:
-  - `value`;
-  - `currency`;
-  - `mode`;
-  - `source`;
-  - `fallbackUsed`;
-  - `updatedAt`;
-  - `confidence`.
-
-- Поддержать fallback, если цена недоступна.
-- Не смешивать raw API fields и normalized calculator input.
-- Обновить budget scoring так, чтобы он работал через normalized price.
-- Сохранить текущие результаты там, где данные совпадают.
-
-Результат:
-
-- Budget mode становится независимым от одного конкретного API-поля.
-- Появляется основа для PvP/PvE переключения.
-
----
-
-### 6. `feat(settings): add price mode selector`
-
-Сделать:
-
-- Добавить настройку price mode:
-  - PvP;
-  - PvE;
-  - Auto/fallback, если потребуется после research.
-
-- Добавить UI control в Configurator или общий settings area.
-- Сохранять выбор пользователя локально.
-- Применять выбранный mode при генерации билда.
-- Показывать текущий mode рядом с итоговой ценой.
-- Не ломать default behavior для существующих пользователей.
-
-Результат:
-
-- Пользователь может явно выбрать, какие цены использовать для расчёта.
-- Budget builds становятся более прозрачными.
-
----
-
-### 7. `feat(api): support configurable price provider`
-
-Сделать:
-
-- Добавить abstraction для price provider.
-- Поддержать текущий источник как default provider.
-- Добавить PvE provider, если research подтвердит доступный источник.
-- Если PvE provider недоступен — добавить controlled fallback.
-- Возвращать diagnostic metadata по цене.
-- Не позволять calculator silently использовать неправильный price mode.
-
-Результат:
-
-- Price data становится конфигурируемым.
-- Проект готов к нескольким источникам данных.
-
----
-
-### 8. `feat(calculator): use selected price mode in budget scoring`
-
-Сделать:
-
-- Передавать выбранный price mode в calculator input.
-- Использовать normalized price для budget score.
-- Добавить fallback behavior для missing price.
-- Добавить warnings, если часть build price рассчитана по fallback.
-- Убедиться, что non-budget modes не ломаются.
-
-Результат:
-
-- Budget mode учитывает выбранный пользователем источник цен.
-- Итоговый build может объяснить, какие цены использовались.
-
----
-
-### 9. `test(data): add price mode fixtures`
-
-Сделать:
-
-- Добавить fixtures для:
-  - PvP price available;
-  - PvE price available;
-  - selected price missing;
-  - fallback price used;
-  - mixed source build.
-
-- Добавить tests для normalized price mapper.
-- Добавить tests для budget scoring с разными price modes.
-- Проверить, что отсутствующая цена не ломает build generation.
-
-Результат:
-
-- Price source behavior покрыт тестами.
-- Budget mode становится безопаснее для дальнейших изменений.
-
----
-
-### 10. `feat(ui): show price source and fallback warnings`
-
-Сделать:
-
-- В result summary показывать:
-  - selected price mode;
-  - total price;
-  - source/fallback info;
-  - warning при mixed/fallback prices.
-
-- В списке parts показывать цену детали из выбранного source.
-- Если цена отсутствует, показывать аккуратный placeholder.
-- Не перегружать UI техническими деталями.
-
-Результат:
-
-- Пользователь понимает, откуда взялась стоимость билда.
-- PvP/PvE переключение становится visible feature, а не скрытой настройкой.
-
----
-
-# Stage 3. Build calculation model research and domain cleanup
-
-Цель этапа: исследовать возможность учёта большего количества параметров при расчёте сборок и подготовить calculator к расширяемой scoring model.
-
-## Research goals
-
-Исследовать, какие параметры реально можно учитывать:
-
-- recoil vertical;
-- recoil horizontal;
-- ergonomics;
-- accuracy modifier;
-- weight;
-- item price;
-- total build price;
-- muzzle/adapter/suppressor chains;
-- sight requirement;
-- tactical device requirement;
-- magazine preference;
-- ammo compatibility, если данные доступны;
-- trader availability;
-- flea availability;
-- unlock level;
-- trader loyalty level;
-- build availability by player progression;
-- suppressor preference;
-- loud/quiet build mode;
-- recoil vs ergo balance;
-- price/performance ratio;
-- weight limit;
-- required/forbidden categories;
-- required/forbidden item IDs;
-- aesthetic/manual overrides, если появятся user-defined builds.
-
-Не все параметры должны быть реализованы сразу. Цель этапа — разделить:
-
-- доступные сейчас;
-- доступные после изменения API query;
-- доступные только через другой data provider;
-- слишком дорогие/сложные для ближайшей версии;
-- нецелесообразные для MVP.
+Цель этапа: зафиксировать будущую модель расчёта билдов и подготовить calculator к расширению без дальнейшего разрастания одного файла.
 
 ## Commits
 
@@ -698,13 +273,44 @@ research/
 - Создать `docs/calculation-model.md`.
 - Описать текущую scoring model.
 - Описать текущие calculator modes:
-  - meta;
-  - max_ergo;
-  - min_recoil;
-  - budget;
-  - custom.
+  - `meta`;
+  - `max_ergo`;
+  - `min_recoil`;
+  - `budget`;
+  - `custom`.
 
-- Составить таблицу candidate parameters.
+- Описать текущие hard constraints:
+  - suppressor mode;
+  - max weight;
+  - conflicts;
+  - duplicate installed items.
+
+- Описать текущие soft preferences:
+  - ergonomics;
+  - recoil;
+  - price;
+  - weight penalty.
+
+- Составить таблицу candidate parameters:
+  - recoil vertical;
+  - recoil horizontal;
+  - ergonomics;
+  - accuracy modifier;
+  - weight;
+  - item price;
+  - total build price;
+  - muzzle/adapter/suppressor chains;
+  - sight requirement;
+  - tactical device requirement;
+  - magazine preference;
+  - trader availability;
+  - flea availability;
+  - unlock level;
+  - trader loyalty level;
+  - price/performance ratio;
+  - required/forbidden categories;
+  - required/forbidden item IDs.
+
 - Для каждого параметра указать:
   - gameplay value;
   - source data;
@@ -713,12 +319,18 @@ research/
   - impact on algorithm;
   - testability.
 
-- Отдельно описать hard constraints и soft preferences.
+- Отдельно разделить:
+  - доступно сейчас;
+  - доступно после изменения API query;
+  - доступно только через другой data provider;
+  - слишком дорого/сложно для ближайшей версии;
+  - нецелесообразно для MVP.
 
 Результат:
 
 - Появляется понятная спецификация будущего calculator.
 - Новые параметры не добавляются хаотично.
+- Следующие refactor/feature commits опираются на documented model.
 
 ---
 
@@ -726,20 +338,28 @@ research/
 
 Сделать:
 
-- Разделить текущий calculator domain file на небольшой calculator module.
+- Превратить `src/domain/calculator.js` в модульную директорию `src/domain/calculator`.
 - Вынести public export `calculateBestBuild` в `index.js`.
+- Вынести основной orchestration в `calculateBestBuild.js`.
+- Вынести branch evaluation helpers.
 - Вынести scoring helpers.
 - Вынести constraint helpers.
 - Вынести stats calculation.
 - Вынести category checks.
-- Сохранить текущее public API калькулятора.
-- Не менять поведение calculator.
+- Вынести item/slot utility functions.
+- Сохранить текущий public API calculator.
+- Не менять runtime behavior.
+- Обновить imports в UI и tests.
+- Проверить:
+  - `npm.cmd test`;
+  - `npm.cmd run lint`;
+  - `npm.cmd run build`.
 
 Результат:
 
-- Следующие изменения branch plan/scoring profiles становятся проще.
 - Domain layer становится читаемее.
 - Calculator перестаёт быть одним монолитным файлом.
+- Следующие изменения scoring/search logic становятся безопаснее.
 
 ---
 
@@ -748,7 +368,14 @@ research/
 Сделать:
 
 - Ввести структуру `scoringProfile`.
-- Перенести текущие mode-specific веса в явную модель.
+- Перенести mode-specific веса в явную модель.
+- Описать profiles для:
+  - `meta`;
+  - `max_ergo`;
+  - `min_recoil`;
+  - `budget`;
+  - `custom`.
+
 - Разделить:
   - hard constraints;
   - soft weights;
@@ -756,13 +383,14 @@ research/
   - forbidden features;
   - fallback policy.
 
-- Сохранить текущее поведение modes.
+- Сохранить текущее поведение существующих modes.
 - Добавить tests, подтверждающие backward compatibility.
 
 Результат:
 
 - Calculator modes становятся данными, а не набором разрозненных условий.
-- Custom mode проще расширять.
+- Custom mode становится проще расширять.
+- Hard constraints и soft scoring перестают смешиваться.
 
 ---
 
@@ -771,33 +399,41 @@ research/
 Сделать:
 
 - Ввести normalized attributes для mods:
-  - ergonomicsDelta;
-  - recoilDelta;
-  - accuracyDelta;
-  - weight;
-  - price;
-  - categories;
-  - conflicts;
-  - slots;
-  - availability metadata, если есть.
+  - `ergonomicsDelta`;
+  - `recoilDelta`;
+  - `accuracyDelta`;
+  - `weight`;
+  - `price`;
+  - `categories`;
+  - `conflicts`;
+  - `slots`;
+  - `availabilityMetadata`, если данные доступны.
 
-- Скрыть raw API structure за mapper.
+- Скрыть raw API fields за mapper/helper layer.
 - Упростить scoring function.
-- Добавить tests для mapper.
+- Сохранить совместимость с текущими fixtures.
+- Добавить tests для normalized attributes mapper/helper.
 
 Результат:
 
-- Calculator становится меньше завязан на внешнюю схему данных.
+- Calculator меньше зависит от внешней схемы API.
 - Новые параметры проще подключать.
+- Scoring получает более стабильный input.
 
 ---
 
-### 5. `feat(calculator): add weighted custom scoring`
+# Stage 2. Advanced scoring and user-controlled preferences
+
+Цель этапа: добавить расширяемую custom scoring model и связать её с UI без перегрузки базового сценария.
+
+## Commits
+
+### 1. `feat(calculator): add weighted custom scoring`
 
 Сделать:
 
-- Расширить custom mode.
-- Разрешить пользователю настраивать веса:
+- Расширить custom mode через configurable weights.
+- Поддержать веса:
   - recoil;
   - ergonomics;
   - price;
@@ -805,56 +441,69 @@ research/
   - accuracy.
 
 - Задать безопасные min/max ranges.
-- Добавить reset to default.
-- Не добавлять слишком много controls без группировки.
+- Добавить default custom profile.
+- Поддержать reset-to-default на уровне options/model.
+- Сохранить backward-compatible behavior для старого custom mode, если weights не переданы.
+- Не смешивать weighted custom scoring с hard constraints.
 
 Результат:
 
-- Пользователь может гибче управлять расчётом.
-- Calculator получает первый практический шаг к расширяемой scoring model.
+- Пользователь сможет гибче управлять расчётом.
+- Calculator получит первый практический шаг к расширяемой scoring model.
 
 ---
 
-### 6. `feat(configurator): add advanced calculation options`
+### 2. `feat(configurator): extend advanced calculation options`
 
 Сделать:
 
-- Добавить collapsible Advanced section.
-- Перенести туда расширенные параметры.
-- Поддержать:
-  - max weight;
-  - suppressor mode;
-  - price mode;
-  - custom weights;
-  - optional required sight;
-  - optional required tactical device.
-
+- Расширить существующую Additional/Advanced section.
+- Добавить controls для custom weights.
+- Добавить optional required sight.
+- Добавить optional required tactical device.
+- Сохранить suppressor mode, price mode и max weight в advanced options.
 - Не перегружать основной экран.
-- Сохранять default flow простым.
+- Оставить базовый flow простым:
+  - выбрать weapon;
+  - выбрать build mode;
+  - generate build.
+
+- Передавать новые options в calculator через явную структуру.
+- Показывать warning/error, если required sight/tactical device невозможно установить.
 
 Результат:
 
-- Новые параметры становятся доступны без ухудшения UX для базового сценария.
+- Advanced options становятся реальным центром пользовательских constraints/preferences.
+- Новые параметры доступны без ухудшения UX для базового сценария.
 
 ---
 
-### 7. `test(calculator): cover weighted scoring profiles`
+### 3. `test(calculator): cover weighted scoring profiles`
 
 Сделать:
 
 - Добавить tests для scoring profiles.
 - Проверить, что увеличение веса recoil реально меняет предпочтения.
+- Проверить, что увеличение веса ergonomics реально меняет предпочтения.
+- Проверить price-sensitive custom scoring.
+- Проверить weight-sensitive custom scoring.
+- Проверить accuracy-sensitive custom scoring, если данные доступны.
 - Проверить, что hard constraints сильнее soft weights.
 - Проверить fallback behavior при отсутствующих данных.
-- Проверить custom weights edge cases.
+- Проверить custom weights edge cases:
+  - missing weights;
+  - zero weights;
+  - out-of-range weights;
+  - invalid numeric values.
 
 Результат:
 
 - Расширенная scoring model становится безопасной для изменений.
+- Hard/soft behavior закрепляется тестами.
 
 ---
 
-# Stage 4. Search algorithm robustness and performance
+# Stage 3. Search algorithm robustness and performance
 
 Цель этапа: сделать алгоритм подбора билдов более устойчивым к nested slots, conflicting items, adapters и будущему росту параметров.
 
@@ -872,16 +521,22 @@ research/
   - conflicts;
   - already installed IDs;
   - branch validity;
-  - accumulated stats.
+  - accumulated stats;
+  - accumulated price;
+  - accumulated weight;
+  - required features;
+  - forbidden features.
 
 - Убрать неявные side effects из scoring.
 - Сделать branch result immutable или максимально близким к immutable.
 - Подготовить pruning rules.
+- Сохранить совместимый result shape для UI.
 
 Результат:
 
 - Calculator становится более корректным для сложных build chains.
 - Будущие constraints легче добавлять.
+- Search behavior становится проще объяснять и тестировать.
 
 ---
 
@@ -894,12 +549,16 @@ research/
   - конфликтуют с уже выбранными items;
   - нарушают forbidden categories;
   - не могут выполнить required features;
-  - дублируют unique item IDs.
+  - дублируют unique item IDs;
+  - используют несовместимые nested chains.
 
-- Добавить diagnostic counters для debug режима:
+- Добавить diagnostic counters для debug/development mode:
   - evaluated branches;
   - pruned branches;
+  - invalid branches;
   - selected branch score.
+
+- Не показывать debug counters в основном UI без отдельного режима.
 
 Результат:
 
@@ -912,36 +571,26 @@ research/
 
 Сделать:
 
-- Вместо одного build result подготовить возможность вернуть top-N alternatives.
-- Для начала использовать top-N только внутренне или в debug mode.
-- В result хранить reasons/score breakdown.
+- Подготовить возможность вернуть top-N alternatives.
+- Для начала использовать top-N только внутренне или в debug/advanced result data.
+- В result хранить:
+  - score;
+  - score breakdown;
+  - satisfied constraints;
+  - warnings/fallbacks;
+  - selected parts.
+
 - Не менять UI радикально в этом коммите.
+- Сохранить single best build как основной результат.
 
 Результат:
 
 - Появляется база для сравнения билдов.
-- Пользователь в будущем сможет выбирать между альтернативами.
+- В будущем пользователь сможет выбирать между альтернативами.
 
 ---
 
-### 4. `perf(calculator): move build generation to web worker`
-
-Сделать:
-
-- Вынести тяжёлый расчёт в Web Worker.
-- Сохранить простой API вызова из Configurator.
-- Добавить loading/cancel state.
-- Обработать worker errors.
-- Убедиться, что tests для pure calculator остаются без browser worker dependency.
-
-Результат:
-
-- UI не зависает при сложных расчётах.
-- Проект готов к более тяжёлой search model.
-
----
-
-### 5. `test(calculator): add complex nested slot regression fixtures`
+### 4. `test(calculator): add complex nested slot regression fixtures`
 
 Сделать:
 
@@ -950,19 +599,42 @@ research/
   - mount → sight;
   - handguard → rail → foregrip/tactical;
   - mutually exclusive sights;
-  - conflicting barrel/handguard options.
+  - conflicting barrel/handguard options;
+  - suppressor + sight + weight limit;
+  - price mode + nested chain.
 
 - Проверить корректность итоговых stats.
 - Проверить отсутствие duplicate parts.
-- Проверить correct warning behavior.
+- Проверить correct warning/error behavior.
+- Проверить hard constraints vs soft preferences.
 
 Результат:
 
 - Алгоритм защищён от регрессий на реалистичных случаях.
+- Candidate graph/search changes становятся безопаснее.
 
 ---
 
-# Stage 5. Configurator UI/UX cleanup
+### 5. `perf(calculator): move build generation to web worker`
+
+Сделать:
+
+- Вынести тяжёлый расчёт в Web Worker.
+- Сохранить простой API вызова из Configurator.
+- Добавить loading state.
+- Добавить cancel/ignore stale result behavior.
+- Обработать worker errors.
+- Убедиться, что pure calculator tests остаются без browser worker dependency.
+- Не смешивать worker migration с изменением algorithm behavior.
+
+Результат:
+
+- UI не зависает при сложных расчётах.
+- Проект готов к более тяжёлой search model.
+
+---
+
+# Stage 4. Configurator UI/UX cleanup
 
 Цель этапа: улучшить читаемость Configurator, разделить большой компонент на части и сделать результат расчёта более понятным.
 
@@ -972,7 +644,7 @@ research/
 
 Сделать:
 
-- Разделить Configurator на компоненты:
+- Разделить Configurator на focused components:
   - `WeaponSummary`;
   - `BuildModeSelector`;
   - `AdvancedBuildOptions`;
@@ -984,12 +656,14 @@ research/
 
 - Оставить data flow в Configurator.
 - Не менять calculation behavior.
+- Не менять визуальный стиль радикально.
 - Проверить lint/build.
 
 Результат:
 
 - Configurator проще читать и менять.
 - UI изменения меньше затрагивают calculation logic.
+- Дальнейшие controls проще добавлять без разрастания одного файла.
 
 ---
 
@@ -998,7 +672,7 @@ research/
 Сделать:
 
 - Показывать пользователю, почему build выбран.
-- Добавить breakdown:
+- Добавить compact breakdown:
   - recoil contribution;
   - ergonomics contribution;
   - price contribution;
@@ -1006,25 +680,27 @@ research/
   - constraints satisfied;
   - warnings/fallbacks.
 
-- Для простого режима показывать compact summary.
+- Для простого режима показывать short summary.
 - Для advanced/debug режима показывать больше деталей.
+- Использовать данные calculator result, не пересчитывать score в UI.
 
 Результат:
 
-- Результат калькулятора становится объяснимым.
+- Результат calculator становится объяснимым.
 - Легче отлаживать спорные build choices.
 
 ---
 
-### 3. `feat(ui): add empty states and api failure states`
+### 3. `feat(ui): add home empty retry and api failure states`
 
 Сделать:
 
 - Добавить empty state для списка оружия.
 - Добавить error state при ошибке загрузки weapons.
-- Добавить error state при ошибке загрузки weapon details.
 - Добавить retry action.
 - Убрать silent console-only errors для user-facing сценариев.
+- Сохранить loading state.
+- Согласовать визуальный стиль с Configurator inline messages.
 
 Результат:
 
@@ -1040,29 +716,45 @@ research/
 - Постепенно вынести повторяющиеся inline styles в CSS classes.
 - Сохранить текущий visual style.
 - Не смешивать style cleanup с business logic.
-- Подготовить tokens/utility classes для повторяющихся panels/cards/buttons.
+- Подготовить reusable classes для:
+  - panels/cards;
+  - form groups;
+  - buttons;
+  - inline messages;
+  - option grids;
+  - stat rows;
+  - result sections.
+
+- Убрать наиболее шумные inline style blocks из Configurator и App.
 
 Результат:
 
 - JSX становится чище.
 - UI проще поддерживать.
+- Будущие компоненты легче стилизовать единообразно.
 
 ---
 
-### 5. `feat(ui): persist user build preferences`
+### 5. `feat(ui): persist all build preferences`
 
 Сделать:
 
+- Расширить текущий preferences storage.
 - Сохранять локально последние выбранные options:
   - build mode;
   - suppressor mode;
   - price mode;
+  - custom ergo target;
+  - custom recoil target;
   - custom weights;
-  - max weight.
+  - max weight;
+  - required sight option;
+  - required tactical device option.
 
 - Использовать localStorage только для UI preferences.
 - Добавить reset preferences action.
 - Не сохранять временные calculation results как source of truth.
+- Корректно обрабатывать устаревшие или invalid stored values.
 
 Результат:
 
@@ -1071,7 +763,7 @@ research/
 
 ---
 
-# Stage 6. Data cache, reliability and API boundaries
+# Stage 5. Data cache, reliability and API boundaries
 
 Цель этапа: сделать работу с внешними данными более устойчивой, диагностируемой и удобной для пользователя.
 
@@ -1087,16 +779,20 @@ research/
   - fetchedAt;
   - schemaVersion;
   - itemCount;
-  - priceMode, если применимо.
+  - priceMode;
+  - query/source version.
 
 - Использовать in-memory cache поверх persistent cache.
 - Добавить safe invalidation.
 - Не использовать stale price data без visible warning.
+- Поддержать отдельный cache по price mode.
+- Не блокировать basic UI, если persistent cache повреждён.
 
 Результат:
 
 - Приложение меньше зависит от повторных API запросов.
 - Пользователь видит, если данные могут быть устаревшими.
+- Runtime cache получает устойчивое продолжение.
 
 ---
 
@@ -1109,11 +805,14 @@ research/
 - Показать last updated timestamp.
 - Обработать failure без потери старого cache, если он есть.
 - Не блокировать basic UI при временной ошибке API.
+- Обновлять cache metadata после успешного refresh.
+- Показывать warning при использовании stale cached data.
 
 Результат:
 
 - Пользователь может обновить данные вручную.
 - API failures становятся менее критичными.
+- Data freshness становится видимой частью UX.
 
 ---
 
@@ -1121,95 +820,25 @@ research/
 
 Сделать:
 
-- Добавить tests для data mappers.
+- Добавить tests для GraphQL/data mappers.
 - Использовать локальные fixtures.
-- Проверить missing optional fields.
-- Проверить malformed data behavior.
-- Проверить price normalization.
+- Проверить:
+  - successful weapons response;
+  - successful weapon details response;
+  - successful mods response;
+  - missing optional fields;
+  - malformed data behavior;
+  - price normalization;
+  - PvP/PvE gameMode mapping;
+  - fallback price fields.
+
+- Не делать tests зависимыми от live API.
 
 Результат:
 
 - API/data layer получает защиту от schema-related regressions.
 - Calculator получает более стабильный input.
-
----
-
-# Stage 7. Developer workflow and release hygiene
-
-Цель этапа: улучшить workflow дальнейшей разработки, чтобы проект было проще поддерживать и безопаснее изменять.
-
-## Commits
-
-### 1. `ci: add test lint build workflow`
-
-Сделать:
-
-- Добавить GitHub Actions workflow.
-- Запускать:
-  - `npm ci`;
-  - `npm test`;
-  - `npm run lint`;
-  - `npm run build`.
-
-- Проверять pull requests и main branch.
-- Не добавлять deploy в этот workflow, если release flow ещё не формализован.
-
-Результат:
-
-- Регрессии видны до merge.
-- Baseline автоматически проверяется.
-
----
-
-### 2. `docs(dev): add development workflow guide`
-
-Сделать:
-
-- Создать `docs/development-workflow.md`.
-- Описать recommended branch workflow.
-- Описать порядок проверок перед commit.
-- Описать conventions для commit messages.
-- Описать структуру проекта.
-- Описать где менять UI/API/calculator/tests.
-
-Результат:
-
-- Новому разработчику проще начать работу.
-- Разработка становится последовательнее.
-
----
-
-### 3. `docs(calculator): document known limitations`
-
-Сделать:
-
-- Описать текущие ограничения алгоритма.
-- Описать known trade-offs.
-- Описать, какие constraints являются hard.
-- Описать, какие preferences являются soft.
-- Описать, какие параметры пока не учитываются.
-- Описать, какие данные зависят от внешнего API.
-
-Результат:
-
-- Пользовательские ожидания и developer assumptions становятся явными.
-- Будущие изменения calculator проще планировать.
-
----
-
-### 4. `chore(release): document github pages deploy flow`
-
-Сделать:
-
-- Описать production build.
-- Описать preview.
-- Описать deploy через `gh-pages`.
-- Уточнить, какие файлы не нужно коммитить.
-- Добавить troubleshooting для deploy.
-
-Результат:
-
-- Release flow становится понятным и повторяемым.
+- Будущие изменения queries/repository безопаснее.
 
 ---
 
@@ -1217,30 +846,20 @@ research/
 
 Рекомендуемый порядок реализации:
 
-1. Stage 0 — Structure alignment and baseline restoration.
-2. Stage 1 — Calculator baseline stabilization.
-3. Stage 2 — Price source configuration and data foundation.
-4. Stage 3 — Build calculation model research and domain cleanup.
-5. Stage 4 — Search algorithm robustness and performance.
-6. Stage 5 — Configurator UI/UX cleanup.
-7. Stage 6 — Data cache, reliability and API boundaries.
-8. Stage 7 — Developer workflow and release hygiene.
+1. Stage 1 — Calculation model specification and domain cleanup.
+2. Stage 2 — Advanced scoring and user-controlled preferences.
+3. Stage 3 — Search algorithm robustness and performance.
+4. Stage 4 — Configurator UI/UX cleanup.
+5. Stage 5 — Data cache, reliability and API boundaries.
+6. Stage 6 — Developer workflow and release hygiene.
 
-Stage 0 стоит сделать первым, потому что после изменения структуры нужно восстановить проверяемый baseline.
+Пояснения:
 
-Stage 1 стоит делать до новых фич, потому что нельзя развивать calculator поверх failing regression.
-
-Stage 2 стоит делать до полноценного budget/scoring расширения, потому что цена является одним из ключевых параметров расчёта.
-
-Stage 3 стоит делать до больших алгоритмических изменений, чтобы заранее понять, какие параметры действительно имеют смысл, и подготовить domain module boundaries.
-
-Stage 4 стоит делать после уточнения scoring model, потому что более сложный search algorithm должен обслуживать уже понятные constraints и weights.
-
-Stage 5 можно частично делать параллельно, но крупный UI cleanup лучше не смешивать с изменениями calculator.
-
-Stage 6 логично делать после уточнения data needs и price source model.
-
-Stage 7 можно начинать постепенно, но CI желательно добавить после получения зелёного baseline.
+- Stage 1 стоит делать первым, потому что calculator уже стабилизирован, но всё ещё монолитен.
+- Stage 2 стоит делать после разделения domain boundaries, чтобы custom scoring не усложнял текущий файл.
+- Stage 3 стоит делать после уточнения scoring model, потому что search algorithm должен обслуживать уже понятные constraints и weights.
+- Stage 4 можно частично делать параллельно, но крупный UI cleanup лучше не смешивать с calculator refactor.
+- Stage 5 логично делать после уточнения data needs и price behavior.
 
 ---
 
@@ -1248,49 +867,26 @@ Stage 7 можно начинать постепенно, но CI желател
 
 Единый список актуальных запланированных коммитов:
 
-1. `fix(test): restore nested calculator test workflow`
-2. `chore(lint): ignore research scripts`
-3. `chore(deps): move gh-pages to dev dependencies`
-4. `docs: replace vite template readme`
-5. `fix(calculator): enforce required suppressor builds`
-6. `refactor(calculator): return selected branch plan from evaluator`
-7. `test(calculator): cover suppressor chains and impossible constraints`
-8. `refactor(configurator): split suppressor mode options`
-9. `feat(ui): show build warnings and calculation errors inline`
-10. `research(data): evaluate pvp and pve price sources`
-11. `refactor(api): move tarkov api into data layer`
-12. `refactor(api): isolate graphql query definitions`
-13. `refactor(api): introduce item data repository`
-14. `refactor(data): normalize mod price model`
-15. `feat(settings): add price mode selector`
-16. `feat(api): support configurable price provider`
-17. `feat(calculator): use selected price mode in budget scoring`
-18. `test(data): add price mode fixtures`
-19. `feat(ui): show price source and fallback warnings`
-20. `research(calculator): document extended scoring parameters`
-21. `refactor(calculator): split domain module boundaries`
-22. `refactor(calculator): introduce scoring profile model`
-23. `refactor(calculator): normalize mod attributes for scoring`
-24. `feat(calculator): add weighted custom scoring`
-25. `feat(configurator): add advanced calculation options`
-26. `test(calculator): cover weighted scoring profiles`
-27. `refactor(calculator): model build search as candidate graph`
-28. `perf(calculator): prune incompatible branches early`
-29. `feat(calculator): return top build alternatives`
-30. `perf(calculator): move build generation to web worker`
-31. `test(calculator): add complex nested slot regression fixtures`
-32. `refactor(ui): split configurator into focused components`
-33. `feat(ui): add score breakdown to build result`
-34. `feat(ui): add empty states and api failure states`
-35. `style(ui): move inline styles to reusable classes`
-36. `feat(ui): persist user build preferences`
-37. `feat(api): add persistent item cache with metadata`
-38. `feat(api): add manual data refresh action`
-39. `test(api): add mocked graphql response tests`
-40. `ci: add test lint build workflow`
-41. `docs(dev): add development workflow guide`
-42. `docs(calculator): document known limitations`
-43. `chore(release): document github pages deploy flow`
+1. `research(calculator): document extended scoring parameters`
+2. `refactor(calculator): split domain module boundaries`
+3. `refactor(calculator): introduce scoring profile model`
+4. `refactor(calculator): normalize mod attributes for scoring`
+5. `feat(calculator): add weighted custom scoring`
+6. `feat(configurator): extend advanced calculation options`
+7. `test(calculator): cover weighted scoring profiles`
+8. `refactor(calculator): model build search as candidate graph`
+9. `perf(calculator): prune incompatible branches early`
+10. `feat(calculator): return top build alternatives`
+11. `test(calculator): add complex nested slot regression fixtures`
+12. `perf(calculator): move build generation to web worker`
+13. `refactor(ui): split configurator into focused components`
+14. `feat(ui): add score breakdown to build result`
+15. `feat(ui): add home empty retry and api failure states`
+16. `style(ui): move inline styles to reusable classes`
+17. `feat(ui): persist all build preferences`
+18. `feat(api): add persistent item cache with metadata`
+19. `feat(api): add manual data refresh action`
+20. `test(api): add mocked graphql response tests`
 
 ---
 
