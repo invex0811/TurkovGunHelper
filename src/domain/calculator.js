@@ -137,6 +137,7 @@ function getItemPrice(item) {
     }
 
     const mode = options.sightMode || 'any';
+    if (mode === 'none') return false;
     if (mode === 'any') return true;
     if (cats.includes('Ironsight')) return false;
 

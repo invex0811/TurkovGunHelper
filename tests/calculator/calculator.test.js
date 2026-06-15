@@ -913,4 +913,10 @@ test('requireSight and sightMode options should correctly filter and guarantee s
   assert.equal(resultZoom4.error, undefined);
   assertInstalled(resultZoom4, scopeSight.id);
   assertNotInstalled(resultZoom4, reflexSight.id);
+
+  // 6. requireSight = false, sightMode = 'none' -> should not install any sights
+  const resultNone = calculateBestBuild(testWeapon, 'meta', 50, 50, modsMap, { ...defaultOptions, requireSight: false, sightMode: 'none' });
+  assert.equal(resultNone.error, undefined);
+  assertNotInstalled(resultNone, reflexSight.id);
+  assertNotInstalled(resultNone, scopeSight.id);
 });

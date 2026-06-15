@@ -646,7 +646,7 @@ function Configurator() {
       includeLaser,
       includeFlashlight,
       sightMode,
-      requireSight: true, // Всегда требовать установку прицела
+      requireSight: sightMode !== 'none',
     };
 
     const result = calculateBestBuild(weapon, targetType, customErgo, customRecoil, allMods, options);
@@ -1236,7 +1236,8 @@ function Configurator() {
                 }}
               >
                 {[
-                  { value: 'any', label: 'ANY' },
+                  { value: 'none', label: 'NO SIGHT' },
+                  { value: 'any', label: 'ANY SIGHT' },
                   { value: 'reflex', label: 'REFLEX (1x)' },
                   { value: 'scope', label: 'SCOPE (Any zoom)' },
                   ...getAvailableZoomLevels(allMods)
