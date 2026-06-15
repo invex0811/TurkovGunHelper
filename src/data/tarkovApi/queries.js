@@ -71,6 +71,16 @@ export const GET_ALL_MODS_QUERY = `
             }
           }
         }
+        ... on ItemPropertiesScope {
+          zoomLevels
+          slots {
+            name
+            nameId
+            filters {
+              allowedItems { id }
+            }
+          }
+        }
       }
     }
   }

@@ -508,6 +508,36 @@ function getAvailableCapacities(weapon, allMods) {
   return Array.from(new Set(capacities)).sort((a, b) => a - b);
 }
 
+function getAvailableZoomLevels(allMods) {
+  if (!allMods) return [];
+  const zooms = new Set();
+
+  Object.values(allMods).forEach(mod => {
+    const cats = (mod.categories || []).map(c => c.name);
+    if (cats.includes('Ironsight')) return;
+
+    if (cats.includes('Sights')) {
+      const zoomLevels = mod.properties?.zoomLevels;
+      if (zoomLevels) {
+        const flat = zoomLevels.flat();
+        flat.forEach(z => {
+          if (typeof z === 'number' && z > 0) {
+            zooms.add(z);
+          }
+        });
+      } else {
+        const isReflex = cats.includes('Reflex sight') || cats.includes('Compact reflex sight');
+        if (isReflex) {
+          zooms.add(1);
+        }
+      }
+    }
+  });
+
+  return Array.from(zooms).sort((a, b) => a - b);
+}
+
+
 function Configurator() {
   const { weaponId } = useParams();
   const [weapon, setWeapon] = useState(null);
@@ -526,6 +556,9 @@ function Configurator() {
   const [loadError, setLoadError] = useState(null);
   const [generationError, setGenerationError] = useState(null);
   const [generating, setGenerating] = useState(false);
+  const [includeLaser, setIncludeLaser] = useState(false);
+  const [includeFlashlight, setIncludeFlashlight] = useState(false);
+  const [sightMode, setSightMode] = useState('any');
   
   useEffect(() => {
     savePriceModePreference(priceMode);
@@ -610,6 +643,10 @@ function Configurator() {
       maxPrice: parseFloat(maxPrice) || 0,
       magazineCapacity: Number(magazineCapacity) || 30,
       priceMode,
+      includeLaser,
+      includeFlashlight,
+      sightMode,
+      requireSight: true, // Всегда требовать установку прицела
     };
 
     const result = calculateBestBuild(weapon, targetType, customErgo, customRecoil, allMods, options);
@@ -1176,6 +1213,78 @@ function Configurator() {
                     </button>
                   );
                 })}
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+                Sight Zoom / Type
+              </label>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {[
+                  { value: 'any', label: 'ANY' },
+                  { value: 'reflex', label: 'REFLEX (1x)' },
+                  { value: 'scope', label: 'SCOPE' },
+                  ...getAvailableZoomLevels(allMods)
+                    .filter(z => z > 1)
+                    .map(z => ({ value: String(z), label: `${z}x` }))
+                ].map(option => {
+                  const isSelected = String(sightMode) === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`btn ${isSelected ? '' : 'btn-outline'}`}
+                      onClick={() => setSightMode(option.value)}
+                      style={{
+                        padding: '0.75rem 1rem',
+                        fontSize: '0.85rem',
+                        borderColor: 'var(--color-accent-gold-dark)',
+                        color: isSelected ? 'var(--color-bg-base)' : 'var(--color-accent-gold)',
+                        background: isSelected ? 'var(--color-accent-gold-dark)' : 'transparent',
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+                Tactical Accessories
+              </label>
+              <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', padding: '0.5rem 0' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', userSelect: 'none' }}>
+                  <input
+                    type="checkbox"
+                    checked={includeLaser}
+                    onChange={e => setIncludeLaser(e.target.checked)}
+                    style={{
+                      width: '1.25rem',
+                      height: '1.25rem',
+                      accentColor: 'var(--color-accent-gold-dark)',
+                      cursor: 'pointer'
+                    }}
+                  />
+                  <span style={{ fontSize: '0.95rem', color: 'var(--color-text-main)' }}>Laser / TBL</span>
+                </label>
+                
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', userSelect: 'none' }}>
+                  <input
+                    type="checkbox"
+                    checked={includeFlashlight}
+                    onChange={e => setIncludeFlashlight(e.target.checked)}
+                    style={{
+                      width: '1.25rem',
+                      height: '1.25rem',
+                      accentColor: 'var(--color-accent-gold-dark)',
+                      cursor: 'pointer'
+                    }}
+                  />
+                  <span style={{ fontSize: '0.95rem', color: 'var(--color-text-main)' }}>Flashlight</span>
+                </label>
               </div>
             </div>
           </div>
