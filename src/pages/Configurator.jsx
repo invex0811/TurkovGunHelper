@@ -225,6 +225,9 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
 
   collectRemaining(buildAssemblyTree(node.parent.item === node.item ? node.item : getRoot(node).item, currentBuild.build));
 
+  const targetCats = (node.item.categories || []).map(c => c.name);
+  const targetIsMount = targetCats.includes('Mount');
+
   const alternatives = [];
 
   Object.keys(allMods).forEach(modId => {
@@ -238,6 +241,9 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
     if (currentSight && altItem.id === currentSight.id) return;
 
     const altCats = (altItem.categories || []).map(c => c.name);
+    
+    // If we are replacing a mount, the alternative must also be a mount
+    if (targetIsMount && !altCats.includes('Mount')) return;
     
     // Bundle-forming logic for mounts:
     const isMount = altCats.includes('Mount');
