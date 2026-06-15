@@ -132,6 +132,9 @@ function getItemPrice(item) {
 
   function isValidSightForMode(item) {
     const cats = (item.categories || []).map(c => c.name);
+    if (cats.includes('Ironsight')) {
+      return false;
+    }
     if (cats.includes('Thermal Vision') || cats.includes('Night Vision') || cats.includes('Special scope')) {
       return false;
     }
@@ -139,7 +142,6 @@ function getItemPrice(item) {
     const mode = options.sightMode || 'any';
     if (mode === 'none') return false;
     if (mode === 'any') return true;
-    if (cats.includes('Ironsight')) return false;
 
     const isReflex = cats.includes('Reflex sight') || cats.includes('Compact reflex sight');
     const isMagnified = cats.includes('Scope') || cats.includes('Assault scope');

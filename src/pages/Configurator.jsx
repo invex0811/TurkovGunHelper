@@ -125,16 +125,17 @@ function calculateSimilarityDistance(node, b, priceMode) {
 
   return dErgo + dRecoil + dWeight + dPrice;
 }
-
 function isValidSightForMode(item, sightMode) {
   const cats = (item.categories || []).map(c => c.name);
+  if (cats.includes('Ironsight')) {
+    return false;
+  }
   if (cats.includes('Thermal Vision') || cats.includes('Night Vision') || cats.includes('Special scope')) {
     return false;
   }
 
   const mode = sightMode || 'any';
   if (mode === 'none' || mode === 'any') return true;
-  if (cats.includes('Ironsight')) return false;
 
   const isReflex = cats.includes('Reflex sight') || cats.includes('Compact reflex sight');
   const isMagnified = cats.includes('Scope') || cats.includes('Assault scope');
@@ -225,8 +226,8 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
 
   collectRemaining(buildAssemblyTree(node.parent.item === node.item ? node.item : getRoot(node).item, currentBuild.build));
 
-  const targetCats = (node.item.categories || []).map(c => c.name);
-  const targetIsMount = targetCats.includes('Mount');
+  const targetCats = (node.item.categories || []).map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
+  const targetIsMount = targetCats.includes('mount');
 
   const alternatives = [];
 
@@ -240,24 +241,24 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
     // Do not suggest the exact same sight that is currently installed
     if (currentSight && altItem.id === currentSight.id) return;
 
-    const altCats = (altItem.categories || []).map(c => c.name);
+    const altCats = (altItem.categories || []).map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
     
     // If we are replacing a mount, the alternative must also be a mount
-    if (targetIsMount && !altCats.includes('Mount')) return;
+    if (targetIsMount && !altCats.includes('mount')) return;
     
     // Bundle-forming logic for mounts:
-    const isMount = altCats.includes('Mount');
+    const isMount = altCats.includes('mount');
     let sightSlot = null;
     let bestScope = null;
     
-    if (isMount) {
+    if (isMount && !targetIsMount) {
       const slots = altItem.properties?.slots || [];
       for (const slot of slots) {
         const allowedSights = (slot.filters?.allowedItems || []).filter(a => {
           const allowedItem = allMods[a.id];
           if (!allowedItem) return false;
-          const allowedCats = (allowedItem.categories || []).map(c => c.name);
-          return allowedCats.includes('Sights');
+          const allowedCats = (allowedItem.categories || []).map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
+          return allowedCats.includes('sights');
         });
         if (allowedSights.length > 0) {
           sightSlot = slot;
@@ -290,7 +291,7 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
       }
     }
 
-    if (altCats.includes('Sights')) {
+    if (altCats.includes('sights')) {
       if (!isValidSightForMode(altItem, sightMode)) {
         return;
       }
@@ -345,7 +346,8 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
   // We keep the one that has the smallest similarity distance to the current node.
   const uniqueAlternatives = new Map();
   alternatives.forEach(alt => {
-    const isSightOrHasAttached = (alt.categories || []).map(c => c.name).includes('Sights') || alt.attachedScope;
+    const altCats = (alt.categories || []).map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
+    const isSightOrHasAttached = altCats.includes('sights') || alt.attachedScope;
     if (isSightOrHasAttached) {
       const sightId = alt.attachedScope ? alt.attachedScope.id : alt.id;
       const existing = uniqueAlternatives.get(sightId);
@@ -794,13 +796,46 @@ function Configurator() {
     }
     findNode(assemblyTree);
 
+    const targetCats = (targetPart.categories || []).map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
+    const targetIsMount = targetCats.includes('mount');
+
     const subtreeIds = new Set();
     if (targetNode) {
-      function collectSubtree(n) {
-        subtreeIds.add(n.item.id);
-        n.children.forEach(collectSubtree);
+      if (targetIsMount) {
+        // If replacing a mount, do not collect its children to avoid deleting them (we want to keep the scope)
+        subtreeIds.add(targetNode.item.id);
+      } else {
+        // Recursively check compatibility of children with the new parent module
+        function checkCompatibilityAndCollect(nodeToCheck, parentItem) {
+          nodeToCheck.children.forEach(child => {
+            const slots = parentItem.properties?.slots || [];
+            const matchingSlot = slots.find(s => s.name === child.slotName);
+            
+            let isCompatible = false;
+            if (matchingSlot) {
+              const allowedIds = new Set((matchingSlot.filters?.allowedItems || []).map(a => a.id));
+              if (allowedIds.has(child.item.id)) {
+                isCompatible = true;
+              }
+            }
+            
+            if (isCompatible) {
+              // Child is compatible, keep it and recursively check its children
+              checkCompatibilityAndCollect(child, child.item);
+            } else {
+              // Child is not compatible, delete it and its entire subtree
+              function collectAll(n) {
+                subtreeIds.add(n.item.id);
+                n.children.forEach(collectAll);
+              }
+              collectAll(child);
+            }
+          });
+        }
+        
+        checkCompatibilityAndCollect(targetNode, alternativeItem);
+        subtreeIds.add(targetNode.item.id);
       }
-      collectSubtree(targetNode);
     }
 
     const updatedBuild = [];
@@ -892,6 +927,13 @@ function Configurator() {
   );
 }
 
+  const hasCalculationError = buildResult ? Boolean(buildResult.error) : false;
+  const hasBuildParts = buildResult ? (Array.isArray(buildResult.build) && buildResult.build.length > 0) : false;
+  const canShowBuildDetails = buildResult && !hasCalculationError && hasBuildParts;
+  const priceDiagnostics = canShowBuildDetails
+    ? collectBuildPriceDiagnostics(weapon, buildResult, priceMode)
+    : null;
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '2rem' }}>
       <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
@@ -917,6 +959,37 @@ function Configurator() {
             <li style={{ padding: '0.5rem 0', borderBottom: '1px solid var(--color-border)' }}>Horizontal Recoil: {weapon.properties?.recoilHorizontal ?? 'N/A'}</li>
           </ul>
         </div>
+
+        {canShowBuildDetails && (
+          <div style={{ marginTop: '2rem' }}>
+            <h3>Build Stats</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '1rem', background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <span>Ergonomics: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.ergonomics}</strong></span>
+              <span>Weight: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.weight} kg</strong></span>
+              <span>V. Recoil: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.recoilVertical}</strong></span>
+              <span>H. Recoil: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.recoilHorizontal}</strong></span>
+              <span style={{ gridColumn: 'span 2', marginTop: '0.25rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.5rem' }}>
+                Estimated Price:{' '}
+                <strong style={{ color: 'var(--color-accent-gold)', fontSize: '1.1rem' }}>
+                  {formatCurrency(buildResult.stats.price, 'RUB')}
+                </strong>
+                {priceDiagnostics && (
+                  <span
+                    style={{
+                      display: 'block',
+                      color: 'var(--color-text-muted)',
+                      fontSize: '0.78rem',
+                      marginTop: '0.25rem',
+                    }}
+                  >
+                    {priceDiagnostics.summaryLabel}
+                  </span>
+                )}
+              </span>
+            </div>
+          </div>
+        )}
+
         <div style={{ marginTop: 'auto', paddingTop: '2rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
           <span style={{ 
             display: 'inline-flex', 
@@ -951,108 +1024,135 @@ function Configurator() {
           </div>
         )}
 
-        {!generating && buildResult && (() => {
-          const hasCalculationError = Boolean(buildResult.error);
-          const hasBuildParts = Array.isArray(buildResult.build) && buildResult.build.length > 0;
-          const canShowBuildDetails = !hasCalculationError && hasBuildParts;
-          const priceDiagnostics = canShowBuildDetails
-            ? collectBuildPriceDiagnostics(weapon, buildResult, priceMode)
-            : null;
+        {!generating && buildResult && (
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+            {hasCalculationError && (
+              <InlineMessage type="error" title="Build cannot satisfy current constraints">
+                {buildResult.error}
+              </InlineMessage>
+            )}
 
-          return (
-            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-              {hasCalculationError && (
-                <InlineMessage type="error" title="Build cannot satisfy current constraints">
-                  {buildResult.error}
-                </InlineMessage>
-              )}
+            {!hasCalculationError && buildResult.warning && (
+              <InlineMessage type="warning" title="Build warning">
+                {buildResult.warning}
+              </InlineMessage>
+            )}
 
-              {!hasCalculationError && buildResult.warning && (
-                <InlineMessage type="warning" title="Build warning">
-                  {buildResult.warning}
-                </InlineMessage>
-              )}
+            {!hasCalculationError && !hasBuildParts && (
+              <InlineMessage type="warning" title="No build parts selected">
+                The calculator did not find any compatible parts for the current configuration.
+              </InlineMessage>
+            )}
 
-              {!hasCalculationError && !hasBuildParts && (
-                <InlineMessage type="warning" title="No build parts selected">
-                  The calculator did not find any compatible parts for the current configuration.
-                </InlineMessage>
-              )}
+            {canShowBuildDetails && (
+              <>
+                {priceDiagnostics?.warningMessages.length > 0 && (
+                  <InlineMessage type="warning" title="Price data notice">
+                    {priceDiagnostics.warningMessages.join(' ')}
+                  </InlineMessage>
+                )}
 
-              {canShowBuildDetails && (
-                <>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                    <span>Ergonomics: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.ergonomics}</strong></span>
-                    <span>Weight: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.weight} kg</strong></span>
-                    <span>V. Recoil: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.recoilVertical}</strong></span>
-                    <span>H. Recoil: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.recoilHorizontal}</strong></span>
-                    <span style={{ gridColumn: 'span 2', marginTop: '0.25rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.5rem' }}>
-                      Estimated Price:{' '}
-                      <strong style={{ color: 'var(--color-accent-gold)', fontSize: '1.1rem' }}>
-                        {formatCurrency(buildResult.stats.price, 'RUB')}
-                      </strong>
-                      {priceDiagnostics && (
-                        <span
-                          style={{
-                            display: 'block',
-                            color: 'var(--color-text-muted)',
-                            fontSize: '0.78rem',
-                            marginTop: '0.25rem',
-                          }}
-                        >
-                          {priceDiagnostics.summaryLabel}
-                        </span>
-                      )}
-                    </span>
-                  </div>
+                <h4 style={{ marginTop: '1rem', marginBottom: '0.5rem', color: 'var(--color-accent-gold)', fontSize: '1.1rem' }}>Parts List</h4>
+                <div style={{ overflowY: 'auto', flex: 1, paddingRight: '0.5rem' }}>
+                  {(() => {
+                    const assemblyTree = buildAssemblyTree(weapon, buildResult.build);
+                                 const SLOT_GROUP_NAME_MAPPINGS = {
+                        'reciever': 'Receiver',
+                        'receiver': 'Receiver',
+                        'pistolgrip': 'Pistol Grip',
+                        'pistol grip': 'Pistol Grip',
+                        'grip': 'Pistol Grip',
+                        'gasblock': 'Gas Block',
+                        'front sight': 'Front Sight',
+                        'rear sight': 'Rear Sight',
+                        'ubgl': 'Underbarrel Launcher',
+                        'tactical': 'Tactical Device',
+                        'foregrip': 'Foregrip',
+                        'bipod': 'Bipod',
+                        'launcher': 'Launcher',
+                        'scope': 'Scope / Sight',
+                        'mount': 'Mount / Adapter',
+                        'charge': 'Charging Handle',
+                        'charging handle': 'Charging Handle',
+                        'dustcover': 'Dust Cover',
+                        'dust cover': 'Dust Cover',
+                        'barrel': 'Barrel',
+                        'handguard': 'Handguard',
+                        'muzzle': 'Muzzle Device',
+                        'stock': 'Stock',
+                        'magazine': 'Magazine'
+                      };
 
-                  {priceDiagnostics?.warningMessages.length > 0 && (
-                    <InlineMessage type="warning" title="Price data notice">
-                      {priceDiagnostics.warningMessages.join(' ')}
-                    </InlineMessage>
-                  )}
-
-                  <h4 style={{ marginTop: '1rem', marginBottom: '0.5rem', color: 'var(--color-accent-gold)', fontSize: '1.1rem' }}>Parts List</h4>
-                  <div style={{ overflowY: 'auto', flex: 1, paddingRight: '0.5rem' }}>
-                    {(() => {
-                      const assemblyTree = buildAssemblyTree(weapon, buildResult.build);
-                      
-                      function getRootSlotName(part) {
-                        let targetNode = null;
-                        function findNode(n) {
-                          if (n.item.id === part.item.id) {
-                            targetNode = n;
-                            return;
-                          }
-                          n.children.forEach(findNode);
+                      function getReadableSlotGroupName(slotName) {
+                        if (!slotName) return 'Other';
+                        let name = slotName.trim().toLowerCase();
+                        
+                        if (name.startsWith('mod_')) {
+                          name = name.substring(4);
                         }
-                        findNode(assemblyTree);
-
-                        if (!targetNode) return part.slotName;
-
-                        let curr = targetNode;
-                        while (curr.parent && curr.parent.parent !== null) {
-                          curr = curr.parent;
+                        
+                        name = name.replace(/[\s_-]+/g, ' ');
+                        
+                        if (SLOT_GROUP_NAME_MAPPINGS[name]) {
+                          return SLOT_GROUP_NAME_MAPPINGS[name];
                         }
-                        return curr.slotName;
+                        
+                        return name.split(' ')
+                                   .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                                   .join(' ');
                       }
 
-                      // Group parts by their root slot name
+                      const GROUP_ORDER = [
+                        'Receiver',
+                        'Charging Handle',
+                        'Dust Cover',
+                        'Barrel',
+                        'Gas Block',
+                        'Handguard',
+                        'Foregrip',
+                        'Muzzle Device',
+                        'Mount / Adapter',
+                        'Scope / Sight',
+                        'Front Sight',
+                        'Rear Sight',
+                        'Stock',
+                        'Pistol Grip',
+                        'Magazine',
+                        'Tactical Device',
+                        'Bipod',
+                        'Underbarrel Launcher'
+                      ];
+
+                      // Group parts by their immediate slot name
                       const groups = [];
                       const groupMap = new Map();
 
                       buildResult.build.forEach(part => {
-                        const rootSlot = getRootSlotName(part);
-                        let group = groupMap.get(rootSlot);
+                        const slotGroup = getReadableSlotGroupName(part.slotName);
+                        let group = groupMap.get(slotGroup);
                         if (!group) {
                           group = {
-                            rootSlotName: rootSlot,
+                            rootSlotName: slotGroup,
                             parts: []
                           };
-                          groupMap.set(rootSlot, group);
+                          groupMap.set(slotGroup, group);
                           groups.push(group);
                         }
                         group.parts.push(part);
+                      });
+
+                      // Sort groups dynamically by logical order
+                      groups.sort((a, b) => {
+                        let indexA = GROUP_ORDER.indexOf(a.rootSlotName);
+                        let indexB = GROUP_ORDER.indexOf(b.rootSlotName);
+                        
+                        if (indexA === -1) indexA = 999;
+                        if (indexB === -1) indexB = 999;
+                        
+                        if (indexA !== indexB) {
+                          return indexA - indexB;
+                        }
+                        return a.rootSlotName.localeCompare(b.rootSlotName);
                       });
 
                       return groups.map((group, groupIdx) => (
@@ -1207,37 +1307,60 @@ function Configurator() {
                                       </div>
                                       {alternatives.length === 0 ? (
                                         <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
-                                          No fully compatible alternative modules found in the database.
+                                          {targetNode && targetNode.children.length > 0
+                                            ? "No fully compatible alternatives found that support all currently installed attachments. Try replacing or removing some attachments first."
+                                            : "No fully compatible alternative modules found in the database."}
                                         </div>
                                       ) : (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                                           {(() => {
-                                            const targetSubtreeParts = [];
-                                            if (targetNode) {
-                                              function collectSubtreeParts(n) {
-                                                targetSubtreeParts.push(n.item);
-                                                n.children.forEach(collectSubtreeParts);
-                                              }
-                                              collectSubtreeParts(targetNode);
-                                            }
-
-                                            const baselinePrice = targetSubtreeParts.reduce((sum, item) => sum + getSelectedPriceInfo(item, priceMode).value, 0);
-                                            const baselineErgo = targetSubtreeParts.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
-                                            const baselineRecoil = targetSubtreeParts.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
-                                            const baselineWeight = targetSubtreeParts.reduce((sum, item) => sum + (item.weight || 0), 0);
-
                                             return alternatives.map(alt => {
                                               const altPriceInfo = getSelectedPriceInfo(alt, priceMode);
                                               const altPriceValue = altPriceInfo.value + 
                                                 (alt.attachedScope ? getSelectedPriceInfo(alt.attachedScope, priceMode).value : 0);
                                               
+                                              const baselineParts = [];
+                                              if (targetNode) {
+                                                baselineParts.push(targetNode.item);
+                                                if (alt.attachedScope) {
+                                                  function collectChildren(n) {
+                                                    n.children.forEach(c => {
+                                                      baselineParts.push(c.item);
+                                                      collectChildren(c);
+                                                    });
+                                                  }
+                                                  collectChildren(targetNode);
+                                                }
+                                              }
+
+                                              const baselinePrice = baselineParts.reduce((sum, item) => sum + getSelectedPriceInfo(item, priceMode).value, 0);
+                                              const baselineErgo = baselineParts.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
+                                              const baselineRecoil = baselineParts.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
+                                              const baselineWeight = baselineParts.reduce((sum, item) => sum + (item.weight || 0), 0);
+
                                               const ergoDiff = ((alt.ergonomicsModifier || 0) + (alt.attachedScope ? (alt.attachedScope.ergonomicsModifier || 0) : 0)) - baselineErgo;
                                               const recoilDiff = ((alt.recoilModifier || 0) + (alt.attachedScope ? (alt.attachedScope.recoilModifier || 0) : 0)) - baselineRecoil;
                                               const priceDiff = altPriceValue - baselinePrice;
                                               const weightDiff = ((alt.weight || 0) + (alt.attachedScope ? (alt.attachedScope.weight || 0) : 0)) - baselineWeight;
-                                              
+                                            
+                                              const baseRecoilV = weapon.properties?.recoilVertical || 0;
+                                              const baseRecoilH = weapon.properties?.recoilHorizontal || 0;
+                                              const recoilDiffV = baseRecoilV * (recoilDiff / 100);
+                                              const recoilDiffH = baseRecoilH * (recoilDiff / 100);
+
                                               const ergoDiffText = ergoDiff === 0 ? '0' : ergoDiff > 0 ? `+${parseFloat(ergoDiff.toFixed(2))}` : `${parseFloat(ergoDiff.toFixed(2))}`;
-                                              const recoilDiffText = recoilDiff === 0 ? '0%' : recoilDiff > 0 ? `+${parseFloat(recoilDiff.toFixed(2))}%` : `${parseFloat(recoilDiff.toFixed(2))}%`;
+                                              
+                                              function formatRecoilDiff(v, h, pct) {
+                                                const formatNum = (num) => {
+                                                  const rounded = Math.round(num);
+                                                  return rounded > 0 ? `+${rounded}` : `${rounded}`;
+                                                };
+                                                const pctText = pct === 0 ? '0%' : pct > 0 ? `+${parseFloat(pct.toFixed(2))}%` : `${parseFloat(pct.toFixed(2))}%`;
+                                                if (Math.round(v) === 0 && Math.round(h) === 0) return `0 (${pctText})`;
+                                                return `${formatNum(v)} / ${formatNum(h)} (${pctText})`;
+                                              }
+                                              const recoilDiffText = formatRecoilDiff(recoilDiffV, recoilDiffH, recoilDiff);
+                                              
                                               const weightDiffText = weightDiff === 0 ? '0 kg' : weightDiff > 0 ? `+${parseFloat(weightDiff.toFixed(3))} kg` : `${parseFloat(weightDiff.toFixed(3))} kg`;
 
                                               return (
@@ -1329,8 +1452,7 @@ function Configurator() {
                 </>
               )}
             </div>
-          );
-        })()}
+          )}
       </div>
 
       <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
