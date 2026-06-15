@@ -2,6 +2,35 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getWeapons } from '../data/tarkovApi';
 
+function ImageWithLoader({ src, alt, style, containerStyle }) {
+  const [loaded, setLoaded] = useState(false);
+
+  return (
+    <div style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', ...containerStyle }}>
+      {!loaded && (
+        <div className="shimmer" style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          borderRadius: 'var(--radius-sm)'
+        }} />
+      )}
+      <img
+        src={src}
+        alt={alt}
+        onLoad={() => setLoaded(true)}
+        style={{
+          ...style,
+          opacity: loaded ? 1 : 0,
+          transition: 'opacity 0.3s ease-in-out'
+        }}
+      />
+    </div>
+  );
+}
+
 function Home() {
   const [weapons, setWeapons] = useState([]);
   const [search, setSearch] = useState('');
@@ -87,10 +116,11 @@ function Home() {
                 justifyContent: 'space-between'
               }}>
                 <div>
-                  <img 
+                  <ImageWithLoader 
                     src={w.properties?.defaultPreset?.image512pxLink || w.image512pxLink || 'https://via.placeholder.com/512'} 
                     alt={w.shortName} 
                     style={{ maxWidth: '100%', maxHeight: '100px', objectFit: 'contain' }}
+                    containerStyle={{ height: '100px' }}
                   />
                   <h3 style={{ fontSize: '1.2rem', margin: '1rem 0 0.5rem 0', color: 'var(--color-accent-gold)' }}>{w.shortName}</h3>
                 </div>

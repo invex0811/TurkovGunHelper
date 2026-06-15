@@ -12,7 +12,198 @@ import {
   saveTargetTypePreference,
 } from '../data/settings/buildPreferences.js';
 import { getWeaponDetails, getAllMods } from '../data/tarkovApi';
-import { calculateBestBuild } from '../domain/calculator.js';
+import { calculateBestBuild, recalculateBuildStats } from '../domain/calculator.js';
+
+function ImageWithLoader({ src, alt, style, containerStyle }) {
+  const [loaded, setLoaded] = useState(false);
+
+  return (
+    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', ...containerStyle }}>
+      {!loaded && (
+        <div className="shimmer" style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          borderRadius: 'inherit'
+        }} />
+      )}
+      <img
+        src={src}
+        alt={alt}
+        onLoad={() => setLoaded(true)}
+        style={{
+          ...style,
+          opacity: loaded ? 1 : 0,
+          transition: 'opacity 0.3s ease-in-out'
+        }}
+      />
+    </div>
+  );
+}
+
+function buildAssemblyTree(weapon, buildParts) {
+  const root = {
+    item: weapon,
+    slotName: 'Root',
+    children: [],
+    parent: null
+  };
+
+  const queue = [root];
+  const remainingParts = [...buildParts];
+
+  while (queue.length > 0 && remainingParts.length > 0) {
+    const currentNode = queue.shift();
+    const slots = currentNode.item.properties?.slots || [];
+
+    slots.forEach(slot => {
+      const allowedIds = new Set((slot.filters?.allowedItems || []).map(a => a.id));
+      
+      const partIdx = remainingParts.findIndex(part => 
+        part.slotName === slot.name && allowedIds.has(part.item.id)
+      );
+
+      if (partIdx !== -1) {
+        const [part] = remainingParts.splice(partIdx, 1);
+        const childNode = {
+          item: part.item,
+          slotName: slot.name,
+          children: [],
+          parent: currentNode
+        };
+        currentNode.children.push(childNode);
+        queue.push(childNode);
+      }
+    });
+  }
+
+  return root;
+}
+
+function calculateSimilarityDistance(a, b, priceMode) {
+  const ergoA = a.ergonomicsModifier || 0;
+  const ergoB = b.ergonomicsModifier || 0;
+  const recoilA = a.recoilModifier || 0;
+  const recoilB = b.recoilModifier || 0;
+  const weightA = a.weight || 0;
+  const weightB = b.weight || 0;
+  
+  function getRawPrice(item) {
+    return item.avg24hPrice
+      || item.lastLowPrice
+      || item.low24hPrice
+      || item.basePrice
+      || 0;
+  }
+
+  function getPrice(item) {
+    if (!priceMode || item.price?.mode === priceMode) {
+      return item.price?.value ?? getRawPrice(item);
+    }
+    return getRawPrice(item);
+  }
+
+  const priceA = getPrice(a);
+  const priceB = getPrice(b);
+  
+  const dErgo = Math.abs(ergoA - ergoB) * 1.5;
+  const dRecoil = Math.abs(recoilA - recoilB) * 4.0;
+  const dWeight = Math.abs(weightA - weightB) * 2.0;
+  const dPrice = Math.abs(priceA - priceB) * 0.0001;
+  
+  return dErgo + dRecoil + dWeight + dPrice;
+}
+
+function findCompatibleAlternatives(node, allMods, currentBuild, priceMode) {
+  if (!node || !node.parent) return [];
+
+  const parentItem = node.parent.item;
+  const parentSlot = parentItem.properties?.slots?.find(s => s.name === node.slotName);
+  if (!parentSlot) return [];
+
+  const allowedIds = new Set((parentSlot.filters?.allowedItems || []).map(a => a.id));
+  
+  const subtreeIds = new Set();
+  function collectSubtreeIds(n) {
+    subtreeIds.add(n.item.id);
+    n.children.forEach(collectSubtreeIds);
+  }
+  collectSubtreeIds(node);
+
+  const remainingInstalledIds = new Set();
+  function collectRemaining(n) {
+    if (n !== node) {
+      remainingInstalledIds.add(n.item.id);
+      n.children.forEach(collectRemaining);
+    }
+  }
+  
+  function getRoot(n) {
+    let curr = n;
+    while (curr.parent) {
+      curr = curr.parent;
+    }
+    return curr;
+  }
+
+  collectRemaining(buildAssemblyTree(node.parent.item === node.item ? node.item : getRoot(node).item, currentBuild.build));
+
+  const alternatives = [];
+
+  Object.keys(allMods).forEach(modId => {
+    if (modId === node.item.id) return;
+    if (!allowedIds.has(modId)) return;
+
+    const altItem = allMods[modId];
+    if (!altItem) return;
+
+    let isCompatibleWithChildren = true;
+    for (const childNode of node.children) {
+      const hasCompatibleSlot = (altItem.properties?.slots || []).some(s => 
+        s.name === childNode.slotName && 
+        (s.filters?.allowedItems || []).some(a => a.id === childNode.item.id)
+      );
+      if (!hasCompatibleSlot) {
+        isCompatibleWithChildren = false;
+        break;
+      }
+    }
+    if (!isCompatibleWithChildren) return;
+
+    let hasConflict = false;
+    for (const conflict of altItem.conflictingItems || []) {
+      if (remainingInstalledIds.has(conflict.id)) {
+        hasConflict = true;
+        break;
+      }
+    }
+    if (hasConflict) return;
+
+    for (const installedId of remainingInstalledIds) {
+      const installedItem = allMods[installedId] || (installedId === getRoot(node).item.id ? getRoot(node).item : null);
+      if (installedItem && installedItem.conflictingItems) {
+        const conflictsWithAlt = installedItem.conflictingItems.some(c => c.id === altItem.id);
+        if (conflictsWithAlt) {
+          hasConflict = true;
+          break;
+        }
+      }
+    }
+    if (hasConflict) return;
+
+    alternatives.push(altItem);
+  });
+
+  alternatives.sort((a, b) => {
+    const distA = calculateSimilarityDistance(node.item, a, priceMode);
+    const distB = calculateSimilarityDistance(node.item, b, priceMode);
+    return distA - distB;
+  });
+
+  return alternatives;
+}
 
 function formatPartName(name) {
   if (!name) return '';
@@ -327,6 +518,8 @@ function Configurator() {
   const [suppressorMode, setSuppressorMode] = useState('allow');
   const [priceMode, setPriceMode] = useState(loadPriceModePreference);
   const [maxWeight, setMaxWeight] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
+  const [activeReplacePartId, setActiveReplacePartId] = useState(null);
   const [magazineCapacity, setMagazineCapacity] = useState(30);
   const [allMods, setAllMods] = useState(null);
   const [buildResult, setBuildResult] = useState(null);
@@ -385,6 +578,25 @@ function Configurator() {
     };
   }, [weaponId, priceMode]);
 
+  const handleReplacePart = (targetPart, alternativeItem) => {
+    if (!buildResult) return;
+    
+    const updatedBuild = buildResult.build.map(part => {
+      if (part.item.id === targetPart.id) {
+        return {
+          ...part,
+          item: alternativeItem
+        };
+      }
+      return part;
+    });
+
+    const updatedResult = recalculateBuildStats(weapon, updatedBuild, { priceMode });
+    
+    setBuildResult(updatedResult);
+    setActiveReplacePartId(null);
+  };
+
   const handleGenerate = async () => {
   if (!allMods) return;
   setGenerating(true);
@@ -395,6 +607,7 @@ function Configurator() {
     const options = {
       ...getSuppressorOptions(suppressorMode),
       maxWeight: parseFloat(maxWeight) || 0,
+      maxPrice: parseFloat(maxPrice) || 0,
       magazineCapacity: Number(magazineCapacity) || 30,
       priceMode,
     };
@@ -418,7 +631,16 @@ function Configurator() {
   const isLoading = loading || (weapon && weapon.id !== weaponId);
 
   if (isLoading) {
-    return <div className="glass-panel" style={{ padding: '2rem', textAlign: 'center' }}>Loading weapon details...</div>;
+    return (
+      <div id="loader-wrapper">
+        <div className="loader">
+          <div className="loader-ring"></div>
+          <div className="loader-ring"></div>
+          <div className="loader-ring"></div>
+          <p className="loader-text">Загрузка...</p>
+        </div>
+      </div>
+    );
   }
 
   if (!weapon) {
@@ -444,7 +666,12 @@ function Configurator() {
         <h2 style={{ color: 'var(--color-accent-gold)' }}>{weapon.shortName}</h2>
         <p style={{ color: 'var(--color-text-muted)' }}>{weapon.name}</p>
         <div style={{ marginTop: '1rem', textAlign: 'center' }}>
-          <img src={weapon.properties?.defaultPreset?.image512pxLink || weapon.image512pxLink || weapon.iconLink} alt={weapon.shortName} style={{ maxWidth: '100%' }} />
+          <ImageWithLoader 
+            src={weapon.properties?.defaultPreset?.image512pxLink || weapon.image512pxLink || weapon.iconLink} 
+            alt={weapon.shortName} 
+            style={{ maxWidth: '100%', maxHeight: '250px', objectFit: 'contain' }} 
+            containerStyle={{ minHeight: '200px', borderRadius: 'var(--radius-md)' }}
+          />
         </div>
         
         <div style={{ marginTop: '2rem' }}>
@@ -561,6 +788,21 @@ function Configurator() {
                             ? 'var(--color-accent-gold-dark)'
                             : 'var(--color-text-muted)';
 
+                        const assemblyTree = buildAssemblyTree(weapon, buildResult.build);
+                        let targetNode = null;
+                        function findNode(n) {
+                          if (n.item.id === part.item.id) {
+                            targetNode = n;
+                            return;
+                          }
+                          n.children.forEach(findNode);
+                        }
+                        findNode(assemblyTree);
+
+                        const alternatives = targetNode 
+                          ? findCompatibleAlternatives(targetNode, allMods, buildResult, priceMode).slice(0, 5) 
+                          : [];
+
                         return (
                           <li
                             key={idx}
@@ -568,61 +810,184 @@ function Configurator() {
                               padding: '0.75rem 0',
                               borderBottom: '1px solid rgba(255,255,255,0.05)',
                               display: 'flex',
-                              alignItems: 'center',
+                              flexDirection: 'column',
+                              alignItems: 'stretch',
                               width: '100%',
                               boxSizing: 'border-box',
                             }}
                           >
-                            <img
-                              src={part.item.image512pxLink || part.item.iconLink || 'https://via.placeholder.com/30'}
-                              alt=""
-                              style={{
-                                width: '40px',
-                                height: '40px',
-                                objectFit: 'contain',
-                                marginRight: '1rem',
-                                background: 'rgba(255,255,255,0.02)',
-                                borderRadius: 'var(--radius-sm)',
-                                border: '1px solid rgba(255,255,255,0.05)'
-                              }}
-                            />
+                            <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                              <ImageWithLoader
+                                src={part.item.image512pxLink || part.item.iconLink || 'https://via.placeholder.com/30'}
+                                alt=""
+                                style={{
+                                  width: '40px',
+                                  height: '40px',
+                                  objectFit: 'contain'
+                                }}
+                                containerStyle={{
+                                  width: '40px',
+                                  height: '40px',
+                                  marginRight: '1rem',
+                                  background: 'rgba(255,255,255,0.02)',
+                                  borderRadius: 'var(--radius-sm)',
+                                  border: '1px solid rgba(255,255,255,0.05)'
+                                }}
+                              />
 
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: '0.95rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {formatPartName(part.item.shortName)}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                  <div style={{ fontSize: '0.95rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {formatPartName(part.item.shortName)}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveReplacePartId(activeReplacePartId === part.item.id ? null : part.item.id)}
+                                    className={`btn-replace-part ${activeReplacePartId === part.item.id ? 'active' : ''}`}
+                                    title="Replace this module with compatible alternatives"
+                                  >
+                                    <span style={{ display: 'inline-flex', transform: 'translateY(-1.5px)' }}>⇄</span>
+                                    <span style={{ display: 'inline-flex' }}>Replace</span>
+                                  </button>
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                  Slot: {part.slotName}
+                                </div>
                               </div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                Slot: {part.slotName}
+
+                              <div
+                                style={{
+                                  textAlign: 'right',
+                                  whiteSpace: 'nowrap',
+                                  marginLeft: '1rem',
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    color: priceInfo.isMissing ? 'var(--color-text-muted)' : 'var(--color-accent-gold)',
+                                    fontSize: '0.9rem',
+                                    fontWeight: 'bold',
+                                  }}
+                                >
+                                  {formatCurrency(priceInfo.value, priceInfo.currency)}
+                                </div>
+                                <div
+                                  title={`${getPriceConfidenceLabel(priceInfo)} · ${getPriceFieldLabel(priceInfo.field)}`}
+                                  style={{
+                                    color: priceMetaColor,
+                                    fontSize: '0.72rem',
+                                    marginTop: '0.15rem',
+                                  }}
+                                >
+                                  {getPartPriceMetaLabel(priceInfo, priceMode)}
+                                </div>
                               </div>
                             </div>
 
-                            <div
-                              style={{
-                                textAlign: 'right',
-                                whiteSpace: 'nowrap',
-                                marginLeft: '1rem',
-                              }}
-                            >
-                              <div
-                                style={{
-                                  color: priceInfo.isMissing ? 'var(--color-text-muted)' : 'var(--color-accent-gold)',
-                                  fontSize: '0.9rem',
-                                  fontWeight: 'bold',
+                            {activeReplacePartId === part.item.id && (
+                              <div 
+                                style={{ 
+                                  width: '100%', 
+                                  marginTop: '0.5rem', 
+                                  padding: '0.75rem', 
+                                  background: 'rgba(0, 0, 0, 0.3)', 
+                                  borderRadius: 'var(--radius-sm)', 
+                                  border: '1px solid var(--color-border)',
+                                  boxSizing: 'border-box'
                                 }}
                               >
-                                {formatCurrency(priceInfo.value, priceInfo.currency)}
+                                <div style={{ fontSize: '0.8rem', color: 'var(--color-accent-gold)', marginBottom: '0.5rem', fontWeight: 'bold', textTransform: 'uppercase', fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}>
+                                  Compatible Alternatives
+                                </div>
+                                {alternatives.length === 0 ? (
+                                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
+                                    No fully compatible alternative modules found in the database.
+                                  </div>
+                                ) : (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                    {alternatives.map(alt => {
+                                      const altPriceInfo = getSelectedPriceInfo(alt, priceMode);
+                                      const currentPriceInfo = getSelectedPriceInfo(part.item, priceMode);
+                                      
+                                      const ergoDiff = (alt.ergonomicsModifier || 0) - (part.item.ergonomicsModifier || 0);
+                                      const recoilDiff = (alt.recoilModifier || 0) - (part.item.recoilModifier || 0);
+                                      const priceDiff = altPriceInfo.value - currentPriceInfo.value;
+                                      const weightDiff = (alt.weight || 0) - (part.item.weight || 0);
+
+                                      const ergoDiffText = ergoDiff === 0 ? '0' : ergoDiff > 0 ? `+${parseFloat(ergoDiff.toFixed(2))}` : `${parseFloat(ergoDiff.toFixed(2))}`;
+                                      const recoilDiffText = recoilDiff === 0 ? '0%' : recoilDiff > 0 ? `+${parseFloat(recoilDiff.toFixed(2))}%` : `${parseFloat(recoilDiff.toFixed(2))}%`;
+                                      const weightDiffText = weightDiff === 0 ? '0 kg' : weightDiff > 0 ? `+${parseFloat(weightDiff.toFixed(3))} kg` : `${parseFloat(weightDiff.toFixed(3))} kg`;
+
+                                      return (
+                                        <div 
+                                          key={alt.id}
+                                          onClick={() => handleReplacePart(part.item, alt)}
+                                          style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            padding: '0.5rem',
+                                            background: 'rgba(0,0,0,0.2)',
+                                            border: '1px solid rgba(255,255,255,0.03)',
+                                            borderRadius: 'var(--radius-sm)',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s ease',
+                                            boxSizing: 'border-box'
+                                          }}
+                                          onMouseEnter={e => {
+                                            e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+                                            e.currentTarget.style.borderColor = 'var(--color-border-active)';
+                                          }}
+                                          onMouseLeave={e => {
+                                            e.currentTarget.style.background = 'rgba(0,0,0,0.2)';
+                                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.03)';
+                                          }}
+                                        >
+                                          <ImageWithLoader
+                                            src={alt.image512pxLink || alt.iconLink || 'https://via.placeholder.com/30'}
+                                            alt=""
+                                            style={{ width: '30px', height: '30px', objectFit: 'contain' }}
+                                            containerStyle={{ width: '30px', height: '30px', marginRight: '0.75rem' }}
+                                          />
+                                          <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontSize: '0.85rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                              {formatPartName(alt.shortName)}
+                                            </div>
+                                            <div style={{ fontSize: '0.72rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', color: 'var(--color-text-muted)' }}>
+                                              <span>
+                                                Ergo:{' '}
+                                                <strong style={{ color: ergoDiff > 0 ? 'var(--color-accent-green)' : ergoDiff < 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
+                                                  {ergoDiffText}
+                                                </strong>
+                                              </span>
+                                              <span>
+                                                Recoil:{' '}
+                                                <strong style={{ color: recoilDiff < 0 ? 'var(--color-accent-green)' : recoilDiff > 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
+                                                  {recoilDiffText}
+                                                </strong>
+                                              </span>
+                                              <span>
+                                                Weight:{' '}
+                                                <strong style={{ color: weightDiff < 0 ? 'var(--color-accent-green)' : weightDiff > 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
+                                                  {weightDiffText}
+                                                </strong>
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <div style={{ textAlign: 'right', marginLeft: '0.5rem' }}>
+                                            <div style={{ fontSize: '0.85rem', color: 'var(--color-accent-gold)', fontWeight: 'bold' }}>
+                                              {formatCurrency(altPriceInfo.value, altPriceInfo.currency)}
+                                            </div>
+                                            <div style={{ fontSize: '0.7rem', color: priceDiff < 0 ? 'var(--color-accent-green)' : priceDiff > 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
+                                              {priceDiff > 0 ? `+${formatCurrency(priceDiff, altPriceInfo.currency)}` : priceDiff < 0 ? formatCurrency(priceDiff, altPriceInfo.currency) : '0 RUB'}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
-                              <div
-                                title={`${getPriceConfidenceLabel(priceInfo)} · ${getPriceFieldLabel(priceInfo.field)}`}
-                                style={{
-                                  color: priceMetaColor,
-                                  fontSize: '0.72rem',
-                                  marginTop: '0.15rem',
-                                }}
-                              >
-                                {getPartPriceMetaLabel(priceInfo, priceMode)}
-                              </div>
-                            </div>
+                            )}
                           </li>
                         );
                       })}
@@ -752,6 +1117,26 @@ function Configurator() {
                 placeholder="No limit" 
                 value={maxWeight} 
                 onChange={e => setMaxWeight(e.target.value)} 
+                style={{ 
+                  width: '100%', 
+                  padding: '0.75rem', 
+                  backgroundColor: 'rgba(0,0,0,0.5)', 
+                  border: '1px solid var(--color-border)', 
+                  color: 'var(--color-text)',
+                  borderRadius: 'var(--radius-sm)',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }} 
+              />
+            </div>
+            
+            <div>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>Max Budget (RUB)</label>
+              <input 
+                type="number" 
+                placeholder="No limit" 
+                value={maxPrice} 
+                onChange={e => setMaxPrice(e.target.value)} 
                 style={{ 
                   width: '100%', 
                   padding: '0.75rem', 

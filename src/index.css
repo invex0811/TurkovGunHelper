@@ -1,5 +1,79 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Oswald:wght@400;500;600&display=swap');
 
+/* Стили для фонового экрана загрузки */
+#loader-wrapper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--color-bg-base); /* Использование переменной фона темы для бесшовного перехода */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  transition: opacity 0.5s ease, visibility 0.5s ease;
+}
+
+/* Контейнер для анимации */
+.loader {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Пульсирующие кольца */
+.loader-ring {
+  position: absolute;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 4px solid transparent;
+  border-top-color: var(--color-accent-gold-dark); /* Темное золото */
+  animation: spin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+
+.loader-ring:nth-child(2) {
+  animation-delay: -0.3s;
+  border-top-color: var(--color-accent-gold); /* Светлое золото */
+}
+
+.loader-ring:nth-child(3) {
+  animation-delay: -0.15s;
+  border-top-color: var(--color-text-main); /* Основной светлый текст */
+}
+
+/* Текст под лоадером */
+.loader-text {
+  margin-top: 110px;
+  color: var(--color-accent-gold);
+  font-family: var(--font-display);
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Анимация вращения */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Анимация пульсации текста */
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+/* Класс для скрытия лоадера */
+.loader-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 :root {
   /* Tarkov Theme Colors */
   --color-bg-base: #101112;
@@ -148,3 +222,56 @@ h1, h2, h3, h4, h5, h6 {
 .input-field::placeholder {
   color: var(--color-text-muted);
 }
+
+/* Shimmer Loader Effect */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 25%,
+    rgba(255, 255, 255, 0.1) 37%,
+    rgba(255, 255, 255, 0.03) 63%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.btn-replace-part {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--color-text-muted);
+  border-radius: var(--radius-sm);
+  padding: 0.15rem 0.4rem;
+  font-size: 0.7rem;
+  cursor: pointer;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  outline: none;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.btn-replace-part:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: var(--color-border-active);
+  color: var(--color-accent-gold);
+}
+
+.btn-replace-part.active {
+  background: var(--color-accent-gold-dark);
+  color: var(--color-bg-base);
+  border-color: var(--color-accent-gold-dark);
+}
+
+
