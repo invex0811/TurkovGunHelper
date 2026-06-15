@@ -7,6 +7,7 @@ function _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMa
   let hasSight = false;
   let hasSuppressorGlobal = hasCategory(weapon, 'Silencer');
   const maxWeight = Number(options.maxWeight) || 0;
+  const maxPrice = Number(options.maxPrice) || 0;
   const weightEpsilon = 0.0001;
 
   let targetCapacity = 30;
@@ -220,6 +221,7 @@ function getItemPrice(item) {
     currentWeight = totalWeight,
     parentBranchInstalledIds = new Set(),
     parentBranchConflicts = new Set(),
+    currentPrice = totalPrice,
   ) {
     const item = modMap[itemId];
     if (!item) return invalidBranchEvaluation();
@@ -233,13 +235,17 @@ function getItemPrice(item) {
       return invalidBranchEvaluation();
     }
 
+    const price = getItemPrice(item);
+    if (maxPrice > 0 && currentPrice + price > maxPrice) {
+      return invalidBranchEvaluation();
+    }
+
     if (options.forbidSuppressor && isSuppressor(item)) {
       return invalidBranchEvaluation();
     }
 
     const ergoMod = item.ergonomicsModifier || 0;
     const recoilMod = item.recoilModifier || 0;
-    const price = getItemPrice(item);
 
     const currentUsableErgo = Math.min(ergoCap, currentErgo);
     const newUsableErgo = Math.min(ergoCap, currentErgo + ergoMod);
@@ -273,6 +279,7 @@ function getItemPrice(item) {
 
     let branchErgo = Math.max(0, currentErgo + ergoMod);
     let branchTotalWeight = currentWeight + itemWeight;
+    let branchTotalPrice = currentPrice + price;
 
     const branchInstalledIds = new Set(parentBranchInstalledIds);
     branchInstalledIds.add(itemId);
@@ -317,6 +324,7 @@ function getItemPrice(item) {
             branchTotalWeight,
             branchInstalledIds,
             branchConflicts,
+            branchTotalPrice,
           );
 
           if (isBetterBranch(childEval, bestChildEval, mustFindSuppressor)) {
@@ -329,6 +337,7 @@ function getItemPrice(item) {
 
           branchErgo = Math.max(0, branchErgo + bestChildEval.statsDelta.ergonomics);
           branchTotalWeight += bestChildEval.statsDelta.weight;
+          branchTotalPrice += bestChildEval.statsDelta.price;
 
           bestChildEval.items.forEach(part => branchInstalledIds.add(part.item.id));
           bestChildEval.conflicts.forEach(conflictId => branchConflicts.add(conflictId));
@@ -381,12 +390,17 @@ function getItemPrice(item) {
 
         if (hasSight && hasCategory(item, 'Sights')) return;
 
-        const branchEval = evaluateBranch(slot.name, item.id, totalErgo, new Set(), totalWeight);
+        const branchEval = evaluateBranch(slot.name, item.id, totalErgo, new Set(), totalWeight, new Set(), new Set(), totalPrice);
         if (!branchEval.isValid) return;
 
         if (maxWeight > 0) {
           const hypotheticalWeight = totalWeight + branchEval.statsDelta.weight;
           if (hypotheticalWeight > maxWeight + weightEpsilon) return;
+        }
+
+        if (maxPrice > 0) {
+          const hypotheticalPrice = totalPrice + branchEval.statsDelta.price;
+          if (hypotheticalPrice > maxPrice) return;
         }
 
         const candidate = {
@@ -442,6 +456,9 @@ function getItemPrice(item) {
   }
   if (maxWeight > 0 && totalWeight > maxWeight + weightEpsilon) {
     warnings.push('The base weapon already exceeds the selected max weight.');
+  }
+  if (maxPrice > 0 && totalPrice > maxPrice) {
+    warnings.push('The build exceeds the selected max price.');
   }
   if (warnings.length > 0) {
     result.warning = warnings.join(' ');
@@ -514,3 +531,52 @@ export function calculateBestBuild(weapon, targetType, minErgo, maxRecoil, modMa
 
   return bestBuild;
 }
+
+export function recalculateBuildStats(weapon, buildParts, options = {}) {
+  let totalErgo = weapon.properties.ergonomics || 0;
+  let totalRecoilMod = 0;
+  let totalWeight = weapon.weight || 0;
+
+  function getRawItemPrice(item) {
+    return item.avg24hPrice
+      || item.lastLowPrice
+      || item.low24hPrice
+      || item.basePrice
+      || 0;
+  }
+
+  function getItemPrice(item) {
+    const expectedPriceMode = options.priceMode;
+    if (!expectedPriceMode || item.price?.mode === expectedPriceMode) {
+      return item.price?.value ?? getRawItemPrice(item);
+    }
+    return getRawItemPrice(item);
+  }
+
+  let totalPrice = getItemPrice(weapon);
+
+  buildParts.forEach(part => {
+    totalErgo += part.item.ergonomicsModifier || 0;
+    totalRecoilMod += part.item.recoilModifier || 0;
+    totalWeight += part.item.weight || 0;
+    totalPrice += getItemPrice(part.item);
+  });
+
+  const baseRecoilV = weapon.properties.recoilVertical || 0;
+  const baseRecoilH = weapon.properties.recoilHorizontal || 0;
+
+  const finalRecoilV = baseRecoilV * (1 + (totalRecoilMod / 100));
+  const finalRecoilH = baseRecoilH * (1 + (totalRecoilMod / 100));
+
+  return {
+    build: buildParts,
+    stats: {
+      ergonomics: Math.min(100, Math.max(0, Math.round(totalErgo))),
+      recoilVertical: Math.round(finalRecoilV),
+      recoilHorizontal: Math.round(finalRecoilH),
+      weight: totalWeight.toFixed(2),
+      price: Math.round(totalPrice),
+    }
+  };
+}
+

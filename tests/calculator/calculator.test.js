@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-import { calculateBestBuild } from '../../src/domain/calculator.js';
+import { calculateBestBuild, recalculateBuildStats } from '../../src/domain/calculator.js';
 
 const modsFixture = JSON.parse(fs.readFileSync(new URL('../fixtures/mods.json', import.meta.url), 'utf8'));
 const weaponFixture = JSON.parse(fs.readFileSync(new URL('../fixtures/weapon.json', import.meta.url), 'utf8'));
@@ -668,3 +668,112 @@ test('Magazine Selection Logic: should fallback to nearest capacity if exact mat
   assertInstalled(result60, mag60Drum.id);
   assertNotInstalled(result60, mag30Pmag.id);
 });
+
+test('Budget Limit Option: should restrict the build cost to maxPrice', () => {
+  const expensiveMod = createTestMod({
+    id: 'expensive_mod',
+    avg24hPrice: 100000,
+    basePrice: 100000,
+    ergonomicsModifier: 20,
+    recoilModifier: -10,
+  });
+  const cheapMod = createTestMod({
+    id: 'cheap_mod',
+    avg24hPrice: 1000,
+    basePrice: 1000,
+    ergonomicsModifier: 5,
+    recoilModifier: -2,
+  });
+
+  const testWeapon = createTestWeapon({
+    basePrice: 10000,
+    avg24hPrice: 10000,
+    slots: [createSlot('Stock', [expensiveMod.id, cheapMod.id])],
+  });
+
+  // Scenario 1: No budget limit, should choose expensiveMod for better stats
+  const resultNoLimit = calculateBestBuild(
+    testWeapon,
+    'meta',
+    70,
+    50,
+    createModMap(expensiveMod, cheapMod),
+    defaultOptions
+  );
+  assert.equal(resultNoLimit.error, undefined);
+  assertInstalled(resultNoLimit, expensiveMod.id);
+  assertNotInstalled(resultNoLimit, cheapMod.id);
+
+  // Scenario 2: Budget limit allows cheapMod but not expensiveMod
+  // Weapon (10000) + cheapMod (1000) = 11000 <= 12000
+  const resultWithLimit = calculateBestBuild(
+    testWeapon,
+    'meta',
+    70,
+    50,
+    createModMap(expensiveMod, cheapMod),
+    {
+      ...defaultOptions,
+      maxPrice: 12000,
+    }
+  );
+  assert.equal(resultWithLimit.error, undefined);
+  assertInstalled(resultWithLimit, cheapMod.id);
+  assertNotInstalled(resultWithLimit, expensiveMod.id);
+
+  // Scenario 3: Budget limit is too low, even weapon itself exceeds it
+  const resultTooLow = calculateBestBuild(
+    testWeapon,
+    'meta',
+    70,
+    50,
+    createModMap(expensiveMod, cheapMod),
+    {
+      ...defaultOptions,
+      maxPrice: 5000,
+    }
+  );
+  assert.match(resultTooLow.warning, /exceeds the selected max price/i);
+});
+
+test('recalculateBuildStats should correctly sum ergonomics, recoil, weight and price', () => {
+  const testWeapon = createTestWeapon({
+    ergonomics: 50,
+    recoilVertical: 100,
+    recoilHorizontal: 100,
+    weight: 2.0,
+    basePrice: 50000,
+    avg24hPrice: 50000,
+  });
+
+  const part1 = createTestMod({
+    id: 'part1',
+    ergonomicsModifier: 5,
+    recoilModifier: -3,
+    weight: 0.2,
+    basePrice: 10000,
+    avg24hPrice: 10000,
+  });
+
+  const part2 = createTestMod({
+    id: 'part2',
+    ergonomicsModifier: -2,
+    recoilModifier: -5,
+    weight: 0.3,
+    basePrice: 15000,
+    avg24hPrice: 15000,
+  });
+
+  const buildParts = [
+    { slotName: 'Stock', item: part1 },
+    { slotName: 'Foregrip', item: part2 },
+  ];
+
+  const result = recalculateBuildStats(testWeapon, buildParts);
+
+  assert.equal(result.stats.ergonomics, 53);
+  assert.equal(result.stats.recoilVertical, 92);
+  assert.equal(result.stats.recoilHorizontal, 92);
+  assert.equal(result.stats.weight, '2.50');
+  assert.equal(result.stats.price, 75000);
+});
