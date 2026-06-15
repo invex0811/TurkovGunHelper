@@ -131,13 +131,17 @@ function getItemPrice(item) {
   }
 
   function isValidSightForMode(item) {
+    const cats = (item.categories || []).map(c => c.name);
+    if (cats.includes('Thermal Vision') || cats.includes('Night Vision') || cats.includes('Special scope')) {
+      return false;
+    }
+
     const mode = options.sightMode || 'any';
     if (mode === 'any') return true;
-    const cats = (item.categories || []).map(c => c.name);
     if (cats.includes('Ironsight')) return false;
 
     const isReflex = cats.includes('Reflex sight') || cats.includes('Compact reflex sight');
-    const isMagnified = cats.includes('Scope') || cats.includes('Assault scope') || cats.includes('Special scope') || cats.includes('Thermal Vision');
+    const isMagnified = cats.includes('Scope') || cats.includes('Assault scope');
 
     if (mode === 'reflex') return isReflex;
     if (mode === 'scope') return isMagnified;
@@ -576,6 +580,7 @@ function getItemPrice(item) {
         isMount
         && bestCandidate.score <= 0
         && !(options.requireSuppressor && !hasSuppressorGlobal && bestCandidate.hasSuppressor)
+        && !(requireSight && !hasSight && bestCandidate.hasSight)
       ) {
         return;
       }
