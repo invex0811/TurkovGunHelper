@@ -1220,35 +1220,38 @@ function Configurator() {
               <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
                 Sight Zoom / Type
               </label>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <select
+                value={sightMode}
+                onChange={e => setSightMode(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  backgroundColor: 'rgba(0,0,0,0.5)',
+                  border: '1px solid var(--color-border)',
+                  color: 'var(--color-text)',
+                  borderRadius: 'var(--radius-sm)',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                  cursor: 'pointer'
+                }}
+              >
                 {[
                   { value: 'any', label: 'ANY' },
                   { value: 'reflex', label: 'REFLEX (1x)' },
-                  { value: 'scope', label: 'SCOPE' },
+                  { value: 'scope', label: 'SCOPE (Any zoom)' },
                   ...getAvailableZoomLevels(allMods)
                     .filter(z => z > 1)
-                    .map(z => ({ value: String(z), label: `${z}x` }))
-                ].map(option => {
-                  const isSelected = String(sightMode) === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      className={`btn ${isSelected ? '' : 'btn-outline'}`}
-                      onClick={() => setSightMode(option.value)}
-                      style={{
-                        padding: '0.75rem 1rem',
-                        fontSize: '0.85rem',
-                        borderColor: 'var(--color-accent-gold-dark)',
-                        color: isSelected ? 'var(--color-bg-base)' : 'var(--color-accent-gold)',
-                        background: isSelected ? 'var(--color-accent-gold-dark)' : 'transparent',
-                      }}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
+                    .map(z => ({ value: String(z), label: `${z}x Zoom` }))
+                ].map(option => (
+                  <option 
+                    key={option.value} 
+                    value={option.value}
+                    style={{ backgroundColor: 'var(--color-bg-base)', color: 'var(--color-text)' }}
+                  >
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
