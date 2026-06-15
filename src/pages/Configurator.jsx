@@ -1008,16 +1008,10 @@ function Configurator() {
 
                   <h4 style={{ marginTop: '1rem', marginBottom: '0.5rem', color: 'var(--color-accent-gold)', fontSize: '1.1rem' }}>Parts List</h4>
                   <div style={{ overflowY: 'auto', flex: 1, paddingRight: '0.5rem' }}>
-                    <ul style={{ listStyleType: 'none', padding: 0, margin: 0, width: '100%' }}>
-                      {buildResult.build.map((part, idx) => {
-                        const priceInfo = getSelectedPriceInfo(part.item, priceMode);
-                        const priceMetaColor = priceInfo.isMissing
-                          ? 'var(--color-accent-red)'
-                          : priceInfo.fallbackUsed
-                            ? 'var(--color-accent-gold-dark)'
-                            : 'var(--color-text-muted)';
-
-                        const assemblyTree = buildAssemblyTree(weapon, buildResult.build);
+                    {(() => {
+                      const assemblyTree = buildAssemblyTree(weapon, buildResult.build);
+                      
+                      function getRootSlotName(part) {
                         let targetNode = null;
                         function findNode(n) {
                           if (n.item.id === part.item.id) {
@@ -1028,223 +1022,303 @@ function Configurator() {
                         }
                         findNode(assemblyTree);
 
-                        const alternatives = targetNode 
-                          ? findCompatibleAlternatives(targetNode, allMods, buildResult, priceMode, sightMode).slice(0, 5) 
-                          : [];
+                        if (!targetNode) return part.slotName;
 
-                        return (
-                          <li
-                            key={idx}
-                            style={{
-                              padding: '0.75rem 0',
-                              borderBottom: '1px solid rgba(255,255,255,0.05)',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              alignItems: 'stretch',
-                              width: '100%',
-                              boxSizing: 'border-box',
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                              <ImageWithLoader
-                                src={part.item.image512pxLink || part.item.iconLink || 'https://via.placeholder.com/30'}
-                                alt=""
-                                style={{
-                                  width: '40px',
-                                  height: '40px',
-                                  objectFit: 'contain'
-                                }}
-                                containerStyle={{
-                                  width: '40px',
-                                  height: '40px',
-                                  marginRight: '1rem',
-                                  background: 'rgba(255,255,255,0.02)',
-                                  borderRadius: 'var(--radius-sm)',
-                                  border: '1px solid rgba(255,255,255,0.05)'
-                                }}
-                              />
+                        let curr = targetNode;
+                        while (curr.parent && curr.parent.parent !== null) {
+                          curr = curr.parent;
+                        }
+                        return curr.slotName;
+                      }
 
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                  <div style={{ fontSize: '0.95rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {formatPartName(part.item.shortName)}
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setActiveReplacePartId(activeReplacePartId === part.item.id ? null : part.item.id)}
-                                    className={`btn-replace-part ${activeReplacePartId === part.item.id ? 'active' : ''}`}
-                                    title="Replace this module with compatible alternatives"
-                                  >
-                                    <span style={{ display: 'inline-flex', transform: 'translateY(-1.5px)' }}>⇄</span>
-                                    <span style={{ display: 'inline-flex' }}>Replace</span>
-                                  </button>
-                                </div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                  Slot: {part.slotName}
-                                </div>
-                              </div>
+                      // Group parts by their root slot name
+                      const groups = [];
+                      const groupMap = new Map();
 
-                              <div
-                                style={{
-                                  textAlign: 'right',
-                                  whiteSpace: 'nowrap',
-                                  marginLeft: '1rem',
-                                }}
-                              >
-                                <div
+                      buildResult.build.forEach(part => {
+                        const rootSlot = getRootSlotName(part);
+                        let group = groupMap.get(rootSlot);
+                        if (!group) {
+                          group = {
+                            rootSlotName: rootSlot,
+                            parts: []
+                          };
+                          groupMap.set(rootSlot, group);
+                          groups.push(group);
+                        }
+                        group.parts.push(part);
+                      });
+
+                      return groups.map((group, groupIdx) => (
+                        <div
+                          key={groupIdx}
+                          style={{
+                            background: 'rgba(255, 255, 255, 0.015)',
+                            border: '1px solid rgba(255, 255, 255, 0.04)',
+                            borderRadius: 'var(--radius-md)',
+                            padding: '0.75rem 1rem',
+                            marginBottom: '1rem',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            boxSizing: 'border-box',
+                            width: '100%'
+                          }}
+                        >
+                          <div style={{ 
+                            fontSize: '0.75rem', 
+                            color: 'var(--color-accent-gold)', 
+                            fontWeight: 'bold', 
+                            textTransform: 'uppercase', 
+                            letterSpacing: '0.75px',
+                            borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
+                            paddingBottom: '0.4rem',
+                            fontFamily: 'var(--font-display)',
+                            marginBottom: '0.25rem'
+                          }}>
+                            {group.rootSlotName}
+                          </div>
+                          
+                          <ul style={{ listStyleType: 'none', padding: 0, margin: 0, width: '100%', display: 'flex', flexDirection: 'column' }}>
+                            {group.parts.map((part, partIdx) => {
+                              const priceInfo = getSelectedPriceInfo(part.item, priceMode);
+                              const priceMetaColor = priceInfo.isMissing
+                                ? 'var(--color-accent-red)'
+                                : priceInfo.fallbackUsed
+                                  ? 'var(--color-accent-gold-dark)'
+                                  : 'var(--color-text-muted)';
+
+                              let targetNode = null;
+                              function findNode(n) {
+                                if (n.item.id === part.item.id) {
+                                  targetNode = n;
+                                  return;
+                                }
+                                n.children.forEach(findNode);
+                              }
+                              findNode(assemblyTree);
+
+                              const alternatives = targetNode 
+                                ? findCompatibleAlternatives(targetNode, allMods, buildResult, priceMode, sightMode).slice(0, 5) 
+                                : [];
+
+                              const isLast = partIdx === group.parts.length - 1;
+
+                              return (
+                                <li
+                                  key={part.item.id}
                                   style={{
-                                    color: priceInfo.isMissing ? 'var(--color-text-muted)' : 'var(--color-accent-gold)',
-                                    fontSize: '0.9rem',
-                                    fontWeight: 'bold',
+                                    padding: '0.75rem 0',
+                                    borderBottom: isLast ? 'none' : '1px solid rgba(255, 255, 255, 0.03)',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'stretch',
+                                    width: '100%',
+                                    boxSizing: 'border-box',
                                   }}
                                 >
-                                  {formatCurrency(priceInfo.value, priceInfo.currency)}
-                                </div>
-                                <div
-                                  title={`${getPriceConfidenceLabel(priceInfo)} · ${getPriceFieldLabel(priceInfo.field)}`}
-                                  style={{
-                                    color: priceMetaColor,
-                                    fontSize: '0.72rem',
-                                    marginTop: '0.15rem',
-                                  }}
-                                >
-                                  {getPartPriceMetaLabel(priceInfo, priceMode)}
-                                </div>
-                              </div>
-                            </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                                    <ImageWithLoader
+                                      src={part.item.image512pxLink || part.item.iconLink || 'https://via.placeholder.com/30'}
+                                      alt=""
+                                      style={{
+                                        width: '40px',
+                                        height: '40px',
+                                        objectFit: 'contain'
+                                      }}
+                                      containerStyle={{
+                                        width: '40px',
+                                        height: '40px',
+                                        marginRight: '1rem',
+                                        background: 'rgba(255,255,255,0.02)',
+                                        borderRadius: 'var(--radius-sm)',
+                                        border: '1px solid rgba(255,255,255,0.05)'
+                                      }}
+                                    />
 
-                            {activeReplacePartId === part.item.id && (
-                              <div 
-                                style={{ 
-                                  width: '100%', 
-                                  marginTop: '0.5rem', 
-                                  padding: '0.75rem', 
-                                  background: 'rgba(0, 0, 0, 0.3)', 
-                                  borderRadius: 'var(--radius-sm)', 
-                                  border: '1px solid var(--color-border)',
-                                  boxSizing: 'border-box'
-                                }}
-                              >
-                                <div style={{ fontSize: '0.8rem', color: 'var(--color-accent-gold)', marginBottom: '0.5rem', fontWeight: 'bold', textTransform: 'uppercase', fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}>
-                                  Compatible Alternatives
-                                </div>
-                                {alternatives.length === 0 ? (
-                                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
-                                    No fully compatible alternative modules found in the database.
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                        <div style={{ fontSize: '0.95rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                          {formatPartName(part.item.shortName)}
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => setActiveReplacePartId(activeReplacePartId === part.item.id ? null : part.item.id)}
+                                          className={`btn-replace-part ${activeReplacePartId === part.item.id ? 'active' : ''}`}
+                                          title="Replace this module with compatible alternatives"
+                                        >
+                                          <span style={{ display: 'inline-flex', transform: 'translateY(-1.5px)' }}>⇄</span>
+                                          <span style={{ display: 'inline-flex' }}>Replace</span>
+                                        </button>
+                                      </div>
+                                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                        Slot: {part.slotName}
+                                      </div>
+                                    </div>
+
+                                    <div
+                                      style={{
+                                        textAlign: 'right',
+                                        whiteSpace: 'nowrap',
+                                        marginLeft: '1rem',
+                                      }}
+                                    >
+                                      <div
+                                        style={{
+                                          color: priceInfo.isMissing ? 'var(--color-text-muted)' : 'var(--color-accent-gold)',
+                                          fontSize: '0.9rem',
+                                          fontWeight: 'bold',
+                                        }}
+                                      >
+                                        {formatCurrency(priceInfo.value, priceInfo.currency)}
+                                      </div>
+                                      <div
+                                        title={`${getPriceConfidenceLabel(priceInfo)} · ${getPriceFieldLabel(priceInfo.field)}`}
+                                        style={{
+                                          color: priceMetaColor,
+                                          fontSize: '0.72rem',
+                                          marginTop: '0.15rem',
+                                        }}
+                                      >
+                                        {getPartPriceMetaLabel(priceInfo, priceMode)}
+                                      </div>
+                                    </div>
                                   </div>
-                                ) : (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                                     {(() => {
-                                       const targetSubtreeParts = [];
-                                       if (targetNode) {
-                                         function collectSubtreeParts(n) {
-                                           targetSubtreeParts.push(n.item);
-                                           n.children.forEach(collectSubtreeParts);
-                                         }
-                                         collectSubtreeParts(targetNode);
-                                       }
 
-                                       const baselinePrice = targetSubtreeParts.reduce((sum, item) => sum + getSelectedPriceInfo(item, priceMode).value, 0);
-                                       const baselineErgo = targetSubtreeParts.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
-                                       const baselineRecoil = targetSubtreeParts.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
-                                       const baselineWeight = targetSubtreeParts.reduce((sum, item) => sum + (item.weight || 0), 0);
+                                  {activeReplacePartId === part.item.id && (
+                                    <div 
+                                      style={{ 
+                                        width: '100%', 
+                                        marginTop: '0.5rem', 
+                                        padding: '0.75rem', 
+                                        background: 'rgba(0, 0, 0, 0.3)', 
+                                        borderRadius: 'var(--radius-sm)', 
+                                        border: '1px solid var(--color-border)',
+                                        boxSizing: 'border-box'
+                                      }}
+                                    >
+                                      <div style={{ fontSize: '0.8rem', color: 'var(--color-accent-gold)', marginBottom: '0.5rem', fontWeight: 'bold', textTransform: 'uppercase', fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}>
+                                        Compatible Alternatives
+                                      </div>
+                                      {alternatives.length === 0 ? (
+                                        <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
+                                          No fully compatible alternative modules found in the database.
+                                        </div>
+                                      ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                          {(() => {
+                                            const targetSubtreeParts = [];
+                                            if (targetNode) {
+                                              function collectSubtreeParts(n) {
+                                                targetSubtreeParts.push(n.item);
+                                                n.children.forEach(collectSubtreeParts);
+                                              }
+                                              collectSubtreeParts(targetNode);
+                                            }
 
-                                       return alternatives.map(alt => {
-                                         const altPriceInfo = getSelectedPriceInfo(alt, priceMode);
-                                         const altPriceValue = altPriceInfo.value + 
-                                           (alt.attachedScope ? getSelectedPriceInfo(alt.attachedScope, priceMode).value : 0);
-                                         
-                                         const ergoDiff = ((alt.ergonomicsModifier || 0) + (alt.attachedScope ? (alt.attachedScope.ergonomicsModifier || 0) : 0)) - baselineErgo;
-                                         const recoilDiff = ((alt.recoilModifier || 0) + (alt.attachedScope ? (alt.attachedScope.recoilModifier || 0) : 0)) - baselineRecoil;
-                                         const priceDiff = altPriceValue - baselinePrice;
-                                         const weightDiff = ((alt.weight || 0) + (alt.attachedScope ? (alt.attachedScope.weight || 0) : 0)) - baselineWeight;
-                                         
-                                         const ergoDiffText = ergoDiff === 0 ? '0' : ergoDiff > 0 ? `+${parseFloat(ergoDiff.toFixed(2))}` : `${parseFloat(ergoDiff.toFixed(2))}`;
-                                         const recoilDiffText = recoilDiff === 0 ? '0%' : recoilDiff > 0 ? `+${parseFloat(recoilDiff.toFixed(2))}%` : `${parseFloat(recoilDiff.toFixed(2))}%`;
-                                         const weightDiffText = weightDiff === 0 ? '0 kg' : weightDiff > 0 ? `+${parseFloat(weightDiff.toFixed(3))} kg` : `${parseFloat(weightDiff.toFixed(3))} kg`;
+                                            const baselinePrice = targetSubtreeParts.reduce((sum, item) => sum + getSelectedPriceInfo(item, priceMode).value, 0);
+                                            const baselineErgo = targetSubtreeParts.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
+                                            const baselineRecoil = targetSubtreeParts.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
+                                            const baselineWeight = targetSubtreeParts.reduce((sum, item) => sum + (item.weight || 0), 0);
 
-                                         return (
-                                           <div 
-                                             key={alt.id}
-                                             onClick={() => handleReplacePart(part.item, alt)}
-                                             style={{
-                                               display: 'flex',
-                                               alignItems: 'center',
-                                               padding: '0.5rem',
-                                               background: 'rgba(0,0,0,0.2)',
-                                               border: '1px solid rgba(255,255,255,0.03)',
-                                               borderRadius: 'var(--radius-sm)',
-                                               cursor: 'pointer',
-                                               transition: 'all 0.2s ease',
-                                               boxSizing: 'border-box'
-                                             }}
-                                             onMouseEnter={e => {
-                                               e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
-                                               e.currentTarget.style.borderColor = 'var(--color-border-active)';
-                                             }}
-                                             onMouseLeave={e => {
-                                               e.currentTarget.style.background = 'rgba(0,0,0,0.2)';
-                                               e.currentTarget.style.borderColor = 'rgba(255,255,255,0.03)';
-                                             }}
-                                           >
-                                             <ImageWithLoader
-                                               src={
-                                                 (alt.attachedScope && (alt.attachedScope.image512pxLink || alt.attachedScope.iconLink))
-                                                 || alt.image512pxLink 
-                                                 || alt.iconLink 
-                                                 || 'https://via.placeholder.com/30'
-                                               }
-                                               alt=""
-                                               style={{ width: '30px', height: '30px', objectFit: 'contain' }}
-                                               containerStyle={{ width: '30px', height: '30px', marginRight: '0.75rem' }}
-                                             />
-                                             <div style={{ flex: 1, minWidth: 0 }}>
-                                               <div style={{ fontSize: '0.85rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                 {alt.attachedScope 
-                                                   ? `${formatPartName(alt.shortName)} + ${formatPartName(alt.attachedScope.shortName)}` 
-                                                   : formatPartName(alt.shortName)}
-                                               </div>
-                                               <div style={{ fontSize: '0.72rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', color: 'var(--color-text-muted)' }}>
-                                                 <span>
-                                                   Ergo:{' '}
-                                                   <strong style={{ color: ergoDiff > 0 ? 'var(--color-accent-green)' : ergoDiff < 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
-                                                     {ergoDiffText}
-                                                   </strong>
-                                                 </span>
-                                                 <span>
-                                                   Recoil:{' '}
-                                                   <strong style={{ color: recoilDiff < 0 ? 'var(--color-accent-green)' : recoilDiff > 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
-                                                     {recoilDiffText}
-                                                   </strong>
-                                                 </span>
-                                                 <span>
-                                                   Weight:{' '}
-                                                   <strong style={{ color: weightDiff < 0 ? 'var(--color-accent-green)' : weightDiff > 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
-                                                     {weightDiffText}
-                                                   </strong>
-                                                 </span>
-                                               </div>
-                                             </div>
-                                             <div style={{ textAlign: 'right', marginLeft: '0.5rem' }}>
-                                               <div style={{ fontSize: '0.85rem', color: 'var(--color-accent-gold)', fontWeight: 'bold' }}>
-                                                 {formatCurrency(altPriceValue, altPriceInfo.currency)}
-                                               </div>
-                                               <div style={{ fontSize: '0.7rem', color: priceDiff < 0 ? 'var(--color-accent-green)' : priceDiff > 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
-                                                 {priceDiff > 0 ? `+${formatCurrency(priceDiff, altPriceInfo.currency)}` : priceDiff < 0 ? formatCurrency(priceDiff, altPriceInfo.currency) : '0 RUB'}
-                                               </div>
-                                             </div>
-                                           </div>
-                                         );
-                                       });
-                                     })()}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
+                                            return alternatives.map(alt => {
+                                              const altPriceInfo = getSelectedPriceInfo(alt, priceMode);
+                                              const altPriceValue = altPriceInfo.value + 
+                                                (alt.attachedScope ? getSelectedPriceInfo(alt.attachedScope, priceMode).value : 0);
+                                              
+                                              const ergoDiff = ((alt.ergonomicsModifier || 0) + (alt.attachedScope ? (alt.attachedScope.ergonomicsModifier || 0) : 0)) - baselineErgo;
+                                              const recoilDiff = ((alt.recoilModifier || 0) + (alt.attachedScope ? (alt.attachedScope.recoilModifier || 0) : 0)) - baselineRecoil;
+                                              const priceDiff = altPriceValue - baselinePrice;
+                                              const weightDiff = ((alt.weight || 0) + (alt.attachedScope ? (alt.attachedScope.weight || 0) : 0)) - baselineWeight;
+                                              
+                                              const ergoDiffText = ergoDiff === 0 ? '0' : ergoDiff > 0 ? `+${parseFloat(ergoDiff.toFixed(2))}` : `${parseFloat(ergoDiff.toFixed(2))}`;
+                                              const recoilDiffText = recoilDiff === 0 ? '0%' : recoilDiff > 0 ? `+${parseFloat(recoilDiff.toFixed(2))}%` : `${parseFloat(recoilDiff.toFixed(2))}%`;
+                                              const weightDiffText = weightDiff === 0 ? '0 kg' : weightDiff > 0 ? `+${parseFloat(weightDiff.toFixed(3))} kg` : `${parseFloat(weightDiff.toFixed(3))} kg`;
+
+                                              return (
+                                                <div 
+                                                  key={alt.id}
+                                                  onClick={() => handleReplacePart(part.item, alt)}
+                                                  style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    padding: '0.5rem',
+                                                    background: 'rgba(0,0,0,0.2)',
+                                                    border: '1px solid rgba(255,255,255,0.03)',
+                                                    borderRadius: 'var(--radius-sm)',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.2s ease',
+                                                    boxSizing: 'border-box'
+                                                  }}
+                                                  onMouseEnter={e => {
+                                                    e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+                                                    e.currentTarget.style.borderColor = 'var(--color-border-active)';
+                                                  }}
+                                                  onMouseLeave={e => {
+                                                    e.currentTarget.style.background = 'rgba(0,0,0,0.2)';
+                                                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.03)';
+                                                  }}
+                                                >
+                                                  <ImageWithLoader
+                                                    src={
+                                                      (alt.attachedScope && (alt.attachedScope.image512pxLink || alt.attachedScope.iconLink))
+                                                      || alt.image512pxLink 
+                                                      || alt.iconLink 
+                                                      || 'https://via.placeholder.com/30'
+                                                    }
+                                                    alt=""
+                                                    style={{ width: '30px', height: '30px', objectFit: 'contain' }}
+                                                    containerStyle={{ width: '30px', height: '30px', marginRight: '0.75rem' }}
+                                                  />
+                                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <div style={{ fontSize: '0.85rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                      {alt.attachedScope 
+                                                        ? `${formatPartName(alt.shortName)} + ${formatPartName(alt.attachedScope.shortName)}` 
+                                                        : formatPartName(alt.shortName)}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.72rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', color: 'var(--color-text-muted)' }}>
+                                                      <span>
+                                                        Ergo:{' '}
+                                                        <strong style={{ color: ergoDiff > 0 ? 'var(--color-accent-green)' : ergoDiff < 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
+                                                          {ergoDiffText}
+                                                        </strong>
+                                                      </span>
+                                                      <span>
+                                                        Recoil:{' '}
+                                                        <strong style={{ color: recoilDiff < 0 ? 'var(--color-accent-green)' : recoilDiff > 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
+                                                          {recoilDiffText}
+                                                        </strong>
+                                                      </span>
+                                                      <span>
+                                                        Weight:{' '}
+                                                        <strong style={{ color: weightDiff < 0 ? 'var(--color-accent-green)' : weightDiff > 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
+                                                          {weightDiffText}
+                                                        </strong>
+                                                      </span>
+                                                    </div>
+                                                  </div>
+                                                  <div style={{ textAlign: 'right', marginLeft: '0.5rem' }}>
+                                                    <div style={{ fontSize: '0.85rem', color: 'var(--color-accent-gold)', fontWeight: 'bold' }}>
+                                                      {formatCurrency(altPriceValue, altPriceInfo.currency)}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.7rem', color: priceDiff < 0 ? 'var(--color-accent-green)' : priceDiff > 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
+                                                      {priceDiff > 0 ? `+${formatCurrency(priceDiff, altPriceInfo.currency)}` : priceDiff < 0 ? formatCurrency(priceDiff, altPriceInfo.currency) : '0 RUB'}
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              );
+                                            });
+                                          })()}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      ));
+                    })()}
                   </div>
                 </>
               )}
