@@ -116,7 +116,39 @@ function calculateSimilarityDistance(a, b, priceMode) {
   return dErgo + dRecoil + dWeight + dPrice;
 }
 
-function findCompatibleAlternatives(node, allMods, currentBuild, priceMode) {
+function isValidSightForMode(item, sightMode) {
+  const cats = (item.categories || []).map(c => c.name);
+  if (cats.includes('Thermal Vision') || cats.includes('Night Vision') || cats.includes('Special scope')) {
+    return false;
+  }
+
+  const mode = sightMode || 'any';
+  if (mode === 'none' || mode === 'any') return true;
+  if (cats.includes('Ironsight')) return false;
+
+  const isReflex = cats.includes('Reflex sight') || cats.includes('Compact reflex sight');
+  const isMagnified = cats.includes('Scope') || cats.includes('Assault scope');
+
+  if (mode === 'reflex') return isReflex;
+  if (mode === 'scope') return isMagnified;
+
+  const parsedMode = Number(mode);
+  if (!isNaN(parsedMode)) {
+    const zoomLevels = item.properties?.zoomLevels;
+    if (zoomLevels) {
+      const flatZooms = zoomLevels.flat();
+      return flatZooms.includes(parsedMode);
+    }
+    if (parsedMode === 1) {
+      return isReflex;
+    }
+    return false;
+  }
+
+  return true;
+}
+
+function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sightMode) {
   if (!node || !node.parent) return [];
 
   const parentItem = node.parent.item;
@@ -158,6 +190,13 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode) {
 
     const altItem = allMods[modId];
     if (!altItem) return;
+
+    const altCats = (altItem.categories || []).map(c => c.name);
+    if (altCats.includes('Sights')) {
+      if (!isValidSightForMode(altItem, sightMode)) {
+        return;
+      }
+    }
 
     let isCompatibleWithChildren = true;
     for (const childNode of node.children) {
@@ -837,7 +876,7 @@ function Configurator() {
                         findNode(assemblyTree);
 
                         const alternatives = targetNode 
-                          ? findCompatibleAlternatives(targetNode, allMods, buildResult, priceMode).slice(0, 5) 
+                          ? findCompatibleAlternatives(targetNode, allMods, buildResult, priceMode, sightMode).slice(0, 5) 
                           : [];
 
                         return (
