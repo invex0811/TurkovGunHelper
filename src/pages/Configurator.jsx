@@ -82,14 +82,20 @@ function buildAssemblyTree(weapon, buildParts) {
   return root;
 }
 
-function calculateSimilarityDistance(a, b, priceMode) {
-  const ergoA = a.ergonomicsModifier || 0;
-  const ergoB = b.ergonomicsModifier || 0;
-  const recoilA = a.recoilModifier || 0;
-  const recoilB = b.recoilModifier || 0;
-  const weightA = a.weight || 0;
-  const weightB = b.weight || 0;
-  
+function calculateSimilarityDistance(node, b, priceMode) {
+  const subtreeParts = [];
+  function collect(n) {
+    if (n && n.item) {
+      subtreeParts.push(n.item);
+      (n.children || []).forEach(collect);
+    }
+  }
+  collect(node);
+
+  const ergoA = subtreeParts.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
+  const recoilA = subtreeParts.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
+  const weightA = subtreeParts.reduce((sum, item) => sum + (item.weight || 0), 0);
+
   function getRawPrice(item) {
     return item.avg24hPrice
       || item.lastLowPrice
@@ -105,14 +111,18 @@ function calculateSimilarityDistance(a, b, priceMode) {
     return getRawPrice(item);
   }
 
-  const priceA = getPrice(a);
-  const priceB = getPrice(b);
-  
+  const priceA = subtreeParts.reduce((sum, item) => sum + getPrice(item), 0);
+
+  const ergoB = (b.ergonomicsModifier || 0) + (b.attachedScope ? (b.attachedScope.ergonomicsModifier || 0) : 0);
+  const recoilB = (b.recoilModifier || 0) + (b.attachedScope ? (b.attachedScope.recoilModifier || 0) : 0);
+  const weightB = (b.weight || 0) + (b.attachedScope ? (b.attachedScope.weight || 0) : 0);
+  const priceB = getPrice(b) + (b.attachedScope ? getPrice(b.attachedScope) : 0);
+
   const dErgo = Math.abs(ergoA - ergoB) * 1.5;
   const dRecoil = Math.abs(recoilA - recoilB) * 4.0;
   const dWeight = Math.abs(weightA - weightB) * 2.0;
   const dPrice = Math.abs(priceA - priceB) * 0.0001;
-  
+
   return dErgo + dRecoil + dWeight + dPrice;
 }
 
@@ -146,6 +156,31 @@ function isValidSightForMode(item, sightMode) {
   }
 
   return true;
+}
+
+function scoreScope(item, priceMode) {
+  const ergo = item.ergonomicsModifier || 0;
+  const recoil = item.recoilModifier || 0;
+  const weight = item.weight || 0;
+  
+  function getRawPrice(it) {
+    return it.avg24hPrice
+      || it.lastLowPrice
+      || it.low24hPrice
+      || it.basePrice
+      || 0;
+  }
+
+  function getPrice(it) {
+    if (!priceMode || it.price?.mode === priceMode) {
+      return it.price?.value ?? getRawPrice(it);
+    }
+    return getRawPrice(it);
+  }
+
+  const price = getPrice(item);
+
+  return ergo - recoil * 5 - weight * 10 - (price > 0 ? price * 0.0001 : 0);
 }
 
 function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sightMode) {
@@ -192,6 +227,49 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
     if (!altItem) return;
 
     const altCats = (altItem.categories || []).map(c => c.name);
+    
+    // Bundle-forming logic for mounts:
+    const isMount = altCats.includes('Mount');
+    let sightSlot = null;
+    let bestScope = null;
+    
+    if (isMount) {
+      const slots = altItem.properties?.slots || [];
+      for (const slot of slots) {
+        const allowedSights = (slot.filters?.allowedItems || []).filter(a => {
+          const allowedItem = allMods[a.id];
+          if (!allowedItem) return false;
+          const allowedCats = (allowedItem.categories || []).map(c => c.name);
+          return allowedCats.includes('Sights');
+        });
+        if (allowedSights.length > 0) {
+          sightSlot = slot;
+          break;
+        }
+      }
+      
+      if (sightSlot) {
+        let bestScopeScore = -Infinity;
+        const allowedItems = sightSlot.filters?.allowedItems || [];
+        for (const allowed of allowedItems) {
+          const scopeItem = allMods[allowed.id];
+          if (!scopeItem) continue;
+          
+          if (!isValidSightForMode(scopeItem, sightMode)) continue;
+          
+          const score = scoreScope(scopeItem, priceMode);
+          if (score > bestScopeScore) {
+            bestScopeScore = score;
+            bestScope = scopeItem;
+          }
+        }
+      }
+      
+      if (sightSlot && !bestScope) {
+        return; // Skip this mount because no compatible scope was found for the current sightMode
+      }
+    }
+
     if (altCats.includes('Sights')) {
       if (!isValidSightForMode(altItem, sightMode)) {
         return;
@@ -232,12 +310,20 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
     }
     if (hasConflict) return;
 
-    alternatives.push(altItem);
+    let altToPush = altItem;
+    if (isMount && sightSlot && bestScope) {
+      altToPush = {
+        ...altItem,
+        attachedScope: bestScope,
+        attachedScopeSlotName: sightSlot.name
+      };
+    }
+    alternatives.push(altToPush);
   });
 
   alternatives.sort((a, b) => {
-    const distA = calculateSimilarityDistance(node.item, a, priceMode);
-    const distB = calculateSimilarityDistance(node.item, b, priceMode);
+    const distA = calculateSimilarityDistance(node, a, priceMode);
+    const distB = calculateSimilarityDistance(node, b, priceMode);
     return distA - distB;
   });
 
@@ -653,15 +739,44 @@ function Configurator() {
   const handleReplacePart = (targetPart, alternativeItem) => {
     if (!buildResult) return;
     
-    const updatedBuild = buildResult.build.map(part => {
+    const assemblyTree = buildAssemblyTree(weapon, buildResult.build);
+    let targetNode = null;
+    function findNode(n) {
+      if (n.item.id === targetPart.id) {
+        targetNode = n;
+        return;
+      }
+      n.children.forEach(findNode);
+    }
+    findNode(assemblyTree);
+
+    const subtreeIds = new Set();
+    if (targetNode) {
+      function collectSubtree(n) {
+        subtreeIds.add(n.item.id);
+        n.children.forEach(collectSubtree);
+      }
+      collectSubtree(targetNode);
+    }
+
+    const updatedBuild = [];
+    buildResult.build.forEach(part => {
       if (part.item.id === targetPart.id) {
-        return {
+        updatedBuild.push({
           ...part,
           item: alternativeItem
-        };
+        });
+      } else if (!subtreeIds.has(part.item.id)) {
+        updatedBuild.push(part);
       }
-      return part;
     });
+
+    if (alternativeItem.attachedScope && alternativeItem.attachedScopeSlotName) {
+      updatedBuild.push({
+        slotName: alternativeItem.attachedScopeSlotName,
+        item: alternativeItem.attachedScope
+      });
+    }
 
     const updatedResult = recalculateBuildStats(weapon, updatedBuild, { priceMode });
     
@@ -981,85 +1096,104 @@ function Configurator() {
                                   </div>
                                 ) : (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                                    {alternatives.map(alt => {
-                                      const altPriceInfo = getSelectedPriceInfo(alt, priceMode);
-                                      const currentPriceInfo = getSelectedPriceInfo(part.item, priceMode);
-                                      
-                                      const ergoDiff = (alt.ergonomicsModifier || 0) - (part.item.ergonomicsModifier || 0);
-                                      const recoilDiff = (alt.recoilModifier || 0) - (part.item.recoilModifier || 0);
-                                      const priceDiff = altPriceInfo.value - currentPriceInfo.value;
-                                      const weightDiff = (alt.weight || 0) - (part.item.weight || 0);
+                                     {(() => {
+                                       const targetSubtreeParts = [];
+                                       if (targetNode) {
+                                         function collectSubtreeParts(n) {
+                                           targetSubtreeParts.push(n.item);
+                                           n.children.forEach(collectSubtreeParts);
+                                         }
+                                         collectSubtreeParts(targetNode);
+                                       }
 
-                                      const ergoDiffText = ergoDiff === 0 ? '0' : ergoDiff > 0 ? `+${parseFloat(ergoDiff.toFixed(2))}` : `${parseFloat(ergoDiff.toFixed(2))}`;
-                                      const recoilDiffText = recoilDiff === 0 ? '0%' : recoilDiff > 0 ? `+${parseFloat(recoilDiff.toFixed(2))}%` : `${parseFloat(recoilDiff.toFixed(2))}%`;
-                                      const weightDiffText = weightDiff === 0 ? '0 kg' : weightDiff > 0 ? `+${parseFloat(weightDiff.toFixed(3))} kg` : `${parseFloat(weightDiff.toFixed(3))} kg`;
+                                       const baselinePrice = targetSubtreeParts.reduce((sum, item) => sum + getSelectedPriceInfo(item, priceMode).value, 0);
+                                       const baselineErgo = targetSubtreeParts.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
+                                       const baselineRecoil = targetSubtreeParts.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
+                                       const baselineWeight = targetSubtreeParts.reduce((sum, item) => sum + (item.weight || 0), 0);
 
-                                      return (
-                                        <div 
-                                          key={alt.id}
-                                          onClick={() => handleReplacePart(part.item, alt)}
-                                          style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            padding: '0.5rem',
-                                            background: 'rgba(0,0,0,0.2)',
-                                            border: '1px solid rgba(255,255,255,0.03)',
-                                            borderRadius: 'var(--radius-sm)',
-                                            cursor: 'pointer',
-                                            transition: 'all 0.2s ease',
-                                            boxSizing: 'border-box'
-                                          }}
-                                          onMouseEnter={e => {
-                                            e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
-                                            e.currentTarget.style.borderColor = 'var(--color-border-active)';
-                                          }}
-                                          onMouseLeave={e => {
-                                            e.currentTarget.style.background = 'rgba(0,0,0,0.2)';
-                                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.03)';
-                                          }}
-                                        >
-                                          <ImageWithLoader
-                                            src={alt.image512pxLink || alt.iconLink || 'https://via.placeholder.com/30'}
-                                            alt=""
-                                            style={{ width: '30px', height: '30px', objectFit: 'contain' }}
-                                            containerStyle={{ width: '30px', height: '30px', marginRight: '0.75rem' }}
-                                          />
-                                          <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div style={{ fontSize: '0.85rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                              {formatPartName(alt.shortName)}
-                                            </div>
-                                            <div style={{ fontSize: '0.72rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', color: 'var(--color-text-muted)' }}>
-                                              <span>
-                                                Ergo:{' '}
-                                                <strong style={{ color: ergoDiff > 0 ? 'var(--color-accent-green)' : ergoDiff < 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
-                                                  {ergoDiffText}
-                                                </strong>
-                                              </span>
-                                              <span>
-                                                Recoil:{' '}
-                                                <strong style={{ color: recoilDiff < 0 ? 'var(--color-accent-green)' : recoilDiff > 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
-                                                  {recoilDiffText}
-                                                </strong>
-                                              </span>
-                                              <span>
-                                                Weight:{' '}
-                                                <strong style={{ color: weightDiff < 0 ? 'var(--color-accent-green)' : weightDiff > 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
-                                                  {weightDiffText}
-                                                </strong>
-                                              </span>
-                                            </div>
-                                          </div>
-                                          <div style={{ textAlign: 'right', marginLeft: '0.5rem' }}>
-                                            <div style={{ fontSize: '0.85rem', color: 'var(--color-accent-gold)', fontWeight: 'bold' }}>
-                                              {formatCurrency(altPriceInfo.value, altPriceInfo.currency)}
-                                            </div>
-                                            <div style={{ fontSize: '0.7rem', color: priceDiff < 0 ? 'var(--color-accent-green)' : priceDiff > 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
-                                              {priceDiff > 0 ? `+${formatCurrency(priceDiff, altPriceInfo.currency)}` : priceDiff < 0 ? formatCurrency(priceDiff, altPriceInfo.currency) : '0 RUB'}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
+                                       return alternatives.map(alt => {
+                                         const altPriceInfo = getSelectedPriceInfo(alt, priceMode);
+                                         const altPriceValue = altPriceInfo.value + 
+                                           (alt.attachedScope ? getSelectedPriceInfo(alt.attachedScope, priceMode).value : 0);
+                                         
+                                         const ergoDiff = ((alt.ergonomicsModifier || 0) + (alt.attachedScope ? (alt.attachedScope.ergonomicsModifier || 0) : 0)) - baselineErgo;
+                                         const recoilDiff = ((alt.recoilModifier || 0) + (alt.attachedScope ? (alt.attachedScope.recoilModifier || 0) : 0)) - baselineRecoil;
+                                         const priceDiff = altPriceValue - baselinePrice;
+                                         const weightDiff = ((alt.weight || 0) + (alt.attachedScope ? (alt.attachedScope.weight || 0) : 0)) - baselineWeight;
+                                         
+                                         const ergoDiffText = ergoDiff === 0 ? '0' : ergoDiff > 0 ? `+${parseFloat(ergoDiff.toFixed(2))}` : `${parseFloat(ergoDiff.toFixed(2))}`;
+                                         const recoilDiffText = recoilDiff === 0 ? '0%' : recoilDiff > 0 ? `+${parseFloat(recoilDiff.toFixed(2))}%` : `${parseFloat(recoilDiff.toFixed(2))}%`;
+                                         const weightDiffText = weightDiff === 0 ? '0 kg' : weightDiff > 0 ? `+${parseFloat(weightDiff.toFixed(3))} kg` : `${parseFloat(weightDiff.toFixed(3))} kg`;
+
+                                         return (
+                                           <div 
+                                             key={alt.id}
+                                             onClick={() => handleReplacePart(part.item, alt)}
+                                             style={{
+                                               display: 'flex',
+                                               alignItems: 'center',
+                                               padding: '0.5rem',
+                                               background: 'rgba(0,0,0,0.2)',
+                                               border: '1px solid rgba(255,255,255,0.03)',
+                                               borderRadius: 'var(--radius-sm)',
+                                               cursor: 'pointer',
+                                               transition: 'all 0.2s ease',
+                                               boxSizing: 'border-box'
+                                             }}
+                                             onMouseEnter={e => {
+                                               e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+                                               e.currentTarget.style.borderColor = 'var(--color-border-active)';
+                                             }}
+                                             onMouseLeave={e => {
+                                               e.currentTarget.style.background = 'rgba(0,0,0,0.2)';
+                                               e.currentTarget.style.borderColor = 'rgba(255,255,255,0.03)';
+                                             }}
+                                           >
+                                             <ImageWithLoader
+                                               src={alt.image512pxLink || alt.iconLink || 'https://via.placeholder.com/30'}
+                                               alt=""
+                                               style={{ width: '30px', height: '30px', objectFit: 'contain' }}
+                                               containerStyle={{ width: '30px', height: '30px', marginRight: '0.75rem' }}
+                                             />
+                                             <div style={{ flex: 1, minWidth: 0 }}>
+                                               <div style={{ fontSize: '0.85rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                 {alt.attachedScope 
+                                                   ? `${formatPartName(alt.shortName)} + ${formatPartName(alt.attachedScope.shortName)}` 
+                                                   : formatPartName(alt.shortName)}
+                                               </div>
+                                               <div style={{ fontSize: '0.72rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', color: 'var(--color-text-muted)' }}>
+                                                 <span>
+                                                   Ergo:{' '}
+                                                   <strong style={{ color: ergoDiff > 0 ? 'var(--color-accent-green)' : ergoDiff < 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
+                                                     {ergoDiffText}
+                                                   </strong>
+                                                 </span>
+                                                 <span>
+                                                   Recoil:{' '}
+                                                   <strong style={{ color: recoilDiff < 0 ? 'var(--color-accent-green)' : recoilDiff > 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
+                                                     {recoilDiffText}
+                                                   </strong>
+                                                 </span>
+                                                 <span>
+                                                   Weight:{' '}
+                                                   <strong style={{ color: weightDiff < 0 ? 'var(--color-accent-green)' : weightDiff > 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
+                                                     {weightDiffText}
+                                                   </strong>
+                                                 </span>
+                                               </div>
+                                             </div>
+                                             <div style={{ textAlign: 'right', marginLeft: '0.5rem' }}>
+                                               <div style={{ fontSize: '0.85rem', color: 'var(--color-accent-gold)', fontWeight: 'bold' }}>
+                                                 {formatCurrency(altPriceValue, altPriceInfo.currency)}
+                                               </div>
+                                               <div style={{ fontSize: '0.7rem', color: priceDiff < 0 ? 'var(--color-accent-green)' : priceDiff > 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
+                                                 {priceDiff > 0 ? `+${formatCurrency(priceDiff, altPriceInfo.currency)}` : priceDiff < 0 ? formatCurrency(priceDiff, altPriceInfo.currency) : '0 RUB'}
+                                               </div>
+                                             </div>
+                                           </div>
+                                         );
+                                       });
+                                     })()}
                                   </div>
                                 )}
                               </div>
