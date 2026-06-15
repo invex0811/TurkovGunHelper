@@ -193,11 +193,19 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
   const allowedIds = new Set((parentSlot.filters?.allowedItems || []).map(a => a.id));
   
   const subtreeIds = new Set();
-  function collectSubtreeIds(n) {
-    subtreeIds.add(n.item.id);
-    n.children.forEach(collectSubtreeIds);
+  const subtreeParts = [];
+  function collectSubtree(n) {
+    if (n && n.item) {
+      subtreeIds.add(n.item.id);
+      subtreeParts.push(n.item);
+      (n.children || []).forEach(collectSubtree);
+    }
   }
-  collectSubtreeIds(node);
+  collectSubtree(node);
+
+  const currentSight = subtreeParts.find(item => 
+    (item.categories || []).map(c => c.name).includes('Sights')
+  );
 
   const remainingInstalledIds = new Set();
   function collectRemaining(n) {
@@ -225,6 +233,9 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
 
     const altItem = allMods[modId];
     if (!altItem) return;
+
+    // Do not suggest the exact same sight that is currently installed
+    if (currentSight && altItem.id === currentSight.id) return;
 
     const altCats = (altItem.categories || []).map(c => c.name);
     
@@ -256,6 +267,9 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
           if (!scopeItem) continue;
           
           if (!isValidSightForMode(scopeItem, sightMode)) continue;
+
+          // Do not suggest mounting the exact same sight that is already installed
+          if (currentSight && scopeItem.id === currentSight.id) continue;
           
           const score = scoreScope(scopeItem, priceMode);
           if (score > bestScopeScore) {
@@ -321,13 +335,37 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
     alternatives.push(altToPush);
   });
 
-  alternatives.sort((a, b) => {
+  // Group by unique sight ID to avoid duplicates of the same scope with different mounts.
+  // We keep the one that has the smallest similarity distance to the current node.
+  const uniqueAlternatives = new Map();
+  alternatives.forEach(alt => {
+    const isSightOrHasAttached = (alt.categories || []).map(c => c.name).includes('Sights') || alt.attachedScope;
+    if (isSightOrHasAttached) {
+      const sightId = alt.attachedScope ? alt.attachedScope.id : alt.id;
+      const existing = uniqueAlternatives.get(sightId);
+      if (!existing) {
+        uniqueAlternatives.set(sightId, alt);
+      } else {
+        const distAlt = calculateSimilarityDistance(node, alt, priceMode);
+        const distExisting = calculateSimilarityDistance(node, existing, priceMode);
+        if (distAlt < distExisting) {
+          uniqueAlternatives.set(sightId, alt);
+        }
+      }
+    } else {
+      uniqueAlternatives.set(alt.id, alt);
+    }
+  });
+
+  const filteredAlternatives = Array.from(uniqueAlternatives.values());
+
+  filteredAlternatives.sort((a, b) => {
     const distA = calculateSimilarityDistance(node, a, priceMode);
     const distB = calculateSimilarityDistance(node, b, priceMode);
     return distA - distB;
   });
 
-  return alternatives;
+  return filteredAlternatives;
 }
 
 function formatPartName(name) {
@@ -1150,7 +1188,12 @@ function Configurator() {
                                              }}
                                            >
                                              <ImageWithLoader
-                                               src={alt.image512pxLink || alt.iconLink || 'https://via.placeholder.com/30'}
+                                               src={
+                                                 (alt.attachedScope && (alt.attachedScope.image512pxLink || alt.attachedScope.iconLink))
+                                                 || alt.image512pxLink 
+                                                 || alt.iconLink 
+                                                 || 'https://via.placeholder.com/30'
+                                               }
                                                alt=""
                                                style={{ width: '30px', height: '30px', objectFit: 'contain' }}
                                                containerStyle={{ width: '30px', height: '30px', marginRight: '0.75rem' }}
