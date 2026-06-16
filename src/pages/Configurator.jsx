@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import {
   PRICE_CONFIDENCE,
   PRICE_MODE_LABELS,
   PRICE_MODE_OPTIONS,
-  PRICE_MODES,
 } from '../data/price/priceModes.js';
 import {
   loadPriceModePreference,
@@ -95,6 +94,43 @@ function buildAssemblyTree(weapon, buildParts) {
   return root;
 }
 
+function getAlternativeAttachedParts(item) {
+  if (Array.isArray(item.attachedParts)) {
+    return item.attachedParts.map(part => part.item);
+  }
+
+  return item.attachedScope ? [item.attachedScope] : [];
+}
+
+function getAlternativePackageItems(item) {
+  return [item, ...getAlternativeAttachedParts(item)];
+}
+
+function getAlternativeSight(item) {
+  if (item.attachedScope) return item.attachedScope;
+  return isSightItem(item) ? item : null;
+}
+
+function getAlternativeListKey(item) {
+  if (Array.isArray(item.attachedParts) && item.attachedParts.length > 0) {
+    return [item.id, ...item.attachedParts.map(part => part.item.id)].join('-');
+  }
+
+  return item.attachedScope ? `${item.id}-${item.attachedScope.id}` : item.id;
+}
+
+function getAlternativeDisplayName(item) {
+  if (Array.isArray(item.attachedParts) && item.attachedParts.length > 0) {
+    return [item, ...item.attachedParts.map(part => part.item)]
+      .map(part => formatPartName(part.shortName))
+      .join(' + ');
+  }
+
+  return item.attachedScope
+    ? `${formatPartName(item.shortName)} + ${formatPartName(item.attachedScope.shortName)}`
+    : formatPartName(item.shortName);
+}
+
 function calculateSimilarityDistance(node, b, priceMode) {
   const subtreeParts = [];
   function collect(n) {
@@ -126,10 +162,11 @@ function calculateSimilarityDistance(node, b, priceMode) {
 
   const priceA = subtreeParts.reduce((sum, item) => sum + getPrice(item), 0);
 
-  const ergoB = (b.ergonomicsModifier || 0) + (b.attachedScope ? (b.attachedScope.ergonomicsModifier || 0) : 0);
-  const recoilB = (b.recoilModifier || 0) + (b.attachedScope ? (b.attachedScope.recoilModifier || 0) : 0);
-  const weightB = (b.weight || 0) + (b.attachedScope ? (b.attachedScope.weight || 0) : 0);
-  const priceB = getPrice(b) + (b.attachedScope ? getPrice(b.attachedScope) : 0);
+  const packageItems = getAlternativePackageItems(b);
+  const ergoB = packageItems.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
+  const recoilB = packageItems.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
+  const weightB = packageItems.reduce((sum, item) => sum + (item.weight || 0), 0);
+  const priceB = packageItems.reduce((sum, item) => sum + getPrice(item), 0);
 
   const dErgo = Math.abs(ergoA - ergoB) * 1.5;
   const dRecoil = Math.abs(recoilA - recoilB) * 4.0;
@@ -198,54 +235,101 @@ function scoreScope(item, priceMode) {
   return ergo - recoil * 5 - weight * 10 - (price > 0 ? price * 0.0001 : 0);
 }
 
-function isSightOrSightMount(node) {
-  if (!node) return false;
-  let hasSight = false;
-  function check(n) {
-    if (!n || !n.item) return;
-    const cats = (n.item.categories || []).map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
-    if (cats.includes('sights')) {
-      hasSight = true;
-      return;
-    }
-    (n.children || []).forEach(check);
-  }
-  check(node);
-  return hasSight;
+function getCategoryNames(item) {
+  if (!item || !item.categories) return [];
+  return item.categories.map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
 }
 
-function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sightMode) {
-  if (!node || !node.parent) return [];
+function isSightItem(item) {
+  return getCategoryNames(item).includes('sights');
+}
 
-  const parentItem = node.parent.item;
-  const parentSlot = parentItem.properties?.slots?.find(s => s.name === node.slotName);
+function isMountItem(item) {
+  return getCategoryNames(item).includes('mount');
+}
+
+function subtreeHasSight(node) {
+  if (!node) return false;
+  if (isSightItem(node.item)) return true;
+  return (node.children || []).some(subtreeHasSight);
+}
+
+function findSightNode(n) {
+  if (!n) return null;
+  if (isSightItem(n.item)) return n;
+  for (const child of n.children) {
+    const res = findSightNode(child);
+    if (res) return res;
+  }
+  return null;
+}
+
+function getReplaceTarget(node, mode) {
+  if (!node) return null;
+  
+  if (mode === 'EXACT_ITEM') {
+    return node;
+  }
+  
+  if (mode === 'SIGHT_ITEM') {
+    const sightNode = findSightNode(node);
+    return sightNode || node;
+  }
+  
+  if (mode === 'SIGHT_MOUNT') {
+    let curr = node;
+    while (curr) {
+      if (isMountItem(curr.item)) {
+        return curr;
+      }
+      curr = curr.parent;
+    }
+    return node;
+  }
+  
+  if (mode === 'SIGHT_ASSEMBLY') {
+    let curr = node;
+    let assemblyRoot = node;
+    while (curr.parent && curr.parent.item) {
+      if (isMountItem(curr.parent.item) || isSightItem(curr.parent.item)) {
+        assemblyRoot = curr.parent;
+        curr = curr.parent;
+      } else {
+        break;
+      }
+    }
+    return assemblyRoot;
+  }
+  
+  return node;
+}
+
+function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sightMode, mode = 'EXACT_ITEM') {
+  if (!node) return [];
+
+  // Находим реальную цель для замены
+  const targetNode = getReplaceTarget(node, mode);
+  if (!targetNode || !targetNode.parent) return [];
+
+  const parentItem = targetNode.parent.item;
+  const parentSlot = parentItem.properties?.slots?.find(s => s.name === targetNode.slotName);
   if (!parentSlot) return [];
 
   const allowedIds = new Set((parentSlot.filters?.allowedItems || []).map(a => a.id));
-  
-  const subtreeIds = new Set();
+
+  // Собираем текущий прицел (если он есть в поддереве targetNode)
   const subtreeParts = [];
   function collectSubtree(n) {
     if (n && n.item) {
-      subtreeIds.add(n.item.id);
       subtreeParts.push(n.item);
       (n.children || []).forEach(collectSubtree);
     }
   }
-  collectSubtree(node);
+  collectSubtree(targetNode);
 
-  const currentSight = subtreeParts.find(item => 
-    (item.categories || []).map(c => c.name).includes('Sights')
-  );
+  const currentSight = subtreeParts.find(isSightItem);
 
-  const remainingInstalledIds = new Set();
-  function collectRemaining(n) {
-    if (n !== node) {
-      remainingInstalledIds.add(n.item.id);
-      n.children.forEach(collectRemaining);
-    }
-  }
-  
+  // Находим корень всего оружия, чтобы построить дерево сборки и собрать остальную часть оружия
   function getRoot(n) {
     let curr = n;
     while (curr.parent) {
@@ -253,17 +337,113 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
     }
     return curr;
   }
+  const rootNode = getRoot(targetNode);
 
-  collectRemaining(buildAssemblyTree(node.parent.item === node.item ? node.item : getRoot(node).item, currentBuild.build));
+  const remainingInstalledIds = new Set();
+  function collectRemaining(n) {
+    if (n !== targetNode) {
+      remainingInstalledIds.add(n.item.id);
+      n.children.forEach(collectRemaining);
+    }
+  }
+  collectRemaining(buildAssemblyTree(rootNode.item, currentBuild.build));
 
-  const targetCats = (node.item.categories || []).map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
-  const targetIsMount = targetCats.includes('mount');
-  const targetIsSightChain = isSightOrSightMount(node);
+  const targetIsSight = isSightItem(targetNode.item);
+  const targetIsMount = isMountItem(targetNode.item);
 
   const alternatives = [];
 
+  function collectRemainingIdsExcluding(excludedNode) {
+    const excludedIds = new Set();
+    function collectExcluded(n) {
+      if (!n) return;
+      excludedIds.add(n.item.id);
+      n.children.forEach(collectExcluded);
+    }
+    collectExcluded(excludedNode);
+
+    const ids = new Set();
+    function collectRemainingNode(n) {
+      if (!excludedIds.has(n.item.id)) {
+        ids.add(n.item.id);
+        n.children.forEach(collectRemainingNode);
+      }
+    }
+    collectRemainingNode(buildAssemblyTree(rootNode.item, currentBuild.build));
+    return ids;
+  }
+
+  function itemConflictsWithInstalled(item, installedIds) {
+    for (const conflict of item.conflictingItems || []) {
+      if (installedIds.has(conflict.id)) return true;
+    }
+
+    for (const installedId of installedIds) {
+      const installedItem = allMods[installedId] || (installedId === rootNode.item.id ? rootNode.item : null);
+      if (installedItem?.conflictingItems?.some(conflict => conflict.id === item.id)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function itemsConflictWithEachOther(a, b) {
+    return (a.conflictingItems || []).some(conflict => conflict.id === b.id)
+      || (b.conflictingItems || []).some(conflict => conflict.id === a.id);
+  }
+
+  function collectSightPackages(rootItem, remainingIds, currentSightItem, pathItems = [rootItem]) {
+    const packages = [];
+    const pathIds = new Set(pathItems.map(item => item.id));
+
+    (rootItem.properties?.slots || []).forEach(slot => {
+      (slot.filters?.allowedItems || []).forEach(allowed => {
+        const childItem = allMods[allowed.id];
+        if (!childItem || pathIds.has(childItem.id)) return;
+        if (itemConflictsWithInstalled(childItem, remainingIds)) return;
+        if (pathItems.some(pathItem => itemsConflictWithEachOther(pathItem, childItem))) return;
+
+        if (isSightItem(childItem)) {
+          if (currentSightItem && childItem.id === currentSightItem.id) return;
+          if (!isValidSightForMode(childItem, sightMode)) return;
+
+          packages.push({
+            sight: childItem,
+            attachedParts: [{
+              slotName: slot.name,
+              item: childItem
+            }]
+          });
+          return;
+        }
+
+        if (!isMountItem(childItem)) return;
+
+        const childPackages = collectSightPackages(
+          childItem,
+          remainingIds,
+          currentSightItem,
+          [...pathItems, childItem]
+        );
+
+        childPackages.forEach(pkg => {
+          packages.push({
+            sight: pkg.sight,
+            attachedParts: [{
+              slotName: slot.name,
+              item: childItem
+            }, ...pkg.attachedParts]
+          });
+        });
+      });
+    });
+
+    return packages;
+  }
+
   Object.keys(allMods).forEach(modId => {
-    if (modId === node.item.id) return;
+    if (modId === targetNode.item.id) return;
     if (!allowedIds.has(modId)) return;
 
     const altItem = allMods[modId];
@@ -271,40 +451,47 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
 
     if (currentSight && altItem.id === currentSight.id) return;
 
-    const altCats = (altItem.categories || []).map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
-    
-    if (targetIsMount && !targetIsSightChain && !altCats.includes('mount')) return;
-    
-    const isMount = altCats.includes('mount');
+    // 5. For SIGHT_ITEM alternatives, only show items allowed by the selected optic's parent slot.
+    if (mode === 'SIGHT_ITEM' && !isSightItem(altItem)) return;
+
+    // 6. For SIGHT_MOUNT alternatives, only show mount items allowed by the selected mount's parent slot.
+    if (mode === 'SIGHT_MOUNT' && !isMountItem(altItem)) return;
+
+    // Для EXACT_ITEM сохраняем категорию исходного элемента прицела/крепления
+    if (mode === 'EXACT_ITEM') {
+      if (targetIsSight && !isSightItem(altItem)) return;
+      if (targetIsMount && !isMountItem(altItem)) return;
+    }
+
+    const isMount = isMountItem(altItem);
     let sightSlot = null;
     let bestScope = null;
-    
-    if (isMount && (!targetIsMount || targetIsSightChain)) {
+
+    // 7. For SIGHT_ASSEMBLY alternatives, generate mount + compatible optic pairs.
+    // Автоматическая сборка крепления с прицелом происходит только в режиме SIGHT_ASSEMBLY
+    if (mode === 'SIGHT_ASSEMBLY' && isMount) {
       const slots = altItem.properties?.slots || [];
       for (const slot of slots) {
         const allowedSights = (slot.filters?.allowedItems || []).filter(a => {
           const allowedItem = allMods[a.id];
-          if (!allowedItem) return false;
-          const allowedCats = (allowedItem.categories || []).map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
-          return allowedCats.includes('sights');
+          return allowedItem && isSightItem(allowedItem);
         });
         if (allowedSights.length > 0) {
           sightSlot = slot;
           break;
         }
       }
-      
+
       if (sightSlot) {
         let bestScopeScore = -Infinity;
         const allowedItems = sightSlot.filters?.allowedItems || [];
         for (const allowed of allowedItems) {
           const scopeItem = allMods[allowed.id];
           if (!scopeItem) continue;
-          
-          if (!isValidSightForMode(scopeItem, sightMode)) continue;
 
+          if (!isValidSightForMode(scopeItem, sightMode)) continue;
           if (currentSight && scopeItem.id === currentSight.id) continue;
-          
+
           const score = scoreScope(scopeItem, priceMode);
           if (score > bestScopeScore) {
             bestScopeScore = score;
@@ -312,21 +499,25 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
           }
         }
       }
-      
+
+      // Если в режиме сборки для крепления не нашлось подходящего прицела, пропускаем это крепление
       if (sightSlot && !bestScope) {
         return;
       }
     }
 
-    if (altCats.includes('sights')) {
+    // Если альтернатива является прицелом, проверим режим sightMode
+    if (isSightItem(altItem)) {
       if (!isValidSightForMode(altItem, sightMode)) {
         return;
       }
     }
 
+    // Проверяем совместимость с дочерними элементами
     let isCompatibleWithChildren = true;
-    if (!targetIsSightChain) {
-      for (const childNode of node.children) {
+    // Для EXACT_ITEM для не-прицельных деталей мы сохраняем совместимость с детьми
+    if (mode === 'EXACT_ITEM' && !targetIsSight && !targetIsMount) {
+      for (const childNode of targetNode.children) {
         const hasCompatibleSlot = (altItem.properties?.slots || []).some(s => 
           s.name === childNode.slotName && 
           (s.filters?.allowedItems || []).some(a => a.id === childNode.item.id)
@@ -339,6 +530,7 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
     }
     if (!isCompatibleWithChildren) return;
 
+    // Проверка конфликтов
     let hasConflict = false;
     for (const conflict of altItem.conflictingItems || []) {
       if (remainingInstalledIds.has(conflict.id)) {
@@ -349,7 +541,7 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
     if (hasConflict) return;
 
     for (const installedId of remainingInstalledIds) {
-      const installedItem = allMods[installedId] || (installedId === getRoot(node).item.id ? getRoot(node).item : null);
+      const installedItem = allMods[installedId] || (installedId === rootNode.item.id ? rootNode.item : null);
       if (installedItem && installedItem.conflictingItems) {
         const conflictsWithAlt = installedItem.conflictingItems.some(c => c.id === altItem.id);
         if (conflictsWithAlt) {
@@ -361,7 +553,7 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
     if (hasConflict) return;
 
     let altToPush = altItem;
-    if (isMount && sightSlot && bestScope) {
+    if (mode === 'SIGHT_ASSEMBLY' && isMount && sightSlot && bestScope) {
       altToPush = {
         ...altItem,
         attachedScope: bestScope,
@@ -371,18 +563,63 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
     alternatives.push(altToPush);
   });
 
+  if (mode === 'SIGHT_ITEM' && isSightItem(targetNode.item)) {
+    const assemblyRoot = getReplaceTarget(targetNode, 'SIGHT_ASSEMBLY');
+    const assemblyParentItem = assemblyRoot?.parent?.item;
+    const assemblyParentSlot = assemblyParentItem?.properties?.slots?.find(s => s.name === assemblyRoot.slotName);
+    const assemblyAllowedItems = assemblyParentSlot?.filters?.allowedItems || [];
+
+    if (assemblyRoot && assemblyParentSlot) {
+      const remainingIdsForAssembly = collectRemainingIdsExcluding(assemblyRoot);
+
+      assemblyAllowedItems.forEach(allowed => {
+        const mountOrSight = allMods[allowed.id];
+        if (!mountOrSight) return;
+
+        if (isSightItem(mountOrSight)) {
+          if (currentSight && mountOrSight.id === currentSight.id) return;
+          if (!isValidSightForMode(mountOrSight, sightMode)) return;
+          if (itemConflictsWithInstalled(mountOrSight, remainingIdsForAssembly)) return;
+
+          alternatives.push({
+            ...mountOrSight,
+            replacementMode: 'SIGHT_ASSEMBLY'
+          });
+          return;
+        }
+
+        if (!isMountItem(mountOrSight)) return;
+        if (itemConflictsWithInstalled(mountOrSight, remainingIdsForAssembly)) return;
+
+        collectSightPackages(mountOrSight, remainingIdsForAssembly, currentSight).forEach(pkg => {
+          alternatives.push({
+            ...mountOrSight,
+            attachedParts: pkg.attachedParts,
+            attachedScope: pkg.sight,
+            attachedScopeSlotName: pkg.attachedParts[pkg.attachedParts.length - 1]?.slotName,
+            replacementMode: 'SIGHT_ASSEMBLY'
+          });
+        });
+      });
+    }
+  }
+
   const uniqueAlternatives = new Map();
+  const getDistanceNode = alt => (
+    alt.replacementMode === 'SIGHT_ASSEMBLY'
+      ? getReplaceTarget(targetNode, 'SIGHT_ASSEMBLY')
+      : targetNode
+  );
   alternatives.forEach(alt => {
-    const altCats = (alt.categories || []).map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
-    const isSightOrHasAttached = altCats.includes('sights') || alt.attachedScope;
+    const isSightOrHasAttached = isSightItem(alt) || alt.attachedScope;
     if (isSightOrHasAttached) {
       const sightId = alt.attachedScope ? alt.attachedScope.id : alt.id;
       const existing = uniqueAlternatives.get(sightId);
       if (!existing) {
         uniqueAlternatives.set(sightId, alt);
       } else {
-        const distAlt = calculateSimilarityDistance(node, alt, priceMode);
-        const distExisting = calculateSimilarityDistance(node, existing, priceMode);
+        const distAlt = calculateSimilarityDistance(getDistanceNode(alt), alt, priceMode);
+        const distExisting = calculateSimilarityDistance(getDistanceNode(existing), existing, priceMode);
         if (distAlt < distExisting) {
           uniqueAlternatives.set(sightId, alt);
         }
@@ -395,8 +632,8 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
   const filteredAlternatives = Array.from(uniqueAlternatives.values());
 
   filteredAlternatives.sort((a, b) => {
-    const distA = calculateSimilarityDistance(node, a, priceMode);
-    const distB = calculateSimilarityDistance(node, b, priceMode);
+    const distA = calculateSimilarityDistance(getDistanceNode(a), a, priceMode);
+    const distB = calculateSimilarityDistance(getDistanceNode(b), b, priceMode);
     return distA - distB;
   });
 
@@ -429,24 +666,8 @@ function getRawFallbackPrice(item) {
 }
 
 function formatCurrency(value, currency = 'RUB') {
-  if (!isPositivePrice(value)) return 'N/A';
+  if (typeof value !== 'number' || !Number.isFinite(value) || value === 0) return 'N/A';
   return `${Math.round(value).toLocaleString()} ${currency}`;
-}
-
-function getPriceFieldLabel(field) {
-  if (field === 'avg24hPrice') return '24h avg';
-  if (field === 'lastLowPrice') return 'Last low';
-  if (field === 'low24hPrice') return '24h low';
-  if (field === 'basePrice') return 'Base price';
-  return 'No price field';
-}
-
-function getPriceConfidenceLabel(priceInfo) {
-  if (priceInfo.isMissing) return 'Missing';
-  if (priceInfo.usesRawFallback) return 'Raw fallback';
-  if (priceInfo.confidence === PRICE_CONFIDENCE.FALLBACK) return 'Fallback';
-  if (priceInfo.confidence === PRICE_CONFIDENCE.HIGH) return 'Market';
-  return 'Price';
 }
 
 function getItemDisplayName(item, fallbackLabel = 'Item') {
@@ -604,26 +825,6 @@ function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode) {
       missingEntries,
     })}`,
   };
-}
-
-function getPartPriceMetaLabel(priceInfo, selectedPriceMode) {
-  if (priceInfo.isMissing) return 'Price missing';
-
-  const modeLabel = PRICE_MODE_LABELS[priceInfo.mode]
-    ?? PRICE_MODE_LABELS[selectedPriceMode]
-    ?? selectedPriceMode
-    ?? 'Price mode';
-  const fieldLabel = getPriceFieldLabel(priceInfo.field);
-
-  if (priceInfo.modeMismatch) {
-    return `${fieldLabel} · mode fallback`;
-  }
-
-  if (priceInfo.confidence === PRICE_CONFIDENCE.FALLBACK || priceInfo.usesRawFallback) {
-    return `Fallback · ${fieldLabel}`;
-  }
-
-  return `${modeLabel} · ${priceInfo.source}`;
 }
 
 const SUPPRESSOR_MODE_OPTIONS = [
@@ -814,6 +1015,7 @@ function Configurator() {
   const [maxWeight, setMaxWeight] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
   const [activeReplacePartId, setActiveReplacePartId] = useState(null);
+  const [replaceMode, setReplaceMode] = useState('EXACT_ITEM');
   const [magazineCapacity, setMagazineCapacity] = useState(30);
   const [allMods, setAllMods] = useState(null);
   const [buildResult, setBuildResult] = useState(null);
@@ -835,13 +1037,18 @@ function Configurator() {
   
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
 
-    Promise.all([
-      getWeaponDetails(weaponId, priceMode),
-      getAllMods(priceMode)
-    ]).then(([weaponData, modsData]) => {
+    Promise.resolve().then(() => {
       if (cancelled) return;
+      setLoading(true);
+      return Promise.all([
+        getWeaponDetails(weaponId, priceMode),
+        getAllMods(priceMode)
+      ]);
+    }).then(result => {
+      if (cancelled || !result) return;
+
+      const [weaponData, modsData] = result;
 
       setWeapon(weaponData);
       setAllMods(modsData);
@@ -876,7 +1083,7 @@ function Configurator() {
     };
   }, [weaponId, priceMode]);
 
-  const handleReplacePart = (targetPart, alternativeItem) => {
+  const handleReplacePart = (targetPart, alternativeItem, mode = 'EXACT_ITEM') => {
     if (!buildResult) return;
     
     const assemblyTree = buildAssemblyTree(weapon, buildResult.build);
@@ -890,54 +1097,50 @@ function Configurator() {
     }
     findNode(assemblyTree);
 
-    const targetCats = (targetPart.categories || []).map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
-    const targetIsMount = targetCats.includes('mount');
-    const targetIsSightChain = isSightOrSightMount(targetNode);
+    const actualTargetNode = getReplaceTarget(targetNode, mode);
+    if (!actualTargetNode) return;
 
     const subtreeIds = new Set();
-    if (targetNode) {
-      if (targetIsSightChain) {
-        function collectAll(n) {
-          subtreeIds.add(n.item.id);
-          n.children.forEach(collectAll);
-        }
-        collectAll(targetNode);
-      } else if (targetIsMount) {
-        subtreeIds.add(targetNode.item.id);
-      } else {
-        function checkCompatibilityAndCollect(nodeToCheck, parentItem) {
-          nodeToCheck.children.forEach(child => {
-            const slots = parentItem.properties?.slots || [];
-            const matchingSlot = slots.find(s => s.name === child.slotName);
-            
-            let isCompatible = false;
-            if (matchingSlot) {
-              const allowedIds = new Set((matchingSlot.filters?.allowedItems || []).map(a => a.id));
-              if (allowedIds.has(child.item.id)) {
-                isCompatible = true;
-              }
-            }
-            
-            if (isCompatible) {
-              checkCompatibilityAndCollect(child, child.item);
-            } else {
-              function collectAll(n) {
-                subtreeIds.add(n.item.id);
-                n.children.forEach(collectAll);
-              }
-              collectAll(child);
-            }
-          });
+    
+    function checkCompatibilityAndCollect(nodeToCheck, parentItem) {
+      nodeToCheck.children.forEach(child => {
+        const slots = parentItem.properties?.slots || [];
+        const matchingSlot = slots.find(s => s.name === child.slotName);
+        
+        let isCompatible = false;
+        if (matchingSlot) {
+          const allowedIds = new Set((matchingSlot.filters?.allowedItems || []).map(a => a.id));
+          if (allowedIds.has(child.item.id)) {
+            isCompatible = true;
+          }
         }
         
-        checkCompatibilityAndCollect(targetNode, alternativeItem);
-        subtreeIds.add(targetNode.item.id);
+        if (isCompatible) {
+          checkCompatibilityAndCollect(child, child.item);
+        } else {
+          function collectAll(n) {
+            subtreeIds.add(n.item.id);
+            n.children.forEach(collectAll);
+          }
+          collectAll(child);
+        }
+      });
+    }
+
+    if (mode === 'SIGHT_ASSEMBLY') {
+      function collectAll(n) {
+        subtreeIds.add(n.item.id);
+        n.children.forEach(collectAll);
       }
+      collectAll(actualTargetNode);
+    } else {
+      checkCompatibilityAndCollect(actualTargetNode, alternativeItem);
+      subtreeIds.add(actualTargetNode.item.id);
     }
 
     const updatedBuild = [];
     buildResult.build.forEach(part => {
-      if (part.item.id === targetPart.id) {
+      if (part.item.id === actualTargetNode.item.id) {
         updatedBuild.push({
           ...part,
           item: alternativeItem
@@ -947,7 +1150,14 @@ function Configurator() {
       }
     });
 
-    if (alternativeItem.attachedScope && alternativeItem.attachedScopeSlotName) {
+    if (Array.isArray(alternativeItem.attachedParts) && alternativeItem.attachedParts.length > 0) {
+      alternativeItem.attachedParts.forEach(attachedPart => {
+        updatedBuild.push({
+          slotName: attachedPart.slotName,
+          item: attachedPart.item
+        });
+      });
+    } else if (alternativeItem.attachedScope && alternativeItem.attachedScopeSlotName) {
       updatedBuild.push({
         slotName: alternativeItem.attachedScopeSlotName,
         item: alternativeItem.attachedScope
@@ -958,6 +1168,21 @@ function Configurator() {
     
     setBuildResult(updatedResult);
     setActiveReplacePartId(null);
+  };
+
+  const handleOpenReplaceDrawer = (part) => {
+    if (activeReplacePartId === part.item.id) {
+      setActiveReplacePartId(null);
+    } else {
+      if (isSightItem(part.item)) {
+        setReplaceMode('SIGHT_ITEM');
+      } else if (isMountItem(part.item)) {
+        setReplaceMode('SIGHT_MOUNT');
+      } else {
+        setReplaceMode('EXACT_ITEM');
+      }
+      setActiveReplacePartId(part.item.id);
+    }
   };
 
   const handleGenerate = useCallback(async () => {
@@ -994,33 +1219,6 @@ function Configurator() {
       setGenerating(false);
     }
   }, [allMods, suppressorMode, maxWeight, maxPrice, magazineCapacity, priceMode, includeLaser, includeFlashlight, sightMode, weapon, targetType, customErgo, customRecoil]);
-
-  const handleReset = () => {
-    setTargetType('meta');
-    setSuppressorMode('allow');
-    setPriceMode(PRICE_MODES.PVP);
-    setMaxWeight('');
-    setMaxPrice('');
-    
-    const capacities = getAvailableCapacities(weapon, allMods);
-    if (capacities.length > 0) {
-      if (capacities.includes(30)) {
-        setMagazineCapacity(30);
-      } else {
-        setMagazineCapacity(capacities[0]);
-      }
-    }
-    
-    setSightMode('any');
-    setIncludeLaser(false);
-    setIncludeFlashlight(false);
-    setCustomErgo(50);
-    setCustomRecoil(50);
-    setBuildResult(null);
-    setGenerationError(null);
-  };
-
-
 
   const isLoading = loading || (weapon && weapon.id !== weaponId);
 
@@ -1374,14 +1572,14 @@ function Configurator() {
                     <div className="stat-row">
                       <span>Vertical Recoil</span>
                       <div className="bar">
-                        <span style={{ '--value': `${Math.min(100, Math.max(0, recVal))}%` }}></span>
+                        <span style={{ '--value': `${Math.min(100, Math.max(0, recVal))}%` }} className="is-good"></span>
                       </div>
                       <strong>{currentRecoilV}</strong>
                     </div>
                     <div className="stat-row">
                       <span>Horizontal Recoil</span>
                       <div className="bar">
-                        <span style={{ '--value': `${Math.min(100, Math.max(0, recHVal))}%` }}></span>
+                        <span style={{ '--value': `${Math.min(100, Math.max(0, recHVal))}%` }} className="is-good"></span>
                       </div>
                       <strong>{currentRecoilH}</strong>
                     </div>
@@ -1490,7 +1688,10 @@ function Configurator() {
                           <button 
                             className={`replace-btn ${activeReplacePartId === part.item.id ? 'active' : ''}`}
                             type="button"
-                            onClick={() => setActiveReplacePartId(activeReplacePartId === part.item.id ? null : part.item.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenReplaceDrawer(part);
+                            }}
                           >
                             Replace
                           </button>
@@ -1529,23 +1730,33 @@ function Configurator() {
         }
         findNode(assemblyTree);
 
-        let sightChainRoot = targetNode;
-        if (targetNode && isSightOrSightMount(targetNode)) {
+        const assemblyRoot = targetNode ? getReplaceTarget(targetNode, 'SIGHT_ASSEMBLY') : null;
+        const hasSightChain = assemblyRoot ? subtreeHasSight(assemblyRoot) : false;
+
+        let hasMountInChain = false;
+        if (targetNode && hasSightChain) {
           let curr = targetNode;
-          while (curr.parent && curr.parent.item) {
-            const parentCats = (curr.parent.item.categories || []).map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
-            const isParentMountOrSight = parentCats.includes('mount') || parentCats.includes('sights');
-            if (isParentMountOrSight) {
-              sightChainRoot = curr.parent;
-              curr = curr.parent;
-            } else {
+          while (curr) {
+            if (isMountItem(curr.item)) {
+              hasMountInChain = true;
               break;
             }
+            curr = curr.parent;
+          }
+          if (!hasMountInChain && assemblyRoot) {
+            function walk(n) {
+              if (isMountItem(n.item)) {
+                hasMountInChain = true;
+                return;
+              }
+              n.children.forEach(walk);
+            }
+            walk(assemblyRoot);
           }
         }
 
-        const alternatives = sightChainRoot 
-          ? findCompatibleAlternatives(sightChainRoot, allMods, buildResult, priceMode, sightMode)
+        const alternatives = targetNode 
+          ? findCompatibleAlternatives(targetNode, allMods, buildResult, priceMode, sightMode, replaceMode)
           : [];
 
         return (
@@ -1556,6 +1767,38 @@ function Configurator() {
                 <button className="btn btn--ghost" type="button" onClick={() => setActiveReplacePartId(null)}>Close</button>
               </div>
               <div className="drawer__body" style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 100px)', paddingRight: '4px' }}>
+                
+                {hasSightChain && (
+                  <div className="segmented" style={{ marginBottom: '1.25rem', display: 'flex', width: '100%' }}>
+                    <button
+                      className={`segmented__btn ${replaceMode === 'SIGHT_ITEM' ? 'is-active' : ''}`}
+                      type="button"
+                      onClick={() => setReplaceMode('SIGHT_ITEM')}
+                      style={{ flex: 1 }}
+                    >
+                      Replace Optic
+                    </button>
+                    {hasMountInChain && (
+                      <button
+                        className={`segmented__btn ${replaceMode === 'SIGHT_MOUNT' ? 'is-active' : ''}`}
+                        type="button"
+                        onClick={() => setReplaceMode('SIGHT_MOUNT')}
+                        style={{ flex: 1 }}
+                      >
+                        Replace Mount
+                      </button>
+                    )}
+                    <button
+                      className={`segmented__btn ${replaceMode === 'SIGHT_ASSEMBLY' ? 'is-active' : ''}`}
+                      type="button"
+                      onClick={() => setReplaceMode('SIGHT_ASSEMBLY')}
+                      style={{ flex: 1 }}
+                    >
+                      Replace Assembly
+                    </button>
+                  </div>
+                )}
+
                 <div className="drawer__part">
                   <ImageWithLoader
                     src={activePart.item.image512pxLink || activePart.item.iconLink || 'https://via.placeholder.com/70'}
@@ -1584,20 +1827,23 @@ function Configurator() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                       {alternatives.map(alt => {
                         const altPriceInfo = getSelectedPriceInfo(alt, priceMode);
-                        const altPriceValue = altPriceInfo.value + 
-                          (alt.attachedScope ? getSelectedPriceInfo(alt.attachedScope, priceMode).value : 0);
+                        const altPackageItems = getAlternativePackageItems(alt);
+                        const altPriceValue = altPackageItems
+                          .reduce((sum, item) => sum + getSelectedPriceInfo(item, priceMode).value, 0);
                         
+                        const effectiveReplaceMode = alt.replacementMode || replaceMode;
+                        const actualReplaceTarget = getReplaceTarget(targetNode, effectiveReplaceMode);
                         const baselineParts = [];
-                        if (targetNode) {
-                          baselineParts.push(targetNode.item);
-                          if (alt.attachedScope) {
+                        if (actualReplaceTarget) {
+                          baselineParts.push(actualReplaceTarget.item);
+                          if (alt.attachedScope || (Array.isArray(alt.attachedParts) && alt.attachedParts.length > 0)) {
                             function collectChildren(n) {
                               n.children.forEach(c => {
                                 baselineParts.push(c.item);
                                 collectChildren(c);
                               });
                             }
-                            collectChildren(targetNode);
+                            collectChildren(actualReplaceTarget);
                           }
                         }
 
@@ -1606,10 +1852,13 @@ function Configurator() {
                         const baselineRecoil = baselineParts.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
                         const baselineWeight = baselineParts.reduce((sum, item) => sum + (item.weight || 0), 0);
 
-                        const ergoDiff = ((alt.ergonomicsModifier || 0) + (alt.attachedScope ? (alt.attachedScope.ergonomicsModifier || 0) : 0)) - baselineErgo;
-                        const recoilDiff = ((alt.recoilModifier || 0) + (alt.attachedScope ? (alt.attachedScope.recoilModifier || 0) : 0)) - baselineRecoil;
+                        const altErgo = altPackageItems.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
+                        const altRecoil = altPackageItems.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
+                        const altWeight = altPackageItems.reduce((sum, item) => sum + (item.weight || 0), 0);
+                        const ergoDiff = altErgo - baselineErgo;
+                        const recoilDiff = altRecoil - baselineRecoil;
                         const priceDiff = altPriceValue - baselinePrice;
-                        const weightDiff = ((alt.weight || 0) + (alt.attachedScope ? (alt.attachedScope.weight || 0) : 0)) - baselineWeight;
+                        const weightDiff = altWeight - baselineWeight;
                       
                         const baseRecoilV = weapon.properties?.recoilVertical || 0;
                         const baseRecoilH = weapon.properties?.recoilHorizontal || 0;
@@ -1632,8 +1881,13 @@ function Configurator() {
 
                         return (
                           <div 
-                            key={alt.id}
-                            onClick={() => handleReplacePart(sightChainRoot ? sightChainRoot.item : activePart.item, alt)}
+                            key={getAlternativeListKey(alt)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const effectiveMode = alt.replacementMode || replaceMode;
+                              const actualReplaceTarget = getReplaceTarget(targetNode, effectiveMode);
+                              handleReplacePart(actualReplaceTarget.item, alt, effectiveMode);
+                            }}
                             style={{
                               display: 'flex',
                               alignItems: 'center',
@@ -1656,7 +1910,7 @@ function Configurator() {
                           >
                             <ImageWithLoader
                               src={
-                                (alt.attachedScope && (alt.attachedScope.image512pxLink || alt.attachedScope.iconLink))
+                                (getAlternativeSight(alt) && (getAlternativeSight(alt).image512pxLink || getAlternativeSight(alt).iconLink))
                                 || alt.image512pxLink 
                                 || alt.iconLink 
                                 || 'https://via.placeholder.com/30'
@@ -1667,9 +1921,7 @@ function Configurator() {
                             />
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: '0.85rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }}>
-                                {alt.attachedScope 
-                                  ? `${formatPartName(alt.shortName)} + ${formatPartName(alt.attachedScope.shortName)}` 
-                                  : formatPartName(alt.shortName)}
+                                {getAlternativeDisplayName(alt)}
                               </div>
                               <div style={{ fontSize: '0.72rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', color: 'var(--muted)' }}>
                                 <span>

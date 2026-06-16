@@ -1,10 +1,8 @@
-import { HashRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import Home from './pages/Home';
 import Configurator from './pages/Configurator';
 
 function MainLayout() {
-  const location = useLocation();
-
   return (
     <div className="app">
       <header className="topbar">
