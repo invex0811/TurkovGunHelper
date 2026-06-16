@@ -1465,10 +1465,9 @@ function Configurator() {
                         </div>
                         <div className="part-card__body">
                           <div className="part-card__topline">
-                            <span />
+                            <h4>{formatPartName(part.item.shortName)}</h4>
                             <strong>{formatCurrency(partPriceInfo.value, partPriceInfo.currency)}</strong>
                           </div>
-                          <h4>{formatPartName(part.item.shortName)}</h4>
                           <button 
                             className={`replace-btn ${activeReplacePartId === part.item.id ? 'active' : ''}`}
                             type="button"

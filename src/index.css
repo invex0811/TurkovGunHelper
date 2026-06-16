@@ -648,30 +648,30 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  align-self: stretch;
+  height: 70px;
 }
 
 .part-card__topline {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 8px;
-  color: var(--muted);
-  font-size: .72rem;
-  text-transform: uppercase;
 }
 
 .part-card__topline strong {
   color: var(--gold);
   white-space: nowrap;
+  font-size: .8rem;
 }
 
 .part-card h4 {
-  margin: 4px 0;
+  margin: 0;
   overflow: hidden;
   color: var(--text);
   font-size: .95rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
 }
 
 .replace-btn {
