@@ -1450,8 +1450,8 @@ function Configurator() {
                           <ImageWithLoader 
                             src={part.item.image512pxLink || part.item.iconLink || 'https://via.placeholder.com/70'} 
                             alt="" 
-                            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', width: 'auto', height: 'auto' }}
-                            containerStyle={{ width: '100%', height: '100%' }}
+                            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                            containerStyle={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0 }}
                           />
                         </div>
                         <div className="part-card__body">
@@ -1518,8 +1518,8 @@ function Configurator() {
                   <ImageWithLoader
                     src={activePart.item.image512pxLink || activePart.item.iconLink || 'https://via.placeholder.com/70'}
                     alt={activePart.item.shortName}
-                    style={{ width: '70px', height: '70px', objectFit: 'contain' }}
-                    containerStyle={{ width: '70px', height: '70px', background: '#101310', border: '1px solid rgba(204, 194, 158, 0.1)', borderRadius: '6px' }}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    containerStyle={{ width: '70px', height: '70px', minWidth: 0, minHeight: 0, padding: '6px', background: '#101310', border: '1px solid rgba(204, 194, 158, 0.1)', borderRadius: '6px', boxSizing: 'border-box' }}
                   />
                   <div>
                     <div className="generated-meta">{getReadableSlotGroupName(activePart.slotName)} - Slot: {activePart.slotName}</div>
@@ -1620,8 +1620,8 @@ function Configurator() {
                                 || 'https://via.placeholder.com/30'
                               }
                               alt=""
-                              style={{ width: '40px', height: '40px', objectFit: 'contain' }}
-                              containerStyle={{ width: '40px', height: '40px', marginRight: '0.75rem', background: '#101310', border: '1px solid rgba(204, 194, 158, 0.1)', borderRadius: '6px' }}
+                              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                              containerStyle={{ width: '40px', height: '40px', minWidth: 0, minHeight: 0, padding: '4px', marginRight: '0.75rem', background: '#101310', border: '1px solid rgba(204, 194, 158, 0.1)', borderRadius: '6px', boxSizing: 'border-box' }}
                             />
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: '0.85rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }}>
