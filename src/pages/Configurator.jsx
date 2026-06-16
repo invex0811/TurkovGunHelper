@@ -186,6 +186,22 @@ function scoreScope(item, priceMode) {
   return ergo - recoil * 5 - weight * 10 - (price > 0 ? price * 0.0001 : 0);
 }
 
+function isSightOrSightMount(node) {
+  if (!node) return false;
+  let hasSight = false;
+  function check(n) {
+    if (!n || !n.item) return;
+    const cats = (n.item.categories || []).map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
+    if (cats.includes('sights')) {
+      hasSight = true;
+      return;
+    }
+    (n.children || []).forEach(check);
+  }
+  check(node);
+  return hasSight;
+}
+
 function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sightMode) {
   if (!node || !node.parent) return [];
 
@@ -230,6 +246,7 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
 
   const targetCats = (node.item.categories || []).map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
   const targetIsMount = targetCats.includes('mount');
+  const targetIsSightChain = isSightOrSightMount(node);
 
   const alternatives = [];
 
@@ -244,13 +261,13 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
 
     const altCats = (altItem.categories || []).map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
     
-    if (targetIsMount && !altCats.includes('mount')) return;
+    if (targetIsMount && !targetIsSightChain && !altCats.includes('mount')) return;
     
     const isMount = altCats.includes('mount');
     let sightSlot = null;
     let bestScope = null;
     
-    if (isMount && !targetIsMount) {
+    if (isMount && (!targetIsMount || targetIsSightChain)) {
       const slots = altItem.properties?.slots || [];
       for (const slot of slots) {
         const allowedSights = (slot.filters?.allowedItems || []).filter(a => {
@@ -1492,8 +1509,23 @@ function Configurator() {
         }
         findNode(assemblyTree);
 
-        const alternatives = targetNode 
-          ? findCompatibleAlternatives(targetNode, allMods, buildResult, priceMode, sightMode)
+        let sightChainRoot = targetNode;
+        if (targetNode && isSightOrSightMount(targetNode)) {
+          let curr = targetNode;
+          while (curr.parent && curr.parent.item) {
+            const parentCats = (curr.parent.item.categories || []).map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
+            const isParentMountOrSight = parentCats.includes('mount') || parentCats.includes('sights');
+            if (isParentMountOrSight) {
+              sightChainRoot = curr.parent;
+              curr = curr.parent;
+            } else {
+              break;
+            }
+          }
+        }
+
+        const alternatives = sightChainRoot 
+          ? findCompatibleAlternatives(sightChainRoot, allMods, buildResult, priceMode, sightMode)
           : [];
 
         return (
@@ -1581,7 +1613,7 @@ function Configurator() {
                         return (
                           <div 
                             key={alt.id}
-                            onClick={() => handleReplacePart(activePart.item, alt)}
+                            onClick={() => handleReplacePart(sightChainRoot ? sightChainRoot.item : activePart.item, alt)}
                             style={{
                               display: 'flex',
                               alignItems: 'center',
