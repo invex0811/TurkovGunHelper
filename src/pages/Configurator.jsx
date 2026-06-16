@@ -1463,7 +1463,7 @@ function Configurator() {
                         </div>
                         <div className="part-card__body">
                           <div className="part-card__topline">
-                            <span>{part.slotName}</span>
+                            <span />
                             <strong>{formatCurrency(partPriceInfo.value, partPriceInfo.currency)}</strong>
                           </div>
                           <h4>{formatPartName(part.item.shortName)}</h4>
