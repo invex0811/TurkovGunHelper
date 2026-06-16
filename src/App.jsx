@@ -4,12 +4,6 @@ import Configurator from './pages/Configurator';
 
 function MainLayout() {
   const location = useLocation();
-  const isConfigurator = location.pathname.startsWith('/configure/');
-
-  const handleGenerateClick = () => {
-    // Отправляем кастомное событие на window для расчета сборки на странице конфигуратора
-    window.dispatchEvent(new CustomEvent('generate-build'));
-  };
 
   return (
     <div className="app">
@@ -23,16 +17,6 @@ function MainLayout() {
         </div>
         <div className="topbar__actions">
           <Link to="/" className="btn btn--ghost">Weapons</Link>
-          {isConfigurator && (
-            <button
-              className="btn btn--primary"
-              type="button"
-              id="generateTop"
-              onClick={handleGenerateClick}
-            >
-              Generate Build
-            </button>
-          )}
         </div>
       </header>
 

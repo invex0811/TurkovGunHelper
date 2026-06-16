@@ -982,16 +982,7 @@ function Configurator() {
     setGenerationError(null);
   };
 
-  // Регистрация слушателя событий от верхней кнопки Generate Build в шапке
-  useEffect(() => {
-    const onGenerate = () => {
-      handleGenerate();
-    };
-    window.addEventListener('generate-build', onGenerate);
-    return () => {
-      window.removeEventListener('generate-build', onGenerate);
-    };
-  }, [handleGenerate]);
+
 
   const isLoading = loading || (weapon && weapon.id !== weaponId);
 
@@ -1091,7 +1082,6 @@ function Configurator() {
       <aside className="config" aria-label="Build Configuration">
         <div className="config__head">
           <h2>Build Configuration</h2>
-          <button className="btn btn--ghost" type="button" onClick={handleReset}>Reset</button>
         </div>
 
         <section className="config__section">
