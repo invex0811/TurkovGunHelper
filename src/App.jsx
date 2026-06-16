@@ -1,28 +1,55 @@
-import { HashRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import Home from './pages/Home';
 import Configurator from './pages/Configurator';
+
+function MainLayout() {
+  const location = useLocation();
+  const isConfigurator = location.pathname.startsWith('/configure/');
+
+  const handleGenerateClick = () => {
+    // Отправляем кастомное событие на window для расчета сборки на странице конфигуратора
+    window.dispatchEvent(new CustomEvent('generate-build'));
+  };
+
+  return (
+    <div className="app">
+      <header className="topbar">
+        <div className="brand">
+          <div className="brand__mark">TGH</div>
+          <div>
+            <h1>Tarkov Gun Helper</h1>
+            <p>Optimal Weapon Builds</p>
+          </div>
+        </div>
+        <div className="topbar__actions">
+          <Link to="/" className="btn btn--ghost">Weapons</Link>
+          {isConfigurator && (
+            <button
+              className="btn btn--primary"
+              type="button"
+              id="generateTop"
+              onClick={handleGenerateClick}
+            >
+              Generate Build
+            </button>
+          )}
+        </div>
+      </header>
+
+      <main>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/configure/:weaponId" element={<Configurator />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}
 
 function App() {
   return (
     <Router>
-      <div className="container">
-        <header style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="glass-panel">
-          <div style={{ padding: '1rem' }}>
-            <h1 style={{ color: 'var(--color-accent-gold)', margin: 0 }}>Tarkov Gun Helper</h1>
-            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>Optimal Weapon Builds</p>
-          </div>
-          <nav style={{ padding: '0 2rem' }}>
-            <Link to="/" className="btn" style={{ textDecoration: 'none', padding: '0.5rem 1.5rem', borderRadius: 'var(--radius-full)', fontWeight: 'bold' }}>Weapons</Link>
-          </nav>
-        </header>
-
-        <main>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/configure/:weaponId" element={<Configurator />} />
-          </Routes>
-        </main>
-      </div>
+      <MainLayout />
     </Router>
   );
 }
