@@ -880,10 +880,17 @@ function Configurator() {
 
     const targetCats = (targetPart.categories || []).map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
     const targetIsMount = targetCats.includes('mount');
+    const targetIsSightChain = isSightOrSightMount(targetNode);
 
     const subtreeIds = new Set();
     if (targetNode) {
-      if (targetIsMount) {
+      if (targetIsSightChain) {
+        function collectAll(n) {
+          subtreeIds.add(n.item.id);
+          n.children.forEach(collectAll);
+        }
+        collectAll(targetNode);
+      } else if (targetIsMount) {
         subtreeIds.add(targetNode.item.id);
       } else {
         function checkCompatibilityAndCollect(nodeToCheck, parentItem) {
