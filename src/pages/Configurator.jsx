@@ -62,9 +62,21 @@ function buildAssemblyTree(weapon, buildParts) {
     slots.forEach(slot => {
       const allowedIds = new Set((slot.filters?.allowedItems || []).map(a => a.id));
       
-      const partIdx = remainingParts.findIndex(part => 
-        part.slotName === slot.name && allowedIds.has(part.item.id)
-      );
+      const partIdx = remainingParts.findIndex(part => {
+        if (part.slotName !== slot.name || !allowedIds.has(part.item.id)) {
+          return false;
+        }
+        // Prefer attaching to a more specific parent if one is present in remainingParts
+        const hasAlternativeParent = remainingParts.some(otherPart => {
+          if (otherPart === part) return false;
+          const otherSlots = otherPart.item.properties?.slots || [];
+          return otherSlots.some(s => 
+            s.name === part.slotName && 
+            (s.filters?.allowedItems || []).some(a => a.id === part.item.id)
+          );
+        });
+        return !hasAlternativeParent;
+      });
 
       if (partIdx !== -1) {
         const [part] = remainingParts.splice(partIdx, 1);
