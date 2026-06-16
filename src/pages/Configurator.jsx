@@ -313,14 +313,16 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
     }
 
     let isCompatibleWithChildren = true;
-    for (const childNode of node.children) {
-      const hasCompatibleSlot = (altItem.properties?.slots || []).some(s => 
-        s.name === childNode.slotName && 
-        (s.filters?.allowedItems || []).some(a => a.id === childNode.item.id)
-      );
-      if (!hasCompatibleSlot) {
-        isCompatibleWithChildren = false;
-        break;
+    if (!targetIsSightChain) {
+      for (const childNode of node.children) {
+        const hasCompatibleSlot = (altItem.properties?.slots || []).some(s => 
+          s.name === childNode.slotName && 
+          (s.filters?.allowedItems || []).some(a => a.id === childNode.item.id)
+        );
+        if (!hasCompatibleSlot) {
+          isCompatibleWithChildren = false;
+          break;
+        }
       }
     }
     if (!isCompatibleWithChildren) return;
