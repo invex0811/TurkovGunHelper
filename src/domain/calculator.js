@@ -6,6 +6,7 @@ function _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMa
   let totalPrice = getItemPrice(weapon);
   let hasSight = false;
   let hasSuppressorGlobal = hasCategory(weapon, 'Silencer');
+  const requireSight = options.requireSight === true;
   const maxWeight = Number(options.maxWeight) || 0;
   const maxPrice = Number(options.maxPrice) || 0;
   const weightEpsilon = 0.0001;
@@ -32,8 +33,8 @@ function _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMa
     'barrel': 2,
     'gas block': 3,
     'handguard': 4,
-    'stock': 5,
-    'muzzle': 6,
+    'muzzle': 5,
+    'stock': 6,
     'pistol grip': 7,
     'magazine': 8,
     'scope': 9,
@@ -114,8 +115,90 @@ function getItemPrice(item) {
     return slotPriority[name] || 99;
   }
 
+  function isTacticalSlot(slotName) {
+    const name = (slotName || '').toLowerCase();
+    return name.includes('tactical') || name.includes('flashlight');
+  }
+
+  function isValidTacticalDevice(item) {
+    const cats = (item.categories || []).map(c => c.name);
+    const isLaser = cats.includes('Comb. tact. device');
+    const isFlashlight = cats.includes('Flashlight');
+
+    if (isLaser && options.includeLaser) return true;
+    if (isFlashlight && options.includeFlashlight) return true;
+    return false;
+  }
+
+  function isValidSightForMode(item) {
+    const cats = (item.categories || []).map(c => c.name);
+    if (cats.includes('Ironsight')) {
+      return false;
+    }
+    if (cats.includes('Thermal Vision') || cats.includes('Night Vision') || cats.includes('Special scope')) {
+      return false;
+    }
+
+    const mode = options.sightMode || 'any';
+    if (mode === 'none') return false;
+    if (mode === 'any') return true;
+
+    const isReflex = cats.includes('Reflex sight') || cats.includes('Compact reflex sight');
+    const isMagnified = cats.includes('Scope') || cats.includes('Assault scope');
+
+    if (mode === 'reflex') return isReflex;
+    if (mode === 'scope') return isMagnified;
+
+    const parsedMode = Number(mode);
+    if (!isNaN(parsedMode)) {
+      const zoomLevels = item.properties?.zoomLevels;
+      if (zoomLevels) {
+        const flatZooms = zoomLevels.flat();
+        return flatZooms.includes(parsedMode);
+      }
+      if (parsedMode === 1) {
+        return isReflex;
+      }
+      return false;
+    }
+
+    return true;
+  }
+
+  function hasLaserDevice(installedSet) {
+    for (const id of installedSet) {
+      const item = modMap[id];
+      if (item) {
+        const cats = (item.categories || []).map(c => c.name);
+        if (cats.includes('Comb. tact. device')) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function hasFlashlightDevice(installedSet) {
+    for (const id of installedSet) {
+      const item = modMap[id];
+      if (item) {
+        const cats = (item.categories || []).map(c => c.name);
+        if (cats.includes('Flashlight')) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   function isSkippedSlot(slot) {
     const slotNameId = (slot.nameId || '').toLowerCase();
+    const hasAnyTactical = options.includeLaser || options.includeFlashlight;
+    if (hasAnyTactical) {
+      return slotNameId.includes('bipod')
+        || slotNameId.includes('launcher')
+        || slotNameId.includes('equipment');
+    }
     return slotNameId.includes('tactical')
       || slotNameId.includes('flashlight')
       || slotNameId.includes('bipod')
@@ -191,7 +274,7 @@ function getItemPrice(item) {
     return true;
   }
 
-  function isBetterBranch(candidate, bestCandidate, mustFindSuppressor) {
+  function isBetterBranch(candidate, bestCandidate, mustFindSuppressor, mustFindSight) {
     if (!candidate || !candidate.isValid || candidate.score === -Infinity) return false;
     if (!bestCandidate) return true;
 
@@ -199,15 +282,22 @@ function getItemPrice(item) {
       return candidate.hasSuppressor;
     }
 
+    if (mustFindSight && candidate.hasSight !== bestCandidate.hasSight) {
+      return candidate.hasSight;
+    }
+
     return candidate.score > bestCandidate.score;
   }
 
-  function shouldApplyChildBranch(childEval, branchHasSuppressor) {
+  function shouldApplyChildBranch(childEval, activeMustFindSuppressor, activeMustFindSight) {
     if (!childEval || !childEval.isValid || childEval.score === -Infinity) return false;
 
-    const mustFindSuppressor = options.requireSuppressor && !branchHasSuppressor;
-    if (mustFindSuppressor) {
+    if (activeMustFindSuppressor) {
       return childEval.hasSuppressor;
+    }
+
+    if (activeMustFindSight) {
+      return childEval.hasSight;
     }
 
     return childEval.score > 0;
@@ -228,6 +318,36 @@ function getItemPrice(item) {
 
     if (!canInstallItem(itemId, item, pathIds, parentBranchInstalledIds, parentBranchConflicts)) {
       return invalidBranchEvaluation();
+    }
+
+    if (hasCategory(item, 'Sights') && !isValidSightForMode(item)) {
+      return invalidBranchEvaluation();
+    }
+
+    const isTacSlot = isTacticalSlot(slotName);
+    const hasAnyTactical = options.includeLaser || options.includeFlashlight;
+    if (isTacSlot && hasAnyTactical) {
+      if (!isValidTacticalDevice(item)) {
+        return invalidBranchEvaluation();
+      }
+      
+      const cats = (item.categories || []).map(c => c.name);
+      const isLaser = cats.includes('Comb. tact. device');
+      const isFlashlight = cats.includes('Flashlight');
+      
+      if (isLaser) {
+        const alreadyHasLaser = hasLaserDevice(installedIds) || hasLaserDevice(parentBranchInstalledIds);
+        if (alreadyHasLaser) {
+          return invalidBranchEvaluation();
+        }
+      }
+      
+      if (isFlashlight) {
+        const alreadyHasFlashlight = hasFlashlightDevice(installedIds) || hasFlashlightDevice(parentBranchInstalledIds);
+        if (alreadyHasFlashlight) {
+          return invalidBranchEvaluation();
+        }
+      }
     }
 
     const itemWeight = item.weight || 0;
@@ -255,6 +375,10 @@ function getItemPrice(item) {
       - (recoilMod * recoilWeight)
       - (price * priceWeight)
       - (itemWeight * 0.001);
+
+    if (isTacSlot && hasAnyTactical) {
+      branchScore += 10000; // Крупный бонус для гарантии установки
+    }
 
     if (hasCategory(item, 'Magazine')) {
       const recoil = item.recoilModifier || 0;
@@ -307,8 +431,13 @@ function getItemPrice(item) {
           allowed = filterAllowedItems(allowed, targetCapacity);
         }
 
-        let bestChildEval = null;
         const mustFindSuppressor = options.requireSuppressor && !branchEval.hasSuppressor;
+        const mustFindSight = requireSight && !(hasSight || branchEval.hasSight);
+
+        let slotCanProvideSuppressor = false;
+        let slotCanProvideSight = false;
+
+        const childEvals = [];
 
         allowed.forEach(child => {
           const childItem = modMap[child.id];
@@ -327,12 +456,24 @@ function getItemPrice(item) {
             branchTotalPrice,
           );
 
-          if (isBetterBranch(childEval, bestChildEval, mustFindSuppressor)) {
+          if (childEval.isValid && childEval.score !== -Infinity) {
+            if (childEval.hasSuppressor) slotCanProvideSuppressor = true;
+            if (childEval.hasSight) slotCanProvideSight = true;
+            childEvals.push(childEval);
+          }
+        });
+
+        let bestChildEval = null;
+        const activeMustFindSuppressor = mustFindSuppressor && slotCanProvideSuppressor;
+        const activeMustFindSight = mustFindSight && slotCanProvideSight;
+
+        childEvals.forEach(childEval => {
+          if (isBetterBranch(childEval, bestChildEval, activeMustFindSuppressor, activeMustFindSight)) {
             bestChildEval = childEval;
           }
         });
 
-        if (shouldApplyChildBranch(bestChildEval, branchEval.hasSuppressor)) {
+        if (shouldApplyChildBranch(bestChildEval, activeMustFindSuppressor, activeMustFindSight)) {
           mergeBranchEvaluation(branchEval, bestChildEval);
 
           branchErgo = Math.max(0, branchErgo + bestChildEval.statsDelta.ergonomics);
@@ -381,8 +522,10 @@ function getItemPrice(item) {
         allowed = filterAllowedItems(allowed, targetCapacity);
       }
 
-      let bestCandidate = null;
-      const mustFindSuppressor = options.requireSuppressor && !hasSuppressorGlobal;
+      let slotCanProvideSuppressor = false;
+      let slotCanProvideSight = false;
+
+      const candidates = [];
 
       allowed.forEach(shallowItem => {
         const item = modMap[shallowItem.id];
@@ -403,20 +546,34 @@ function getItemPrice(item) {
           if (hypotheticalPrice > maxPrice) return;
         }
 
-        const candidate = {
+        if (branchEval.hasSuppressor) slotCanProvideSuppressor = true;
+        if (branchEval.hasSight) slotCanProvideSight = true;
+
+        candidates.push({
           branchEval,
           score: branchEval.score,
           hasSuppressor: branchEval.hasSuppressor,
+          hasSight: branchEval.hasSight,
           isValid: branchEval.isValid,
-        };
+        });
+      });
 
-        if (isBetterBranch(candidate, bestCandidate, mustFindSuppressor)) {
+      let bestCandidate = null;
+      const mustFindSuppressor = options.requireSuppressor && !hasSuppressorGlobal;
+      const mustFindSight = requireSight && !hasSight;
+
+      const activeMustFindSuppressor = mustFindSuppressor && slotCanProvideSuppressor;
+      const activeMustFindSight = mustFindSight && slotCanProvideSight;
+
+      candidates.forEach(candidate => {
+        if (isBetterBranch(candidate, bestCandidate, activeMustFindSuppressor, activeMustFindSight)) {
           bestCandidate = candidate;
         }
       });
 
       if (!bestCandidate) return;
-      if (mustFindSuppressor && !bestCandidate.hasSuppressor) return;
+      if (activeMustFindSuppressor && !bestCandidate.hasSuppressor) return;
+      if (activeMustFindSight && !bestCandidate.hasSight) return;
 
       const rootItem = bestCandidate.branchEval.items[0]?.item;
       if (!rootItem) return;
@@ -426,6 +583,7 @@ function getItemPrice(item) {
         isMount
         && bestCandidate.score <= 0
         && !(options.requireSuppressor && !hasSuppressorGlobal && bestCandidate.hasSuppressor)
+        && !(requireSight && !hasSight && bestCandidate.hasSight)
       ) {
         return;
       }

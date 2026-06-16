@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
 import {
   PRICE_CONFIDENCE,
   PRICE_MODE_LABELS,
@@ -61,9 +61,21 @@ function buildAssemblyTree(weapon, buildParts) {
     slots.forEach(slot => {
       const allowedIds = new Set((slot.filters?.allowedItems || []).map(a => a.id));
       
-      const partIdx = remainingParts.findIndex(part => 
-        part.slotName === slot.name && allowedIds.has(part.item.id)
-      );
+      const partIdx = remainingParts.findIndex(part => {
+        if (part.slotName !== slot.name || !allowedIds.has(part.item.id)) {
+          return false;
+        }
+        // Prefer attaching to a more specific parent if one is present in remainingParts
+        const hasAlternativeParent = remainingParts.some(otherPart => {
+          if (otherPart === part) return false;
+          const otherSlots = otherPart.item.properties?.slots || [];
+          return otherSlots.some(s => 
+            s.name === part.slotName && 
+            (s.filters?.allowedItems || []).some(a => a.id === part.item.id)
+          );
+        });
+        return !hasAlternativeParent;
+      });
 
       if (partIdx !== -1) {
         const [part] = remainingParts.splice(partIdx, 1);
@@ -82,14 +94,57 @@ function buildAssemblyTree(weapon, buildParts) {
   return root;
 }
 
-function calculateSimilarityDistance(a, b, priceMode) {
-  const ergoA = a.ergonomicsModifier || 0;
-  const ergoB = b.ergonomicsModifier || 0;
-  const recoilA = a.recoilModifier || 0;
-  const recoilB = b.recoilModifier || 0;
-  const weightA = a.weight || 0;
-  const weightB = b.weight || 0;
-  
+function getAlternativeAttachedParts(item) {
+  if (Array.isArray(item.attachedParts)) {
+    return item.attachedParts.map(part => part.item);
+  }
+
+  return item.attachedScope ? [item.attachedScope] : [];
+}
+
+function getAlternativePackageItems(item) {
+  return [item, ...getAlternativeAttachedParts(item)];
+}
+
+function getAlternativeSight(item) {
+  if (item.attachedScope) return item.attachedScope;
+  return isSightItem(item) ? item : null;
+}
+
+function getAlternativeListKey(item) {
+  if (Array.isArray(item.attachedParts) && item.attachedParts.length > 0) {
+    return [item.id, ...item.attachedParts.map(part => part.item.id)].join('-');
+  }
+
+  return item.attachedScope ? `${item.id}-${item.attachedScope.id}` : item.id;
+}
+
+function getAlternativeDisplayName(item) {
+  if (Array.isArray(item.attachedParts) && item.attachedParts.length > 0) {
+    return [item, ...item.attachedParts.map(part => part.item)]
+      .map(part => formatPartName(part.shortName))
+      .join(' + ');
+  }
+
+  return item.attachedScope
+    ? `${formatPartName(item.shortName)} + ${formatPartName(item.attachedScope.shortName)}`
+    : formatPartName(item.shortName);
+}
+
+function calculateSimilarityDistance(node, b, priceMode) {
+  const subtreeParts = [];
+  function collect(n) {
+    if (n && n.item) {
+      subtreeParts.push(n.item);
+      (n.children || []).forEach(collect);
+    }
+  }
+  collect(node);
+
+  const ergoA = subtreeParts.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
+  const recoilA = subtreeParts.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
+  const weightA = subtreeParts.reduce((sum, item) => sum + (item.weight || 0), 0);
+
   function getRawPrice(item) {
     return item.avg24hPrice
       || item.lastLowPrice
@@ -105,41 +160,176 @@ function calculateSimilarityDistance(a, b, priceMode) {
     return getRawPrice(item);
   }
 
-  const priceA = getPrice(a);
-  const priceB = getPrice(b);
-  
+  const priceA = subtreeParts.reduce((sum, item) => sum + getPrice(item), 0);
+
+  const packageItems = getAlternativePackageItems(b);
+  const ergoB = packageItems.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
+  const recoilB = packageItems.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
+  const weightB = packageItems.reduce((sum, item) => sum + (item.weight || 0), 0);
+  const priceB = packageItems.reduce((sum, item) => sum + getPrice(item), 0);
+
   const dErgo = Math.abs(ergoA - ergoB) * 1.5;
   const dRecoil = Math.abs(recoilA - recoilB) * 4.0;
   const dWeight = Math.abs(weightA - weightB) * 2.0;
   const dPrice = Math.abs(priceA - priceB) * 0.0001;
-  
+
   return dErgo + dRecoil + dWeight + dPrice;
 }
 
-function findCompatibleAlternatives(node, allMods, currentBuild, priceMode) {
-  if (!node || !node.parent) return [];
+function isValidSightForMode(item, sightMode) {
+  const cats = (item.categories || []).map(c => c.name);
+  if (cats.includes('Ironsight')) {
+    return false;
+  }
+  if (cats.includes('Thermal Vision') || cats.includes('Night Vision') || cats.includes('Special scope')) {
+    return false;
+  }
 
-  const parentItem = node.parent.item;
-  const parentSlot = parentItem.properties?.slots?.find(s => s.name === node.slotName);
+  const mode = sightMode || 'any';
+  if (mode === 'none' || mode === 'any') return true;
+
+  const isReflex = cats.includes('Reflex sight') || cats.includes('Compact reflex sight');
+  const isMagnified = cats.includes('Scope') || cats.includes('Assault scope');
+
+  if (mode === 'reflex') return isReflex;
+  if (mode === 'scope') return isMagnified;
+
+  const parsedMode = Number(mode);
+  if (!isNaN(parsedMode)) {
+    const zoomLevels = item.properties?.zoomLevels;
+    if (zoomLevels) {
+      const flatZooms = zoomLevels.flat();
+      return flatZooms.includes(parsedMode);
+    }
+    if (parsedMode === 1) {
+      return isReflex;
+    }
+    return false;
+  }
+
+  return true;
+}
+
+function scoreScope(item, priceMode) {
+  const ergo = item.ergonomicsModifier || 0;
+  const recoil = item.recoilModifier || 0;
+  const weight = item.weight || 0;
+  
+  function getRawPrice(it) {
+    return it.avg24hPrice
+      || it.lastLowPrice
+      || it.low24hPrice
+      || it.basePrice
+      || 0;
+  }
+
+  function getPrice(it) {
+    if (!priceMode || it.price?.mode === priceMode) {
+      return it.price?.value ?? getRawPrice(it);
+    }
+    return getRawPrice(it);
+  }
+
+  const price = getPrice(item);
+
+  return ergo - recoil * 5 - weight * 10 - (price > 0 ? price * 0.0001 : 0);
+}
+
+function getCategoryNames(item) {
+  if (!item || !item.categories) return [];
+  return item.categories.map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
+}
+
+function isSightItem(item) {
+  return getCategoryNames(item).includes('sights');
+}
+
+function isMountItem(item) {
+  return getCategoryNames(item).includes('mount');
+}
+
+function subtreeHasSight(node) {
+  if (!node) return false;
+  if (isSightItem(node.item)) return true;
+  return (node.children || []).some(subtreeHasSight);
+}
+
+function findSightNode(n) {
+  if (!n) return null;
+  if (isSightItem(n.item)) return n;
+  for (const child of n.children) {
+    const res = findSightNode(child);
+    if (res) return res;
+  }
+  return null;
+}
+
+function getReplaceTarget(node, mode) {
+  if (!node) return null;
+  
+  if (mode === 'EXACT_ITEM') {
+    return node;
+  }
+  
+  if (mode === 'SIGHT_ITEM') {
+    const sightNode = findSightNode(node);
+    return sightNode || node;
+  }
+  
+  if (mode === 'SIGHT_MOUNT') {
+    let curr = node;
+    while (curr) {
+      if (isMountItem(curr.item)) {
+        return curr;
+      }
+      curr = curr.parent;
+    }
+    return node;
+  }
+  
+  if (mode === 'SIGHT_ASSEMBLY') {
+    let curr = node;
+    let assemblyRoot = node;
+    while (curr.parent && curr.parent.item) {
+      if (isMountItem(curr.parent.item) || isSightItem(curr.parent.item)) {
+        assemblyRoot = curr.parent;
+        curr = curr.parent;
+      } else {
+        break;
+      }
+    }
+    return assemblyRoot;
+  }
+  
+  return node;
+}
+
+function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sightMode, mode = 'EXACT_ITEM') {
+  if (!node) return [];
+
+  // Находим реальную цель для замены
+  const targetNode = getReplaceTarget(node, mode);
+  if (!targetNode || !targetNode.parent) return [];
+
+  const parentItem = targetNode.parent.item;
+  const parentSlot = parentItem.properties?.slots?.find(s => s.name === targetNode.slotName);
   if (!parentSlot) return [];
 
   const allowedIds = new Set((parentSlot.filters?.allowedItems || []).map(a => a.id));
-  
-  const subtreeIds = new Set();
-  function collectSubtreeIds(n) {
-    subtreeIds.add(n.item.id);
-    n.children.forEach(collectSubtreeIds);
-  }
-  collectSubtreeIds(node);
 
-  const remainingInstalledIds = new Set();
-  function collectRemaining(n) {
-    if (n !== node) {
-      remainingInstalledIds.add(n.item.id);
-      n.children.forEach(collectRemaining);
+  // Собираем текущий прицел (если он есть в поддереве targetNode)
+  const subtreeParts = [];
+  function collectSubtree(n) {
+    if (n && n.item) {
+      subtreeParts.push(n.item);
+      (n.children || []).forEach(collectSubtree);
     }
   }
-  
+  collectSubtree(targetNode);
+
+  const currentSight = subtreeParts.find(isSightItem);
+
+  // Находим корень всего оружия, чтобы построить дерево сборки и собрать остальную часть оружия
   function getRoot(n) {
     let curr = n;
     while (curr.parent) {
@@ -147,31 +337,200 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode) {
     }
     return curr;
   }
+  const rootNode = getRoot(targetNode);
 
-  collectRemaining(buildAssemblyTree(node.parent.item === node.item ? node.item : getRoot(node).item, currentBuild.build));
+  const remainingInstalledIds = new Set();
+  function collectRemaining(n) {
+    if (n !== targetNode) {
+      remainingInstalledIds.add(n.item.id);
+      n.children.forEach(collectRemaining);
+    }
+  }
+  collectRemaining(buildAssemblyTree(rootNode.item, currentBuild.build));
+
+  const targetIsSight = isSightItem(targetNode.item);
+  const targetIsMount = isMountItem(targetNode.item);
 
   const alternatives = [];
 
+  function collectRemainingIdsExcluding(excludedNode) {
+    const excludedIds = new Set();
+    function collectExcluded(n) {
+      if (!n) return;
+      excludedIds.add(n.item.id);
+      n.children.forEach(collectExcluded);
+    }
+    collectExcluded(excludedNode);
+
+    const ids = new Set();
+    function collectRemainingNode(n) {
+      if (!excludedIds.has(n.item.id)) {
+        ids.add(n.item.id);
+        n.children.forEach(collectRemainingNode);
+      }
+    }
+    collectRemainingNode(buildAssemblyTree(rootNode.item, currentBuild.build));
+    return ids;
+  }
+
+  function itemConflictsWithInstalled(item, installedIds) {
+    for (const conflict of item.conflictingItems || []) {
+      if (installedIds.has(conflict.id)) return true;
+    }
+
+    for (const installedId of installedIds) {
+      const installedItem = allMods[installedId] || (installedId === rootNode.item.id ? rootNode.item : null);
+      if (installedItem?.conflictingItems?.some(conflict => conflict.id === item.id)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function itemsConflictWithEachOther(a, b) {
+    return (a.conflictingItems || []).some(conflict => conflict.id === b.id)
+      || (b.conflictingItems || []).some(conflict => conflict.id === a.id);
+  }
+
+  function collectSightPackages(rootItem, remainingIds, currentSightItem, pathItems = [rootItem]) {
+    const packages = [];
+    const pathIds = new Set(pathItems.map(item => item.id));
+
+    (rootItem.properties?.slots || []).forEach(slot => {
+      (slot.filters?.allowedItems || []).forEach(allowed => {
+        const childItem = allMods[allowed.id];
+        if (!childItem || pathIds.has(childItem.id)) return;
+        if (itemConflictsWithInstalled(childItem, remainingIds)) return;
+        if (pathItems.some(pathItem => itemsConflictWithEachOther(pathItem, childItem))) return;
+
+        if (isSightItem(childItem)) {
+          if (currentSightItem && childItem.id === currentSightItem.id) return;
+          if (!isValidSightForMode(childItem, sightMode)) return;
+
+          packages.push({
+            sight: childItem,
+            attachedParts: [{
+              slotName: slot.name,
+              item: childItem
+            }]
+          });
+          return;
+        }
+
+        if (!isMountItem(childItem)) return;
+
+        const childPackages = collectSightPackages(
+          childItem,
+          remainingIds,
+          currentSightItem,
+          [...pathItems, childItem]
+        );
+
+        childPackages.forEach(pkg => {
+          packages.push({
+            sight: pkg.sight,
+            attachedParts: [{
+              slotName: slot.name,
+              item: childItem
+            }, ...pkg.attachedParts]
+          });
+        });
+      });
+    });
+
+    return packages;
+  }
+
   Object.keys(allMods).forEach(modId => {
-    if (modId === node.item.id) return;
+    if (modId === targetNode.item.id) return;
     if (!allowedIds.has(modId)) return;
 
     const altItem = allMods[modId];
     if (!altItem) return;
 
+    if (currentSight && altItem.id === currentSight.id) return;
+
+    // 5. For SIGHT_ITEM alternatives, only show items allowed by the selected optic's parent slot.
+    if (mode === 'SIGHT_ITEM' && !isSightItem(altItem)) return;
+
+    // 6. For SIGHT_MOUNT alternatives, only show mount items allowed by the selected mount's parent slot.
+    if (mode === 'SIGHT_MOUNT' && !isMountItem(altItem)) return;
+
+    // Для EXACT_ITEM сохраняем категорию исходного элемента прицела/крепления
+    if (mode === 'EXACT_ITEM') {
+      if (targetIsSight && !isSightItem(altItem)) return;
+      if (targetIsMount && !isMountItem(altItem)) return;
+    }
+
+    const isMount = isMountItem(altItem);
+    let sightSlot = null;
+    let bestScope = null;
+
+    // 7. For SIGHT_ASSEMBLY alternatives, generate mount + compatible optic pairs.
+    // Автоматическая сборка крепления с прицелом происходит только в режиме SIGHT_ASSEMBLY
+    if (mode === 'SIGHT_ASSEMBLY' && isMount) {
+      const slots = altItem.properties?.slots || [];
+      for (const slot of slots) {
+        const allowedSights = (slot.filters?.allowedItems || []).filter(a => {
+          const allowedItem = allMods[a.id];
+          return allowedItem && isSightItem(allowedItem);
+        });
+        if (allowedSights.length > 0) {
+          sightSlot = slot;
+          break;
+        }
+      }
+
+      if (sightSlot) {
+        let bestScopeScore = -Infinity;
+        const allowedItems = sightSlot.filters?.allowedItems || [];
+        for (const allowed of allowedItems) {
+          const scopeItem = allMods[allowed.id];
+          if (!scopeItem) continue;
+
+          if (!isValidSightForMode(scopeItem, sightMode)) continue;
+          if (currentSight && scopeItem.id === currentSight.id) continue;
+
+          const score = scoreScope(scopeItem, priceMode);
+          if (score > bestScopeScore) {
+            bestScopeScore = score;
+            bestScope = scopeItem;
+          }
+        }
+      }
+
+      // Если в режиме сборки для крепления не нашлось подходящего прицела, пропускаем это крепление
+      if (sightSlot && !bestScope) {
+        return;
+      }
+    }
+
+    // Если альтернатива является прицелом, проверим режим sightMode
+    if (isSightItem(altItem)) {
+      if (!isValidSightForMode(altItem, sightMode)) {
+        return;
+      }
+    }
+
+    // Проверяем совместимость с дочерними элементами
     let isCompatibleWithChildren = true;
-    for (const childNode of node.children) {
-      const hasCompatibleSlot = (altItem.properties?.slots || []).some(s => 
-        s.name === childNode.slotName && 
-        (s.filters?.allowedItems || []).some(a => a.id === childNode.item.id)
-      );
-      if (!hasCompatibleSlot) {
-        isCompatibleWithChildren = false;
-        break;
+    // Для EXACT_ITEM для не-прицельных деталей мы сохраняем совместимость с детьми
+    if (mode === 'EXACT_ITEM' && !targetIsSight && !targetIsMount) {
+      for (const childNode of targetNode.children) {
+        const hasCompatibleSlot = (altItem.properties?.slots || []).some(s => 
+          s.name === childNode.slotName && 
+          (s.filters?.allowedItems || []).some(a => a.id === childNode.item.id)
+        );
+        if (!hasCompatibleSlot) {
+          isCompatibleWithChildren = false;
+          break;
+        }
       }
     }
     if (!isCompatibleWithChildren) return;
 
+    // Проверка конфликтов
     let hasConflict = false;
     for (const conflict of altItem.conflictingItems || []) {
       if (remainingInstalledIds.has(conflict.id)) {
@@ -182,7 +541,7 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode) {
     if (hasConflict) return;
 
     for (const installedId of remainingInstalledIds) {
-      const installedItem = allMods[installedId] || (installedId === getRoot(node).item.id ? getRoot(node).item : null);
+      const installedItem = allMods[installedId] || (installedId === rootNode.item.id ? rootNode.item : null);
       if (installedItem && installedItem.conflictingItems) {
         const conflictsWithAlt = installedItem.conflictingItems.some(c => c.id === altItem.id);
         if (conflictsWithAlt) {
@@ -193,16 +552,92 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode) {
     }
     if (hasConflict) return;
 
-    alternatives.push(altItem);
+    let altToPush = altItem;
+    if (mode === 'SIGHT_ASSEMBLY' && isMount && sightSlot && bestScope) {
+      altToPush = {
+        ...altItem,
+        attachedScope: bestScope,
+        attachedScopeSlotName: sightSlot.name
+      };
+    }
+    alternatives.push(altToPush);
   });
 
-  alternatives.sort((a, b) => {
-    const distA = calculateSimilarityDistance(node.item, a, priceMode);
-    const distB = calculateSimilarityDistance(node.item, b, priceMode);
+  if (mode === 'SIGHT_ITEM' && isSightItem(targetNode.item)) {
+    const assemblyRoot = getReplaceTarget(targetNode, 'SIGHT_ASSEMBLY');
+    const assemblyParentItem = assemblyRoot?.parent?.item;
+    const assemblyParentSlot = assemblyParentItem?.properties?.slots?.find(s => s.name === assemblyRoot.slotName);
+    const assemblyAllowedItems = assemblyParentSlot?.filters?.allowedItems || [];
+
+    if (assemblyRoot && assemblyParentSlot) {
+      const remainingIdsForAssembly = collectRemainingIdsExcluding(assemblyRoot);
+
+      assemblyAllowedItems.forEach(allowed => {
+        const mountOrSight = allMods[allowed.id];
+        if (!mountOrSight) return;
+
+        if (isSightItem(mountOrSight)) {
+          if (currentSight && mountOrSight.id === currentSight.id) return;
+          if (!isValidSightForMode(mountOrSight, sightMode)) return;
+          if (itemConflictsWithInstalled(mountOrSight, remainingIdsForAssembly)) return;
+
+          alternatives.push({
+            ...mountOrSight,
+            replacementMode: 'SIGHT_ASSEMBLY'
+          });
+          return;
+        }
+
+        if (!isMountItem(mountOrSight)) return;
+        if (itemConflictsWithInstalled(mountOrSight, remainingIdsForAssembly)) return;
+
+        collectSightPackages(mountOrSight, remainingIdsForAssembly, currentSight).forEach(pkg => {
+          alternatives.push({
+            ...mountOrSight,
+            attachedParts: pkg.attachedParts,
+            attachedScope: pkg.sight,
+            attachedScopeSlotName: pkg.attachedParts[pkg.attachedParts.length - 1]?.slotName,
+            replacementMode: 'SIGHT_ASSEMBLY'
+          });
+        });
+      });
+    }
+  }
+
+  const uniqueAlternatives = new Map();
+  const getDistanceNode = alt => (
+    alt.replacementMode === 'SIGHT_ASSEMBLY'
+      ? getReplaceTarget(targetNode, 'SIGHT_ASSEMBLY')
+      : targetNode
+  );
+  alternatives.forEach(alt => {
+    const isSightOrHasAttached = isSightItem(alt) || alt.attachedScope;
+    if (isSightOrHasAttached) {
+      const sightId = alt.attachedScope ? alt.attachedScope.id : alt.id;
+      const existing = uniqueAlternatives.get(sightId);
+      if (!existing) {
+        uniqueAlternatives.set(sightId, alt);
+      } else {
+        const distAlt = calculateSimilarityDistance(getDistanceNode(alt), alt, priceMode);
+        const distExisting = calculateSimilarityDistance(getDistanceNode(existing), existing, priceMode);
+        if (distAlt < distExisting) {
+          uniqueAlternatives.set(sightId, alt);
+        }
+      }
+    } else {
+      uniqueAlternatives.set(alt.id, alt);
+    }
+  });
+
+  const filteredAlternatives = Array.from(uniqueAlternatives.values());
+
+  filteredAlternatives.sort((a, b) => {
+    const distA = calculateSimilarityDistance(getDistanceNode(a), a, priceMode);
+    const distB = calculateSimilarityDistance(getDistanceNode(b), b, priceMode);
     return distA - distB;
   });
 
-  return alternatives;
+  return filteredAlternatives;
 }
 
 function formatPartName(name) {
@@ -231,24 +666,8 @@ function getRawFallbackPrice(item) {
 }
 
 function formatCurrency(value, currency = 'RUB') {
-  if (!isPositivePrice(value)) return 'N/A';
+  if (typeof value !== 'number' || !Number.isFinite(value) || value === 0) return 'N/A';
   return `${Math.round(value).toLocaleString()} ${currency}`;
-}
-
-function getPriceFieldLabel(field) {
-  if (field === 'avg24hPrice') return '24h avg';
-  if (field === 'lastLowPrice') return 'Last low';
-  if (field === 'low24hPrice') return '24h low';
-  if (field === 'basePrice') return 'Base price';
-  return 'No price field';
-}
-
-function getPriceConfidenceLabel(priceInfo) {
-  if (priceInfo.isMissing) return 'Missing';
-  if (priceInfo.usesRawFallback) return 'Raw fallback';
-  if (priceInfo.confidence === PRICE_CONFIDENCE.FALLBACK) return 'Fallback';
-  if (priceInfo.confidence === PRICE_CONFIDENCE.HIGH) return 'Market';
-  return 'Price';
 }
 
 function getItemDisplayName(item, fallbackLabel = 'Item') {
@@ -408,26 +827,6 @@ function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode) {
   };
 }
 
-function getPartPriceMetaLabel(priceInfo, selectedPriceMode) {
-  if (priceInfo.isMissing) return 'Price missing';
-
-  const modeLabel = PRICE_MODE_LABELS[priceInfo.mode]
-    ?? PRICE_MODE_LABELS[selectedPriceMode]
-    ?? selectedPriceMode
-    ?? 'Price mode';
-  const fieldLabel = getPriceFieldLabel(priceInfo.field);
-
-  if (priceInfo.modeMismatch) {
-    return `${fieldLabel} · mode fallback`;
-  }
-
-  if (priceInfo.confidence === PRICE_CONFIDENCE.FALLBACK || priceInfo.usesRawFallback) {
-    return `Fallback · ${fieldLabel}`;
-  }
-
-  return `${modeLabel} · ${priceInfo.source}`;
-}
-
 const SUPPRESSOR_MODE_OPTIONS = [
   { value: 'allow', label: 'Allow suppressors' },
   { value: 'forbid', label: 'Forbid suppressors' },
@@ -508,11 +907,107 @@ function getAvailableCapacities(weapon, allMods) {
   return Array.from(new Set(capacities)).sort((a, b) => a - b);
 }
 
+function getAvailableZoomLevels(allMods) {
+  if (!allMods) return [];
+  const zooms = new Set();
+
+  Object.values(allMods).forEach(mod => {
+    const cats = (mod.categories || []).map(c => c.name);
+    if (cats.includes('Ironsight')) return;
+
+    if (cats.includes('Sights')) {
+      const zoomLevels = mod.properties?.zoomLevels;
+      if (zoomLevels) {
+        const flat = zoomLevels.flat();
+        flat.forEach(z => {
+          if (typeof z === 'number' && z > 0) {
+            zooms.add(z);
+          }
+        });
+      } else {
+        const isReflex = cats.includes('Reflex sight') || cats.includes('Compact reflex sight');
+        if (isReflex) {
+          zooms.add(1);
+        }
+      }
+    }
+  });
+
+  return Array.from(zooms).sort((a, b) => a - b);
+}
+
+const SLOT_GROUP_NAME_MAPPINGS = {
+  'reciever': 'Receiver',
+  'receiver': 'Receiver',
+  'pistolgrip': 'Pistol Grip',
+  'pistol grip': 'Pistol Grip',
+  'grip': 'Pistol Grip',
+  'gasblock': 'Gas Block',
+  'front sight': 'Front Sight',
+  'rear sight': 'Rear Sight',
+  'ubgl': 'Underbarrel Launcher',
+  'tactical': 'Tactical Device',
+  'foregrip': 'Foregrip',
+  'bipod': 'Bipod',
+  'launcher': 'Launcher',
+  'scope': 'Scope / Sight',
+  'mount': 'Mount / Adapter',
+  'charge': 'Charging Handle',
+  'charging handle': 'Charging Handle',
+  'dustcover': 'Dust Cover',
+  'dust cover': 'Dust Cover',
+  'barrel': 'Barrel',
+  'handguard': 'Handguard',
+  'muzzle': 'Muzzle Device',
+  'stock': 'Stock',
+  'magazine': 'Magazine'
+};
+
+function getReadableSlotGroupName(slotName) {
+  if (!slotName) return 'Other';
+  let name = slotName.trim().toLowerCase();
+  
+  if (name.startsWith('mod_')) {
+    name = name.substring(4);
+  }
+  
+  name = name.replace(/[\s_-]+/g, ' ');
+  
+  if (SLOT_GROUP_NAME_MAPPINGS[name]) {
+    return SLOT_GROUP_NAME_MAPPINGS[name];
+  }
+  
+  return name.split(' ')
+             .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+             .join(' ');
+}
+
+const GROUP_ORDER = [
+  'Receiver',
+  'Charging Handle',
+  'Dust Cover',
+  'Barrel',
+  'Gas Block',
+  'Handguard',
+  'Foregrip',
+  'Muzzle Device',
+  'Mount / Adapter',
+  'Scope / Sight',
+  'Front Sight',
+  'Rear Sight',
+  'Stock',
+  'Pistol Grip',
+  'Magazine',
+  'Tactical Device',
+  'Bipod',
+  'Underbarrel Launcher'
+];
+
 function Configurator() {
   const { weaponId } = useParams();
   const [weapon, setWeapon] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [targetType, setTargetType] = useState(loadTargetTypePreference); // meta, max_ergo, min_recoil, custom
+  const [targetType, setTargetType] = useState(loadTargetTypePreference);
   const [customErgo, setCustomErgo] = useState(50);
   const [customRecoil, setCustomRecoil] = useState(50);
   const [suppressorMode, setSuppressorMode] = useState('allow');
@@ -520,12 +1015,17 @@ function Configurator() {
   const [maxWeight, setMaxWeight] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
   const [activeReplacePartId, setActiveReplacePartId] = useState(null);
+  const [replaceMode, setReplaceMode] = useState('EXACT_ITEM');
   const [magazineCapacity, setMagazineCapacity] = useState(30);
   const [allMods, setAllMods] = useState(null);
   const [buildResult, setBuildResult] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [generationError, setGenerationError] = useState(null);
   const [generating, setGenerating] = useState(false);
+  const [includeLaser, setIncludeLaser] = useState(false);
+  const [includeFlashlight, setIncludeFlashlight] = useState(false);
+  const [sightMode, setSightMode] = useState('any');
+  const [partsFilter, setPartsFilter] = useState('');
   
   useEffect(() => {
     savePriceModePreference(priceMode);
@@ -537,13 +1037,18 @@ function Configurator() {
   
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
 
-    Promise.all([
-      getWeaponDetails(weaponId, priceMode),
-      getAllMods(priceMode)
-    ]).then(([weaponData, modsData]) => {
+    Promise.resolve().then(() => {
       if (cancelled) return;
+      setLoading(true);
+      return Promise.all([
+        getWeaponDetails(weaponId, priceMode),
+        getAllMods(priceMode)
+      ]);
+    }).then(result => {
+      if (cancelled || !result) return;
+
+      const [weaponData, modsData] = result;
 
       setWeapon(weaponData);
       setAllMods(modsData);
@@ -578,18 +1083,86 @@ function Configurator() {
     };
   }, [weaponId, priceMode]);
 
-  const handleReplacePart = (targetPart, alternativeItem) => {
+  const handleReplacePart = (targetPart, alternativeItem, mode = 'EXACT_ITEM') => {
     if (!buildResult) return;
     
-    const updatedBuild = buildResult.build.map(part => {
-      if (part.item.id === targetPart.id) {
-        return {
+    const assemblyTree = buildAssemblyTree(weapon, buildResult.build);
+    let targetNode = null;
+    function findNode(n) {
+      if (n.item.id === targetPart.id) {
+        targetNode = n;
+        return;
+      }
+      n.children.forEach(findNode);
+    }
+    findNode(assemblyTree);
+
+    const actualTargetNode = getReplaceTarget(targetNode, mode);
+    if (!actualTargetNode) return;
+
+    const subtreeIds = new Set();
+    
+    function checkCompatibilityAndCollect(nodeToCheck, parentItem) {
+      nodeToCheck.children.forEach(child => {
+        const slots = parentItem.properties?.slots || [];
+        const matchingSlot = slots.find(s => s.name === child.slotName);
+        
+        let isCompatible = false;
+        if (matchingSlot) {
+          const allowedIds = new Set((matchingSlot.filters?.allowedItems || []).map(a => a.id));
+          if (allowedIds.has(child.item.id)) {
+            isCompatible = true;
+          }
+        }
+        
+        if (isCompatible) {
+          checkCompatibilityAndCollect(child, child.item);
+        } else {
+          function collectAll(n) {
+            subtreeIds.add(n.item.id);
+            n.children.forEach(collectAll);
+          }
+          collectAll(child);
+        }
+      });
+    }
+
+    if (mode === 'SIGHT_ASSEMBLY') {
+      function collectAll(n) {
+        subtreeIds.add(n.item.id);
+        n.children.forEach(collectAll);
+      }
+      collectAll(actualTargetNode);
+    } else {
+      checkCompatibilityAndCollect(actualTargetNode, alternativeItem);
+      subtreeIds.add(actualTargetNode.item.id);
+    }
+
+    const updatedBuild = [];
+    buildResult.build.forEach(part => {
+      if (part.item.id === actualTargetNode.item.id) {
+        updatedBuild.push({
           ...part,
           item: alternativeItem
-        };
+        });
+      } else if (!subtreeIds.has(part.item.id)) {
+        updatedBuild.push(part);
       }
-      return part;
     });
+
+    if (Array.isArray(alternativeItem.attachedParts) && alternativeItem.attachedParts.length > 0) {
+      alternativeItem.attachedParts.forEach(attachedPart => {
+        updatedBuild.push({
+          slotName: attachedPart.slotName,
+          item: attachedPart.item
+        });
+      });
+    } else if (alternativeItem.attachedScope && alternativeItem.attachedScopeSlotName) {
+      updatedBuild.push({
+        slotName: alternativeItem.attachedScopeSlotName,
+        item: alternativeItem.attachedScope
+      });
+    }
 
     const updatedResult = recalculateBuildStats(weapon, updatedBuild, { priceMode });
     
@@ -597,36 +1170,55 @@ function Configurator() {
     setActiveReplacePartId(null);
   };
 
-  const handleGenerate = async () => {
-  if (!allMods) return;
-  setGenerating(true);
-  setGenerationError(null);
-  setBuildResult(null);
+  const handleOpenReplaceDrawer = (part) => {
+    if (activeReplacePartId === part.item.id) {
+      setActiveReplacePartId(null);
+    } else {
+      if (isSightItem(part.item)) {
+        setReplaceMode('SIGHT_ITEM');
+      } else if (isMountItem(part.item)) {
+        setReplaceMode('SIGHT_MOUNT');
+      } else {
+        setReplaceMode('EXACT_ITEM');
+      }
+      setActiveReplacePartId(part.item.id);
+    }
+  };
 
-  try {
-    const options = {
-      ...getSuppressorOptions(suppressorMode),
-      maxWeight: parseFloat(maxWeight) || 0,
-      maxPrice: parseFloat(maxPrice) || 0,
-      magazineCapacity: Number(magazineCapacity) || 30,
-      priceMode,
-    };
+  const handleGenerate = useCallback(async () => {
+    if (!allMods) return;
+    setGenerating(true);
+    setGenerationError(null);
+    setBuildResult(null);
 
-    const result = calculateBestBuild(weapon, targetType, customErgo, customRecoil, allMods, options);
-    setBuildResult(result);
+    try {
+      const options = {
+        ...getSuppressorOptions(suppressorMode),
+        maxWeight: parseFloat(maxWeight) || 0,
+        maxPrice: parseFloat(maxPrice) || 0,
+        magazineCapacity: Number(magazineCapacity) || 30,
+        priceMode,
+        includeLaser,
+        includeFlashlight,
+        sightMode,
+        requireSight: sightMode !== 'none',
+      };
 
-    console.log(`=== GENERATED BUILD (${weapon.shortName} - ${targetType}) ===`);
-    console.log(JSON.stringify({
-      stats: result.stats,
-      parts: result.build.map(p => ({ slot: p.slotName, name: p.item.shortName, id: p.item.id }))
-    }, null, 2));
-  } catch (err) {
-    console.error(err);
-    setGenerationError('Failed to generate build. Mod data could not be loaded or the calculation failed.');
-  } finally {
-    setGenerating(false);
-  }
-};
+      const result = calculateBestBuild(weapon, targetType, customErgo, customRecoil, allMods, options);
+      setBuildResult(result);
+
+      console.log(`=== GENERATED BUILD (${weapon.shortName} - ${targetType}) ===`);
+      console.log(JSON.stringify({
+        stats: result.stats,
+        parts: result.build.map(p => ({ slot: p.slotName, name: p.item.shortName, id: p.item.id }))
+      }, null, 2));
+    } catch (err) {
+      console.error(err);
+      setGenerationError('Failed to generate build. Mod data could not be loaded or the calculation failed.');
+    } finally {
+      setGenerating(false);
+    }
+  }, [allMods, suppressorMode, maxWeight, maxPrice, magazineCapacity, priceMode, includeLaser, includeFlashlight, sightMode, weapon, targetType, customErgo, customRecoil]);
 
   const isLoading = loading || (weapon && weapon.id !== weaponId);
 
@@ -644,557 +1236,733 @@ function Configurator() {
   }
 
   if (!weapon) {
-  return (
-    <div className="glass-panel" style={{ padding: '2rem', textAlign: 'center' }}>
-      {loadError ? (
-        <InlineMessage type="error" title="Weapon loading failed">
-          {loadError}
-        </InlineMessage>
-      ) : (
-        'Weapon not found.'
-      )}
-    </div>
-  );
-}
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '2rem' }}>
-      <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
-        <Link to="/" className="btn" style={{ textDecoration: 'none', marginBottom: '1.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)' }}>
-          <span>&larr;</span> <span>Back to Weapons</span>
-        </Link>
-        <h2 style={{ color: 'var(--color-accent-gold)' }}>{weapon.shortName}</h2>
-        <p style={{ color: 'var(--color-text-muted)' }}>{weapon.name}</p>
-        <div style={{ marginTop: '1rem', textAlign: 'center' }}>
-          <ImageWithLoader 
-            src={weapon.properties?.defaultPreset?.image512pxLink || weapon.image512pxLink || weapon.iconLink} 
-            alt={weapon.shortName} 
-            style={{ maxWidth: '100%', maxHeight: '250px', objectFit: 'contain' }} 
-            containerStyle={{ minHeight: '200px', borderRadius: 'var(--radius-md)' }}
-          />
-        </div>
-        
-        <div style={{ marginTop: '2rem' }}>
-          <h3>Base Stats</h3>
-          <ul style={{ listStyleType: 'none', padding: 0, marginTop: '1rem' }}>
-            <li style={{ padding: '0.5rem 0', borderBottom: '1px solid var(--color-border)' }}>Ergonomics: {weapon.properties?.ergonomics ?? 'N/A'}</li>
-            <li style={{ padding: '0.5rem 0', borderBottom: '1px solid var(--color-border)' }}>Vertical Recoil: {weapon.properties?.recoilVertical ?? 'N/A'}</li>
-            <li style={{ padding: '0.5rem 0', borderBottom: '1px solid var(--color-border)' }}>Horizontal Recoil: {weapon.properties?.recoilHorizontal ?? 'N/A'}</li>
-          </ul>
-        </div>
-        <div style={{ marginTop: 'auto', paddingTop: '2rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
-          <span style={{ 
-            display: 'inline-flex', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            width: '18px', 
-            height: '18px', 
-            borderRadius: '50%', 
-            border: '1px solid var(--color-text-muted)', 
-            fontSize: '0.75rem', 
-            fontWeight: 'bold',
-            fontFamily: 'monospace'
-          }}>i</span>
-          <span>All data is sourced from <a href="https://tarkov.dev" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent-gold)', textDecoration: 'none', borderBottom: '1px dotted var(--color-accent-gold)' }}>tarkov.dev</a></span>
-        </div>
-      </div>
-
-      <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', minHeight: '500px' }}>
-        <h3 style={{ color: 'var(--color-accent-green)', marginTop: 0, marginBottom: '1.5rem', fontSize: '1.5rem', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem' }}>
-          Build Results
-        </h3>
-        
-        {generating && (
-          <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)' }}>
-            Calculating optimal build...
-          </div>
+    return (
+      <div className="glass-panel" style={{ padding: '2rem', textAlign: 'center' }}>
+        {loadError ? (
+          <InlineMessage type="error" title="Weapon loading failed">
+            {loadError}
+          </InlineMessage>
+        ) : (
+          'Weapon not found.'
         )}
-
-        {!generating && !buildResult && (
-          <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '2rem', border: '1px dashed var(--color-border)', borderRadius: 'var(--radius-md)', color: 'var(--color-text-muted)', fontSize: '0.95rem' }}>
-            Configure parameters and click "GENERATE BUILD" to see the results and parts list here.
-          </div>
-        )}
-
-        {!generating && buildResult && (() => {
-          const hasCalculationError = Boolean(buildResult.error);
-          const hasBuildParts = Array.isArray(buildResult.build) && buildResult.build.length > 0;
-          const canShowBuildDetails = !hasCalculationError && hasBuildParts;
-          const priceDiagnostics = canShowBuildDetails
-            ? collectBuildPriceDiagnostics(weapon, buildResult, priceMode)
-            : null;
-
-          return (
-            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-              {hasCalculationError && (
-                <InlineMessage type="error" title="Build cannot satisfy current constraints">
-                  {buildResult.error}
-                </InlineMessage>
-              )}
-
-              {!hasCalculationError && buildResult.warning && (
-                <InlineMessage type="warning" title="Build warning">
-                  {buildResult.warning}
-                </InlineMessage>
-              )}
-
-              {!hasCalculationError && !hasBuildParts && (
-                <InlineMessage type="warning" title="No build parts selected">
-                  The calculator did not find any compatible parts for the current configuration.
-                </InlineMessage>
-              )}
-
-              {canShowBuildDetails && (
-                <>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                    <span>Ergonomics: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.ergonomics}</strong></span>
-                    <span>Weight: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.weight} kg</strong></span>
-                    <span>V. Recoil: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.recoilVertical}</strong></span>
-                    <span>H. Recoil: <strong style={{ color: 'var(--color-accent-gold)' }}>{buildResult.stats.recoilHorizontal}</strong></span>
-                    <span style={{ gridColumn: 'span 2', marginTop: '0.25rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.5rem' }}>
-                      Estimated Price:{' '}
-                      <strong style={{ color: 'var(--color-accent-gold)', fontSize: '1.1rem' }}>
-                        {formatCurrency(buildResult.stats.price, 'RUB')}
-                      </strong>
-                      {priceDiagnostics && (
-                        <span
-                          style={{
-                            display: 'block',
-                            color: 'var(--color-text-muted)',
-                            fontSize: '0.78rem',
-                            marginTop: '0.25rem',
-                          }}
-                        >
-                          {priceDiagnostics.summaryLabel}
-                        </span>
-                      )}
-                    </span>
-                  </div>
-
-                  {priceDiagnostics?.warningMessages.length > 0 && (
-                    <InlineMessage type="warning" title="Price data notice">
-                      {priceDiagnostics.warningMessages.join(' ')}
-                    </InlineMessage>
-                  )}
-
-                  <h4 style={{ marginTop: '1rem', marginBottom: '0.5rem', color: 'var(--color-accent-gold)', fontSize: '1.1rem' }}>Parts List</h4>
-                  <div style={{ overflowY: 'auto', flex: 1, paddingRight: '0.5rem' }}>
-                    <ul style={{ listStyleType: 'none', padding: 0, margin: 0, width: '100%' }}>
-                      {buildResult.build.map((part, idx) => {
-                        const priceInfo = getSelectedPriceInfo(part.item, priceMode);
-                        const priceMetaColor = priceInfo.isMissing
-                          ? 'var(--color-accent-red)'
-                          : priceInfo.fallbackUsed
-                            ? 'var(--color-accent-gold-dark)'
-                            : 'var(--color-text-muted)';
-
-                        const assemblyTree = buildAssemblyTree(weapon, buildResult.build);
-                        let targetNode = null;
-                        function findNode(n) {
-                          if (n.item.id === part.item.id) {
-                            targetNode = n;
-                            return;
-                          }
-                          n.children.forEach(findNode);
-                        }
-                        findNode(assemblyTree);
-
-                        const alternatives = targetNode 
-                          ? findCompatibleAlternatives(targetNode, allMods, buildResult, priceMode).slice(0, 5) 
-                          : [];
-
-                        return (
-                          <li
-                            key={idx}
-                            style={{
-                              padding: '0.75rem 0',
-                              borderBottom: '1px solid rgba(255,255,255,0.05)',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              alignItems: 'stretch',
-                              width: '100%',
-                              boxSizing: 'border-box',
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                              <ImageWithLoader
-                                src={part.item.image512pxLink || part.item.iconLink || 'https://via.placeholder.com/30'}
-                                alt=""
-                                style={{
-                                  width: '40px',
-                                  height: '40px',
-                                  objectFit: 'contain'
-                                }}
-                                containerStyle={{
-                                  width: '40px',
-                                  height: '40px',
-                                  marginRight: '1rem',
-                                  background: 'rgba(255,255,255,0.02)',
-                                  borderRadius: 'var(--radius-sm)',
-                                  border: '1px solid rgba(255,255,255,0.05)'
-                                }}
-                              />
-
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                  <div style={{ fontSize: '0.95rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {formatPartName(part.item.shortName)}
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setActiveReplacePartId(activeReplacePartId === part.item.id ? null : part.item.id)}
-                                    className={`btn-replace-part ${activeReplacePartId === part.item.id ? 'active' : ''}`}
-                                    title="Replace this module with compatible alternatives"
-                                  >
-                                    <span style={{ display: 'inline-flex', transform: 'translateY(-1.5px)' }}>⇄</span>
-                                    <span style={{ display: 'inline-flex' }}>Replace</span>
-                                  </button>
-                                </div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                  Slot: {part.slotName}
-                                </div>
-                              </div>
-
-                              <div
-                                style={{
-                                  textAlign: 'right',
-                                  whiteSpace: 'nowrap',
-                                  marginLeft: '1rem',
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    color: priceInfo.isMissing ? 'var(--color-text-muted)' : 'var(--color-accent-gold)',
-                                    fontSize: '0.9rem',
-                                    fontWeight: 'bold',
-                                  }}
-                                >
-                                  {formatCurrency(priceInfo.value, priceInfo.currency)}
-                                </div>
-                                <div
-                                  title={`${getPriceConfidenceLabel(priceInfo)} · ${getPriceFieldLabel(priceInfo.field)}`}
-                                  style={{
-                                    color: priceMetaColor,
-                                    fontSize: '0.72rem',
-                                    marginTop: '0.15rem',
-                                  }}
-                                >
-                                  {getPartPriceMetaLabel(priceInfo, priceMode)}
-                                </div>
-                              </div>
-                            </div>
-
-                            {activeReplacePartId === part.item.id && (
-                              <div 
-                                style={{ 
-                                  width: '100%', 
-                                  marginTop: '0.5rem', 
-                                  padding: '0.75rem', 
-                                  background: 'rgba(0, 0, 0, 0.3)', 
-                                  borderRadius: 'var(--radius-sm)', 
-                                  border: '1px solid var(--color-border)',
-                                  boxSizing: 'border-box'
-                                }}
-                              >
-                                <div style={{ fontSize: '0.8rem', color: 'var(--color-accent-gold)', marginBottom: '0.5rem', fontWeight: 'bold', textTransform: 'uppercase', fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}>
-                                  Compatible Alternatives
-                                </div>
-                                {alternatives.length === 0 ? (
-                                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
-                                    No fully compatible alternative modules found in the database.
-                                  </div>
-                                ) : (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                                    {alternatives.map(alt => {
-                                      const altPriceInfo = getSelectedPriceInfo(alt, priceMode);
-                                      const currentPriceInfo = getSelectedPriceInfo(part.item, priceMode);
-                                      
-                                      const ergoDiff = (alt.ergonomicsModifier || 0) - (part.item.ergonomicsModifier || 0);
-                                      const recoilDiff = (alt.recoilModifier || 0) - (part.item.recoilModifier || 0);
-                                      const priceDiff = altPriceInfo.value - currentPriceInfo.value;
-                                      const weightDiff = (alt.weight || 0) - (part.item.weight || 0);
-
-                                      const ergoDiffText = ergoDiff === 0 ? '0' : ergoDiff > 0 ? `+${parseFloat(ergoDiff.toFixed(2))}` : `${parseFloat(ergoDiff.toFixed(2))}`;
-                                      const recoilDiffText = recoilDiff === 0 ? '0%' : recoilDiff > 0 ? `+${parseFloat(recoilDiff.toFixed(2))}%` : `${parseFloat(recoilDiff.toFixed(2))}%`;
-                                      const weightDiffText = weightDiff === 0 ? '0 kg' : weightDiff > 0 ? `+${parseFloat(weightDiff.toFixed(3))} kg` : `${parseFloat(weightDiff.toFixed(3))} kg`;
-
-                                      return (
-                                        <div 
-                                          key={alt.id}
-                                          onClick={() => handleReplacePart(part.item, alt)}
-                                          style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            padding: '0.5rem',
-                                            background: 'rgba(0,0,0,0.2)',
-                                            border: '1px solid rgba(255,255,255,0.03)',
-                                            borderRadius: 'var(--radius-sm)',
-                                            cursor: 'pointer',
-                                            transition: 'all 0.2s ease',
-                                            boxSizing: 'border-box'
-                                          }}
-                                          onMouseEnter={e => {
-                                            e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
-                                            e.currentTarget.style.borderColor = 'var(--color-border-active)';
-                                          }}
-                                          onMouseLeave={e => {
-                                            e.currentTarget.style.background = 'rgba(0,0,0,0.2)';
-                                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.03)';
-                                          }}
-                                        >
-                                          <ImageWithLoader
-                                            src={alt.image512pxLink || alt.iconLink || 'https://via.placeholder.com/30'}
-                                            alt=""
-                                            style={{ width: '30px', height: '30px', objectFit: 'contain' }}
-                                            containerStyle={{ width: '30px', height: '30px', marginRight: '0.75rem' }}
-                                          />
-                                          <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div style={{ fontSize: '0.85rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                              {formatPartName(alt.shortName)}
-                                            </div>
-                                            <div style={{ fontSize: '0.72rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', color: 'var(--color-text-muted)' }}>
-                                              <span>
-                                                Ergo:{' '}
-                                                <strong style={{ color: ergoDiff > 0 ? 'var(--color-accent-green)' : ergoDiff < 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
-                                                  {ergoDiffText}
-                                                </strong>
-                                              </span>
-                                              <span>
-                                                Recoil:{' '}
-                                                <strong style={{ color: recoilDiff < 0 ? 'var(--color-accent-green)' : recoilDiff > 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
-                                                  {recoilDiffText}
-                                                </strong>
-                                              </span>
-                                              <span>
-                                                Weight:{' '}
-                                                <strong style={{ color: weightDiff < 0 ? 'var(--color-accent-green)' : weightDiff > 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
-                                                  {weightDiffText}
-                                                </strong>
-                                              </span>
-                                            </div>
-                                          </div>
-                                          <div style={{ textAlign: 'right', marginLeft: '0.5rem' }}>
-                                            <div style={{ fontSize: '0.85rem', color: 'var(--color-accent-gold)', fontWeight: 'bold' }}>
-                                              {formatCurrency(altPriceInfo.value, altPriceInfo.currency)}
-                                            </div>
-                                            <div style={{ fontSize: '0.7rem', color: priceDiff < 0 ? 'var(--color-accent-green)' : priceDiff > 0 ? 'var(--color-accent-red)' : 'var(--color-text-muted)' }}>
-                                              {priceDiff > 0 ? `+${formatCurrency(priceDiff, altPriceInfo.currency)}` : priceDiff < 0 ? formatCurrency(priceDiff, altPriceInfo.currency) : '0 RUB'}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                </>
-              )}
-            </div>
-          );
-        })()}
       </div>
+    );
+  }
 
-      <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
-        <h3>Build Configuration</h3>
-        <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-          <button 
-            className={`btn ${targetType === 'meta' ? '' : 'btn-outline'}`}
-            onClick={() => setTargetType('meta')}
-            style={{ borderColor: 'var(--color-accent-green)', color: targetType === 'meta' ? 'var(--color-bg-base)' : 'var(--color-accent-green)', background: targetType === 'meta' ? 'var(--color-accent-green)' : 'transparent' }}
-          >
-            Meta (Top)
-          </button>
-          <button 
-            className={`btn ${targetType === 'max_ergo' ? '' : 'btn-outline'}`}
-            onClick={() => setTargetType('max_ergo')}
-          >
-            Max Ergonomics
-          </button>
-          <button 
-            className={`btn ${targetType === 'min_recoil' ? '' : 'btn-outline'}`}
-            onClick={() => setTargetType('min_recoil')}
-          >
-            Min Recoil
-          </button>
-          <button 
-            className={`btn ${targetType === 'budget' ? '' : 'btn-outline'}`}
-            onClick={() => setTargetType('budget')}
-          >
-            Budget
-          </button>
-          <button 
-            className={`btn ${targetType === 'custom' ? '' : 'btn-outline'}`}
-            onClick={() => setTargetType('custom')}
-          >
-            Custom
-          </button>
+  const hasCalculationError = buildResult ? Boolean(buildResult.error) : false;
+  const hasBuildParts = buildResult ? (Array.isArray(buildResult.build) && buildResult.build.length > 0) : false;
+  const canShowBuildDetails = buildResult && !hasCalculationError && hasBuildParts;
+  const priceDiagnostics = canShowBuildDetails
+    ? collectBuildPriceDiagnostics(weapon, buildResult, priceMode)
+    : null;
+
+  // Рассчитываем текущие значения для панели метрик
+  const currentErgo = canShowBuildDetails ? buildResult.stats.ergonomics : (weapon.properties?.ergonomics ?? 'N/A');
+  const currentWeight = canShowBuildDetails ? `${buildResult.stats.weight} kg` : (weapon.weight ? `${weapon.weight} kg` : 'N/A');
+  const currentRecoilV = canShowBuildDetails ? buildResult.stats.recoilVertical : (weapon.properties?.recoilVertical ?? 'N/A');
+  const currentRecoilH = canShowBuildDetails ? buildResult.stats.recoilHorizontal : (weapon.properties?.recoilHorizontal ?? 'N/A');
+  const currentPrice = canShowBuildDetails 
+    ? formatCurrency(buildResult.stats.price, 'RUB') 
+    : formatCurrency(getSelectedPriceInfo(weapon, priceMode).value, 'RUB');
+
+  // Группировка деталей сборки
+  const partsGroups = [];
+  if (canShowBuildDetails) {
+    const groupMap = new Map();
+    buildResult.build.forEach(part => {
+      const slotGroup = getReadableSlotGroupName(part.slotName);
+      let group = groupMap.get(slotGroup);
+      if (!group) {
+        group = {
+          rootSlotName: slotGroup,
+          parts: []
+        };
+        groupMap.set(slotGroup, group);
+        partsGroups.push(group);
+      }
+      group.parts.push(part);
+    });
+
+    partsGroups.sort((a, b) => {
+      let indexA = GROUP_ORDER.indexOf(a.rootSlotName);
+      let indexB = GROUP_ORDER.indexOf(b.rootSlotName);
+      if (indexA === -1) indexA = 999;
+      if (indexB === -1) indexB = 999;
+      if (indexA !== indexB) {
+        return indexA - indexB;
+      }
+      return a.rootSlotName.localeCompare(b.rootSlotName);
+    });
+  }
+
+  // Фильтрация групп деталей для рендеринга
+  const renderedGroups = partsGroups.map(group => {
+    const filteredParts = group.parts.filter(part => {
+      if (!partsFilter.trim()) return true;
+      const q = partsFilter.trim().toLowerCase();
+      const name = (part.item.name || '').toLowerCase();
+      const shortName = (part.item.shortName || '').toLowerCase();
+      const slot = (part.slotName || '').toLowerCase();
+      const groupName = group.rootSlotName.toLowerCase();
+      return name.includes(q) || shortName.includes(q) || slot.includes(q) || groupName.includes(q);
+    });
+    return {
+      ...group,
+      parts: filteredParts
+    };
+  }).filter(group => group.parts.length > 0);
+
+  return (
+    <div className="layout">
+      {/* Левый сайдбар с конфигурацией сборки */}
+      <aside className="config" aria-label="Build Configuration">
+        <div className="config__head">
+          <h2>Build Configuration</h2>
         </div>
+
+        <section className="config__section">
+          <label className="field-label">Build Goal</label>
+          <div className="segmented">
+            {[
+              { value: 'meta', label: 'Meta (Top)' },
+              { value: 'max_ergo', label: 'Max Ergonomics' },
+              { value: 'min_recoil', label: 'Min Recoil' },
+              { value: 'budget', label: 'Budget' },
+              { value: 'custom', label: 'Custom' }
+            ].map(option => (
+              <button
+                key={option.value}
+                className={`segmented__btn ${targetType === option.value ? 'is-active' : ''}`}
+                type="button"
+                onClick={() => setTargetType(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </section>
 
         {targetType === 'custom' && (
-          <div style={{ marginTop: '2rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.5rem' }}>Min Ergonomics</label>
-              <input type="number" className="input-field" value={customErgo} onChange={e => setCustomErgo(e.target.value)} />
+          <section className="config__section" style={{ paddingBottom: '8px' }}>
+            <div className="input-grid">
+              <div>
+                <label className="field-label">Min Ergonomics</label>
+                <input 
+                  type="number" 
+                  value={customErgo} 
+                  onChange={e => setCustomErgo(e.target.value)} 
+                />
+              </div>
+              <div>
+                <label className="field-label">Max Recoil</label>
+                <input 
+                  type="number" 
+                  value={customRecoil} 
+                  onChange={e => setCustomRecoil(e.target.value)} 
+                />
+              </div>
             </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.5rem' }}>Max Recoil</label>
-              <input type="number" className="input-field" value={customRecoil} onChange={e => setCustomRecoil(e.target.value)} />
-            </div>
-          </div>
+          </section>
         )}
 
-        <div style={{ marginTop: '2.5rem', padding: '1.5rem', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'rgba(255,255,255,0.02)' }}>
-          <h4 style={{ margin: '0 0 1.5rem 0', color: 'var(--color-accent-gold)', fontSize: '1.1rem' }}>Additional Parameters</h4>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', alignItems: 'end' }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
-                Suppressor Mode
-              </label>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                {SUPPRESSOR_MODE_OPTIONS.map(option => {
-                  const isSelected = suppressorMode === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      className={`btn ${isSelected ? '' : 'btn-outline'}`}
-                      onClick={() => setSuppressorMode(option.value)}
-                      style={{
-                        flex: '1 1 140px',
-                        padding: '0.75rem 1rem',
-                        fontSize: '0.85rem',
-                        borderColor: 'var(--color-accent-gold-dark)',
-                        color: isSelected ? 'var(--color-bg-base)' : 'var(--color-accent-gold)',
-                        background: isSelected ? 'var(--color-accent-gold-dark)' : 'transparent',
-                      }}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
-                Price Mode
-              </label>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                {PRICE_MODE_OPTIONS.map(option => {
-                  const isSelected = priceMode === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      className={`btn ${isSelected ? '' : 'btn-outline'}`}
-                      onClick={() => setPriceMode(option.value)}
-                      style={{
-                        flex: '1 1 140px',
-                        padding: '0.75rem 1rem',
-                        fontSize: '0.85rem',
-                        borderColor: 'var(--color-accent-gold-dark)',
-                        color: isSelected ? 'var(--color-bg-base)' : 'var(--color-accent-gold)',
-                        background: isSelected ? 'var(--color-accent-gold-dark)' : 'transparent',
-                      }}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>Max Weight (kg)</label>
-              <input 
-                type="number" 
-                placeholder="No limit" 
-                value={maxWeight} 
-                onChange={e => setMaxWeight(e.target.value)} 
-                style={{ 
-                  width: '100%', 
-                  padding: '0.75rem', 
-                  backgroundColor: 'rgba(0,0,0,0.5)', 
-                  border: '1px solid var(--color-border)', 
-                  color: 'var(--color-text)',
-                  borderRadius: 'var(--radius-sm)',
-                  outline: 'none',
-                  boxSizing: 'border-box'
-                }} 
-              />
-            </div>
-            
-            <div>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>Max Budget (RUB)</label>
-              <input 
-                type="number" 
-                placeholder="No limit" 
-                value={maxPrice} 
-                onChange={e => setMaxPrice(e.target.value)} 
-                style={{ 
-                  width: '100%', 
-                  padding: '0.75rem', 
-                  backgroundColor: 'rgba(0,0,0,0.5)', 
-                  border: '1px solid var(--color-border)', 
-                  color: 'var(--color-text)',
-                  borderRadius: 'var(--radius-sm)',
-                  outline: 'none',
-                  boxSizing: 'border-box'
-                }} 
-              />
-            </div>
+        <section className="config__section">
+          <label className="field-label">Suppressor Mode</label>
+          <div className="segmented">
+            {SUPPRESSOR_MODE_OPTIONS.map(option => (
+              <button
+                key={option.value}
+                className={`segmented__btn ${suppressorMode === option.value ? 'is-active' : ''}`}
+                type="button"
+                onClick={() => setSuppressorMode(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </section>
 
+        <section className="config__section">
+          <label className="field-label">Price Mode</label>
+          <div className="segmented">
+            {PRICE_MODE_OPTIONS.map(option => (
+              <button
+                key={option.value}
+                className={`segmented__btn ${priceMode === option.value ? 'is-active' : ''}`}
+                type="button"
+                onClick={() => setPriceMode(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="config__section">
+          <div className="input-grid">
             <div>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
-                Magazine Capacity (rounds)
-              </label>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                {getAvailableCapacities(weapon, allMods).map(capacity => {
-                  const isSelected = Number(magazineCapacity) === capacity;
-                  return (
-                    <button
-                      key={capacity}
-                      type="button"
-                      className={`btn ${isSelected ? '' : 'btn-outline'}`}
-                      onClick={() => setMagazineCapacity(capacity)}
-                      style={{
-                        minWidth: '50px',
-                        padding: '0.75rem 1rem',
-                        fontSize: '0.85rem',
-                        borderColor: 'var(--color-accent-gold-dark)',
-                        color: isSelected ? 'var(--color-bg-base)' : 'var(--color-accent-gold)',
-                        background: isSelected ? 'var(--color-accent-gold-dark)' : 'transparent',
-                      }}
-                    >
-                      {capacity}
-                    </button>
-                  );
-                })}
-              </div>
+              <label className="field-label" htmlFor="maxWeight">Max Weight (kg)</label>
+              <input 
+                id="maxWeight" 
+                type="number" 
+                placeholder="No limit" 
+                min="0" 
+                step="0.01"
+                value={maxWeight}
+                onChange={e => setMaxWeight(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="maxBudget">Max Budget (RUB)</label>
+              <input 
+                id="maxBudget" 
+                type="number" 
+                placeholder="No limit" 
+                min="0" 
+                step="1000"
+                value={maxPrice}
+                onChange={e => setMaxPrice(e.target.value)}
+              />
             </div>
           </div>
-        </div>
+        </section>
 
-        <div style={{ marginTop: 'auto', paddingTop: '2rem' }}>
-          <button className="btn" style={{ width: '100%', padding: '1rem', fontSize: '1.2rem' }} onClick={handleGenerate} disabled={generating}>
-            {generating ? 'LOADING MODS...' : 'GENERATE BUILD'}
+        <section className="config__section">
+          <label className="field-label">Magazine Capacity (rounds)</label>
+          <div className="segmented segmented--small">
+            {getAvailableCapacities(weapon, allMods).map(capacity => (
+              <button
+                key={capacity}
+                className={`segmented__btn ${Number(magazineCapacity) === capacity ? 'is-active' : ''}`}
+                type="button"
+                onClick={() => setMagazineCapacity(capacity)}
+              >
+                {capacity}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="config__section">
+          <label className="field-label" htmlFor="sightZoom">Sight Zoom / Type</label>
+          <select 
+            id="sightZoom" 
+            value={sightMode} 
+            onChange={e => setSightMode(e.target.value)}
+          >
+            {[
+              { value: 'none', label: 'NO SIGHT' },
+              { value: 'any', label: 'ANY SIGHT' },
+              { value: 'reflex', label: 'REFLEX (1x)' },
+              { value: 'scope', label: 'SCOPE (Any zoom)' },
+              ...getAvailableZoomLevels(allMods)
+                .filter(z => z > 1)
+                .map(z => ({ value: String(z), label: `${z}x Zoom` }))
+            ].map(option => (
+              <option 
+                key={option.value} 
+                value={option.value}
+                style={{ backgroundColor: 'var(--surface-3)', color: 'var(--text)' }}
+              >
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </section>
+
+        <section className="config__section">
+          <label className="field-label">Tactical Accessories</label>
+          <div className="checks">
+            <label className="check">
+              <input 
+                type="checkbox" 
+                checked={includeLaser}
+                onChange={e => setIncludeLaser(e.target.checked)}
+              /> 
+              <span>Laser / TBL</span>
+            </label>
+            <label className="check">
+              <input 
+                type="checkbox" 
+                checked={includeFlashlight}
+                onChange={e => setIncludeFlashlight(e.target.checked)}
+              /> 
+              <span>Flashlight</span>
+            </label>
+          </div>
+        </section>
+
+        <section className="config__section">
+          <button 
+            className="btn btn--primary" 
+            type="button" 
+            style={{ width: '100%' }}
+            onClick={handleGenerate}
+            disabled={generating}
+          >
+            {generating ? 'Calculating...' : 'Generate Build'}
           </button>
-        </div>
+        </section>
+      </aside>
 
-        {generationError && (
-          <div style={{ marginTop: '2rem' }}>
-            <InlineMessage type="error" title="Build generation failed">
-              {generationError}
-            </InlineMessage>
+      {/* Правая основная область */}
+      <main>
+        {/* Панель метрик сверху */}
+        <section className="summary" aria-label="Build Stats">
+          <div className="metric">
+            <span>Ergonomics</span>
+            <strong>{currentErgo}</strong>
           </div>
-        )}
-      </div>
+          <div className="metric">
+            <span>Weight</span>
+            <strong>{currentWeight}</strong>
+          </div>
+          <div className="metric">
+            <span>V. Recoil / H. Recoil</span>
+            <strong>
+              {typeof currentRecoilV === 'number' && typeof currentRecoilH === 'number'
+                ? `${currentRecoilV} / ${currentRecoilH}`
+                : currentRecoilV}
+            </strong>
+          </div>
+          <div className="metric">
+            <span>Estimated Price</span>
+            <strong>{currentPrice}</strong>
+          </div>
+        </section>
+
+        {/* Сетка: Карточка оружия и Сводка деталей */}
+        <div className="main-grid">
+          {/* Левая панель - Оружие */}
+          <section className="panel weapon">
+            <div className="weapon__head">
+              <div>
+                <h2>{weapon.shortName}</h2>
+                <p>{weapon.name}</p>
+              </div>
+              <div className="source">
+                {priceDiagnostics?.summaryLabel || `${PRICE_MODE_LABELS[priceMode]} · tarkov.dev · primary market prices`}
+              </div>
+            </div>
+
+            <div className="weapon__image">
+              <ImageWithLoader 
+                src={weapon.properties?.defaultPreset?.image512pxLink || weapon.image512pxLink || weapon.iconLink} 
+                alt={weapon.shortName} 
+                style={{ maxWidth: '100%', maxHeight: '250px', objectFit: 'contain' }} 
+                containerStyle={{ minHeight: '200px' }}
+              />
+            </div>
+
+            {/* Шкалы сравнения статов */}
+            <div className="stat-compare">
+              {(() => {
+                const ergoVal = typeof currentErgo === 'number' ? currentErgo : 0;
+                const recVal = typeof currentRecoilV === 'number' ? currentRecoilV : 0;
+                const recHVal = typeof currentRecoilH === 'number' ? currentRecoilH : 0;
+                
+                return (
+                  <>
+                    <div className="stat-row">
+                      <span>Ergonomics</span>
+                      <div className="bar">
+                        <span style={{ '--value': `${Math.min(100, Math.max(0, ergoVal))}%` }} className="is-good"></span>
+                      </div>
+                      <strong>{currentErgo}</strong>
+                    </div>
+                    <div className="stat-row">
+                      <span>Vertical Recoil</span>
+                      <div className="bar">
+                        <span style={{ '--value': `${Math.min(100, Math.max(0, recVal))}%` }} className="is-good"></span>
+                      </div>
+                      <strong>{currentRecoilV}</strong>
+                    </div>
+                    <div className="stat-row">
+                      <span>Horizontal Recoil</span>
+                      <div className="bar">
+                        <span style={{ '--value': `${Math.min(100, Math.max(0, recHVal))}%` }} className="is-good"></span>
+                      </div>
+                      <strong>{currentRecoilH}</strong>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            {/* Чипсы настроек сборки */}
+            <div className="control-state">
+              <div className="chip">
+                Goal 
+                <strong>
+                  {targetType === 'meta' ? 'Meta (Top)' : targetType === 'max_ergo' ? 'Max Ergonomics' : targetType === 'min_recoil' ? 'Min Recoil' : targetType === 'budget' ? 'Budget' : 'Custom'}
+                </strong>
+              </div>
+              <div className="chip">
+                Suppressor 
+                <strong>
+                  {suppressorMode === 'allow' ? 'Allow suppressors' : suppressorMode === 'forbid' ? 'Forbid suppressors' : 'Require suppressor'}
+                </strong>
+              </div>
+              <div className="chip">
+                Magazine 
+                <strong>{magazineCapacity} rounds</strong>
+              </div>
+              <div className="chip">
+                Sight 
+                <strong>
+                  {sightMode === 'none' ? 'NO SIGHT' : sightMode === 'any' ? 'ANY SIGHT' : sightMode === 'reflex' ? 'REFLEX (1x)' : sightMode === 'scope' ? 'SCOPE (Any zoom)' : `${sightMode}x Zoom`}
+                </strong>
+              </div>
+            </div>
+          </section>
+
+          {/* Правая панель - Список деталей */}
+          <section className="panel parts-panel">
+            {/* Поле поиска */}
+            <div className="parts-toolbar">
+              <input 
+                type="search" 
+                placeholder="Filter parts..." 
+                value={partsFilter}
+                onChange={e => setPartsFilter(e.target.value)}
+              />
+              <button 
+                className="btn btn--ghost" 
+                type="button"
+                onClick={() => setPartsFilter('')}
+              >
+                Clear
+              </button>
+            </div>
+
+            {/* Вывод ошибок при расчете сборки */}
+            {generationError && (
+              <InlineMessage type="error" title="Build generation failed">
+                {generationError}
+              </InlineMessage>
+            )}
+
+            {buildResult && hasCalculationError && (
+              <InlineMessage type="error" title="Constraint satisfaction failed">
+                {buildResult.error}
+              </InlineMessage>
+            )}
+
+            {buildResult && !hasCalculationError && buildResult.warning && (
+              <InlineMessage type="warning" title="Build notice">
+                {buildResult.warning}
+              </InlineMessage>
+            )}
+
+            {canShowBuildDetails && priceDiagnostics?.warningMessages.length > 0 && (
+              <InlineMessage type="warning" title="Price data notice">
+                {priceDiagnostics.warningMessages.join(' ')}
+              </InlineMessage>
+            )}
+
+            {/* Рендеринг сгруппированных деталей */}
+            {!generating && canShowBuildDetails && renderedGroups.map((group, groupIdx) => (
+              <div key={groupIdx} className="parts-group">
+                <div className="parts-group__head">
+                  <h3>{group.rootSlotName}</h3>
+                  <span>{group.parts.length} parts</span>
+                </div>
+                <div className="parts-grid">
+                  {group.parts.map(part => {
+                    const partPriceInfo = getSelectedPriceInfo(part.item, priceMode);
+                    
+                    return (
+                      <article key={part.item.id} className="part-card">
+                        <div className="part-card__media">
+                          <ImageWithLoader 
+                            src={part.item.image512pxLink || part.item.iconLink || 'https://via.placeholder.com/70'} 
+                            alt="" 
+                            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                            containerStyle={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0 }}
+                          />
+                        </div>
+                        <div className="part-card__body">
+                          <div className="part-card__topline">
+                            <h4>{formatPartName(part.item.shortName)}</h4>
+                            <strong>{formatCurrency(partPriceInfo.value, partPriceInfo.currency)}</strong>
+                          </div>
+                          <button 
+                            className={`replace-btn ${activeReplacePartId === part.item.id ? 'active' : ''}`}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenReplaceDrawer(part);
+                            }}
+                          >
+                            Replace
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {!generating && !buildResult && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '3rem 2rem', border: '1px dashed var(--line)', borderRadius: 'var(--radius)', color: 'var(--muted)', fontSize: '0.95rem' }}>
+                Configure parameters and click "Generate Build" to see the optimal parts list here.
+              </div>
+            )}
+          </section>
+        </div>
+      </main>
+
+      {/* Оверлей бокового слайдера (Drawer) для замены деталей */}
+      {activeReplacePartId && (() => {
+        const activePart = buildResult?.build.find(p => p.item.id === activeReplacePartId);
+        if (!activePart) return null;
+        
+        const priceInfo = getSelectedPriceInfo(activePart.item, priceMode);
+        const assemblyTree = buildAssemblyTree(weapon, buildResult.build);
+        
+        let targetNode = null;
+        function findNode(n) {
+          if (n.item.id === activePart.item.id) {
+            targetNode = n;
+            return;
+          }
+          n.children.forEach(findNode);
+        }
+        findNode(assemblyTree);
+
+        const assemblyRoot = targetNode ? getReplaceTarget(targetNode, 'SIGHT_ASSEMBLY') : null;
+        const hasSightChain = assemblyRoot ? subtreeHasSight(assemblyRoot) : false;
+
+        let hasMountInChain = false;
+        if (targetNode && hasSightChain) {
+          let curr = targetNode;
+          while (curr) {
+            if (isMountItem(curr.item)) {
+              hasMountInChain = true;
+              break;
+            }
+            curr = curr.parent;
+          }
+          if (!hasMountInChain && assemblyRoot) {
+            function walk(n) {
+              if (isMountItem(n.item)) {
+                hasMountInChain = true;
+                return;
+              }
+              n.children.forEach(walk);
+            }
+            walk(assemblyRoot);
+          }
+        }
+
+        const alternatives = targetNode 
+          ? findCompatibleAlternatives(targetNode, allMods, buildResult, priceMode, sightMode, replaceMode)
+          : [];
+
+        return (
+          <div className="drawer is-open" onClick={() => setActiveReplacePartId(null)}>
+            <div className="drawer__panel" onClick={e => e.stopPropagation()}>
+              <div className="drawer__head">
+                <h2>Replace Part</h2>
+                <button className="btn btn--ghost" type="button" onClick={() => setActiveReplacePartId(null)}>Close</button>
+              </div>
+              <div className="drawer__body" style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 100px)', paddingRight: '4px' }}>
+                
+                {hasSightChain && (
+                  <div className="segmented" style={{ marginBottom: '1.25rem', display: 'flex', width: '100%' }}>
+                    <button
+                      className={`segmented__btn ${replaceMode === 'SIGHT_ITEM' ? 'is-active' : ''}`}
+                      type="button"
+                      onClick={() => setReplaceMode('SIGHT_ITEM')}
+                      style={{ flex: 1 }}
+                    >
+                      Replace Optic
+                    </button>
+                    {hasMountInChain && (
+                      <button
+                        className={`segmented__btn ${replaceMode === 'SIGHT_MOUNT' ? 'is-active' : ''}`}
+                        type="button"
+                        onClick={() => setReplaceMode('SIGHT_MOUNT')}
+                        style={{ flex: 1 }}
+                      >
+                        Replace Mount
+                      </button>
+                    )}
+                    <button
+                      className={`segmented__btn ${replaceMode === 'SIGHT_ASSEMBLY' ? 'is-active' : ''}`}
+                      type="button"
+                      onClick={() => setReplaceMode('SIGHT_ASSEMBLY')}
+                      style={{ flex: 1 }}
+                    >
+                      Replace Assembly
+                    </button>
+                  </div>
+                )}
+
+                <div className="drawer__part">
+                  <ImageWithLoader
+                    src={activePart.item.image512pxLink || activePart.item.iconLink || 'https://via.placeholder.com/70'}
+                    alt={activePart.item.shortName}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    containerStyle={{ width: '70px', height: '70px', minWidth: 0, minHeight: 0, padding: '6px', background: '#101310', border: '1px solid rgba(204, 194, 158, 0.1)', borderRadius: '6px', boxSizing: 'border-box' }}
+                  />
+                  <div>
+                    <div className="generated-meta">{getReadableSlotGroupName(activePart.slotName)} - Slot: {activePart.slotName}</div>
+                    <h3 style={{ margin: '8px 0 6px', fontSize: '1.1rem' }}>{formatPartName(activePart.item.shortName)}</h3>
+                    <strong style={{ color: 'var(--color-accent-gold)' }}>{formatCurrency(priceInfo.value, priceInfo.currency)}</strong>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '1.5rem' }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--color-accent-gold)', marginBottom: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Compatible Alternatives ({alternatives.length})
+                  </div>
+                  {alternatives.length === 0 ? (
+                    <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '1rem 0' }}>
+                      {targetNode && targetNode.children.length > 0
+                        ? "No fully compatible alternatives found that support all currently installed attachments. Try replacing or removing some attachments first."
+                        : "No fully compatible alternative modules found in the database."}
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {alternatives.map(alt => {
+                        const altPriceInfo = getSelectedPriceInfo(alt, priceMode);
+                        const altPackageItems = getAlternativePackageItems(alt);
+                        const altPriceValue = altPackageItems
+                          .reduce((sum, item) => sum + getSelectedPriceInfo(item, priceMode).value, 0);
+                        
+                        const effectiveReplaceMode = alt.replacementMode || replaceMode;
+                        const actualReplaceTarget = getReplaceTarget(targetNode, effectiveReplaceMode);
+                        const baselineParts = [];
+                        if (actualReplaceTarget) {
+                          baselineParts.push(actualReplaceTarget.item);
+                          if (alt.attachedScope || (Array.isArray(alt.attachedParts) && alt.attachedParts.length > 0)) {
+                            function collectChildren(n) {
+                              n.children.forEach(c => {
+                                baselineParts.push(c.item);
+                                collectChildren(c);
+                              });
+                            }
+                            collectChildren(actualReplaceTarget);
+                          }
+                        }
+
+                        const baselinePrice = baselineParts.reduce((sum, item) => sum + getSelectedPriceInfo(item, priceMode).value, 0);
+                        const baselineErgo = baselineParts.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
+                        const baselineRecoil = baselineParts.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
+                        const baselineWeight = baselineParts.reduce((sum, item) => sum + (item.weight || 0), 0);
+
+                        const altErgo = altPackageItems.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
+                        const altRecoil = altPackageItems.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
+                        const altWeight = altPackageItems.reduce((sum, item) => sum + (item.weight || 0), 0);
+                        const ergoDiff = altErgo - baselineErgo;
+                        const recoilDiff = altRecoil - baselineRecoil;
+                        const priceDiff = altPriceValue - baselinePrice;
+                        const weightDiff = altWeight - baselineWeight;
+                      
+                        const baseRecoilV = weapon.properties?.recoilVertical || 0;
+                        const baseRecoilH = weapon.properties?.recoilHorizontal || 0;
+                        const recoilDiffV = baseRecoilV * (recoilDiff / 100);
+                        const recoilDiffH = baseRecoilH * (recoilDiff / 100);
+
+                        const ergoDiffText = ergoDiff === 0 ? '0' : ergoDiff > 0 ? `+${parseFloat(ergoDiff.toFixed(2))}` : `${parseFloat(ergoDiff.toFixed(2))}`;
+                        
+                        function formatRecoilDiff(v, h, pct) {
+                          const formatNum = (num) => {
+                            const rounded = Math.round(num);
+                            return rounded > 0 ? `+${rounded}` : `${rounded}`;
+                          };
+                          const pctText = pct === 0 ? '0%' : pct > 0 ? `+${parseFloat(pct.toFixed(2))}%` : `${parseFloat(pct.toFixed(2))}%`;
+                          if (Math.round(v) === 0 && Math.round(h) === 0) return `0 (${pctText})`;
+                          return `${formatNum(v)} / ${formatNum(h)} (${pctText})`;
+                        }
+                        const recoilDiffText = formatRecoilDiff(recoilDiffV, recoilDiffH, recoilDiff);
+                        const weightDiffText = weightDiff === 0 ? '0 kg' : weightDiff > 0 ? `+${parseFloat(weightDiff.toFixed(3))} kg` : `${parseFloat(weightDiff.toFixed(3))} kg`;
+
+                        return (
+                          <div 
+                            key={getAlternativeListKey(alt)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const effectiveMode = alt.replacementMode || replaceMode;
+                              const actualReplaceTarget = getReplaceTarget(targetNode, effectiveMode);
+                              handleReplacePart(actualReplaceTarget.item, alt, effectiveMode);
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              padding: '0.6rem 0.75rem',
+                              background: 'rgba(255,255,255,0.02)',
+                              border: '1px solid rgba(204, 194, 158, 0.12)',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              transition: 'all 0.16s ease',
+                              boxSizing: 'border-box'
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                              e.currentTarget.style.borderColor = 'rgba(204, 194, 158, 0.42)';
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
+                              e.currentTarget.style.borderColor = 'rgba(204, 194, 158, 0.12)';
+                            }}
+                          >
+                            <ImageWithLoader
+                              src={
+                                (getAlternativeSight(alt) && (getAlternativeSight(alt).image512pxLink || getAlternativeSight(alt).iconLink))
+                                || alt.image512pxLink 
+                                || alt.iconLink 
+                                || 'https://via.placeholder.com/30'
+                              }
+                              alt=""
+                              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                              containerStyle={{ width: '40px', height: '40px', minWidth: 0, minHeight: 0, padding: '4px', marginRight: '0.75rem', background: '#101310', border: '1px solid rgba(204, 194, 158, 0.1)', borderRadius: '6px', boxSizing: 'border-box' }}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '0.85rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }}>
+                                {getAlternativeDisplayName(alt)}
+                              </div>
+                              <div style={{ fontSize: '0.72rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', color: 'var(--muted)' }}>
+                                <span>
+                                  Ergo:{' '}
+                                  <strong style={{ color: ergoDiff > 0 ? 'var(--green)' : ergoDiff < 0 ? 'var(--red)' : 'var(--muted)' }}>
+                                    {ergoDiffText}
+                                  </strong>
+                                </span>
+                                <span>
+                                  Recoil:{' '}
+                                  <strong style={{ color: recoilDiff < 0 ? 'var(--green)' : recoilDiff > 0 ? 'var(--red)' : 'var(--muted)' }}>
+                                    {recoilDiffText}
+                                  </strong>
+                                </span>
+                                <span>
+                                  Weight:{' '}
+                                  <strong style={{ color: weightDiff < 0 ? 'var(--green)' : weightDiff > 0 ? 'var(--red)' : 'var(--muted)' }}>
+                                    {weightDiffText}
+                                  </strong>
+                                </span>
+                              </div>
+                            </div>
+                            <div style={{ textAlign: 'right', marginLeft: '0.5rem' }}>
+                              <div style={{ fontSize: '0.85rem', color: 'var(--gold)', fontWeight: 'bold' }}>
+                                {formatCurrency(altPriceValue, altPriceInfo.currency)}
+                              </div>
+                              <div style={{ fontSize: '0.7rem', color: priceDiff < 0 ? 'var(--green)' : priceDiff > 0 ? 'var(--red)' : 'var(--muted)' }}>
+                                {priceDiff > 0 ? `+${formatCurrency(priceDiff, altPriceInfo.currency)}` : priceDiff < 0 ? formatCurrency(priceDiff, altPriceInfo.currency) : '0 RUB'}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

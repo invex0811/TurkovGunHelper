@@ -776,4 +776,147 @@ test('recalculateBuildStats should correctly sum ergonomics, recoil, weight and 
   assert.equal(result.stats.recoilHorizontal, 92);
   assert.equal(result.stats.weight, '2.50');
   assert.equal(result.stats.price, 75000);
+});
+
+test('tactical accessories options should correctly filter and install laser/flashlight devices', () => {
+  const laserMod = createTestMod({
+    id: 'laser_pointer',
+    name: 'Laser Pointer',
+    shortName: 'Laser',
+    ergonomicsModifier: 2,
+    weight: 0.1,
+    basePrice: 5000,
+    avg24hPrice: 5000,
+    categories: createCategories(['Comb. tact. device']),
+  });
+
+  const flashlightMod = createTestMod({
+    id: 'flashlight',
+    name: 'Tactical Flashlight',
+    shortName: 'Flashlight',
+    ergonomicsModifier: 1,
+    weight: 0.1,
+    basePrice: 4000,
+    avg24hPrice: 4000,
+    categories: createCategories(['Flashlight']),
+  });
+
+  const testWeapon = createTestWeapon({
+    slots: [
+      createSlot('mod_tactical_000', [laserMod.id, flashlightMod.id]),
+      createSlot('mod_tactical_001', [laserMod.id, flashlightMod.id]),
+    ],
+  });
+
+  const defaultOptions = {
+    magazineCapacity: 30,
+  };
+
+  const modsMap = createModMap(laserMod, flashlightMod);
+
+  // 1. both disabled -> should not install any tactical devices
+  const resultExclude = calculateBestBuild(testWeapon, 'meta', 50, 50, modsMap, { ...defaultOptions, includeLaser: false, includeFlashlight: false });
+  assert.equal(resultExclude.error, undefined);
+  assertNotInstalled(resultExclude, laserMod.id);
+  assertNotInstalled(resultExclude, flashlightMod.id);
+
+  // 2. only laser enabled -> should install laserMod but not flashlightMod
+  const resultLaser = calculateBestBuild(testWeapon, 'meta', 50, 50, modsMap, { ...defaultOptions, includeLaser: true, includeFlashlight: false });
+  assert.equal(resultLaser.error, undefined);
+  assertInstalled(resultLaser, laserMod.id);
+  assertNotInstalled(resultLaser, flashlightMod.id);
+  assert.equal(resultLaser.build.length, 1);
+
+  // 3. only flashlight enabled -> should install flashlightMod but not laserMod
+  const resultFlashlight = calculateBestBuild(testWeapon, 'meta', 50, 50, modsMap, { ...defaultOptions, includeLaser: false, includeFlashlight: true });
+  assert.equal(resultFlashlight.error, undefined);
+  assertInstalled(resultFlashlight, flashlightMod.id);
+  assertNotInstalled(resultFlashlight, laserMod.id);
+  assert.equal(resultFlashlight.build.length, 1);
+
+  // 4. both enabled -> should install both laserMod and flashlightMod (one of each type)
+  const resultBoth = calculateBestBuild(testWeapon, 'meta', 50, 50, modsMap, { ...defaultOptions, includeLaser: true, includeFlashlight: true });
+  assert.equal(resultBoth.error, undefined);
+  assertInstalled(resultBoth, laserMod.id);
+  assertInstalled(resultBoth, flashlightMod.id);
+  assert.equal(resultBoth.build.length, 2);
+});
+
+test('requireSight and sightMode options should correctly filter and guarantee sight installation', () => {
+  const reflexSight = createTestMod({
+    id: 'reflex_sight',
+    name: 'Reflex Sight',
+    shortName: 'Reflex',
+    ergonomicsModifier: -1,
+    weight: 0.1,
+    basePrice: 10000,
+    avg24hPrice: 10000,
+    categories: createCategories(['Reflex sight', 'Sights']),
+    properties: {
+      zoomLevels: [[1]],
+    },
+  });
+
+  const scopeSight = createTestMod({
+    id: 'scope_sight',
+    name: 'Sniper Scope',
+    shortName: 'Scope',
+    ergonomicsModifier: -4,
+    weight: 0.5,
+    basePrice: 30000,
+    avg24hPrice: 30000,
+    categories: createCategories(['Scope', 'Sights']),
+    properties: {
+      zoomLevels: [[4]],
+    },
+  });
+
+  const testWeapon = createTestWeapon({
+    slots: [
+      createSlot('mod_scope', [reflexSight.id, scopeSight.id]),
+    ],
+  });
+
+  const defaultOptions = {
+    magazineCapacity: 30,
+    requireSight: true,
+  };
+
+  const modsMap = createModMap(reflexSight, scopeSight);
+
+  // 1. requireSight = true, sightMode = 'reflex' -> should install reflexSight
+  const resultReflex = calculateBestBuild(testWeapon, 'meta', 50, 50, modsMap, { ...defaultOptions, sightMode: 'reflex' });
+  assert.equal(resultReflex.error, undefined);
+  assertInstalled(resultReflex, reflexSight.id);
+  assertNotInstalled(resultReflex, scopeSight.id);
+
+  // 2. requireSight = true, sightMode = 'scope' -> should install scopeSight
+  const resultScope = calculateBestBuild(testWeapon, 'meta', 50, 50, modsMap, { ...defaultOptions, sightMode: 'scope' });
+  assert.equal(resultScope.error, undefined);
+  assertInstalled(resultScope, scopeSight.id);
+  assertNotInstalled(resultScope, reflexSight.id);
+
+  // 3. requireSight = true, sightMode = 'any' -> should choose reflexSight (better ergonomics -1 > -4)
+  const resultAny = calculateBestBuild(testWeapon, 'meta', 50, 50, modsMap, { ...defaultOptions, sightMode: 'any' });
+  assert.equal(resultAny.error, undefined);
+  assertInstalled(resultAny, reflexSight.id);
+  assertNotInstalled(resultAny, scopeSight.id);
+
+  // 4. requireSight = true, sightMode = 1 -> should install reflexSight
+  const resultZoom1 = calculateBestBuild(testWeapon, 'meta', 50, 50, modsMap, { ...defaultOptions, sightMode: 1 });
+  assert.equal(resultZoom1.error, undefined);
+  assertInstalled(resultZoom1, reflexSight.id);
+  assertNotInstalled(resultZoom1, scopeSight.id);
+
+  // 5. requireSight = true, sightMode = 4 -> should install scopeSight
+  const resultZoom4 = calculateBestBuild(testWeapon, 'meta', 50, 50, modsMap, { ...defaultOptions, sightMode: 4 });
+  assert.equal(resultZoom4.error, undefined);
+  assertInstalled(resultZoom4, scopeSight.id);
+  assertNotInstalled(resultZoom4, reflexSight.id);
+
+  // 6. requireSight = false, sightMode = 'none' -> should not install any sights
+  const resultNone = calculateBestBuild(testWeapon, 'meta', 50, 50, modsMap, { ...defaultOptions, requireSight: false, sightMode: 'none' });
+  assert.equal(resultNone.error, undefined);
+  assertNotInstalled(resultNone, reflexSight.id);
+  assertNotInstalled(resultNone, scopeSight.id);
 });
