@@ -936,6 +936,42 @@ function getAvailableZoomLevels(allMods) {
   return Array.from(zooms).sort((a, b) => a - b);
 }
 
+function getModuleCategoryLabel(item) {
+  const categories = (item.categories || [])
+    .map(category => category.name)
+    .filter(Boolean);
+
+  const preferred = categories.find(category => !['Item', 'Weapon mod', 'Gear mod', 'Functional mod', 'Essential mod', 'Compound item'].includes(category));
+  return preferred || categories[0] || 'Module';
+}
+
+function getModuleSearchText(item) {
+  return [
+    item.name,
+    item.shortName,
+    item.id,
+    ...(item.categories || []).map(category => category.name),
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function getRequiredModuleSearchResults(allMods, query, selectedIds) {
+  if (!allMods || query.trim().length < 2) return [];
+
+  const normalizedQuery = query.trim().toLowerCase();
+  return Object.values(allMods)
+    .filter(item => !selectedIds.includes(item.id))
+    .filter(item => getModuleSearchText(item).includes(normalizedQuery))
+    .sort((a, b) => {
+      const aName = (a.shortName || a.name || '').toLowerCase();
+      const bName = (b.shortName || b.name || '').toLowerCase();
+      const aStarts = aName.startsWith(normalizedQuery) ? 0 : 1;
+      const bStarts = bName.startsWith(normalizedQuery) ? 0 : 1;
+      if (aStarts !== bStarts) return aStarts - bStarts;
+      return aName.localeCompare(bName);
+    })
+    .slice(0, 12);
+}
+
 const SLOT_GROUP_NAME_MAPPINGS = {
   'reciever': 'Receiver',
   'receiver': 'Receiver',
@@ -1026,6 +1062,9 @@ function Configurator() {
   const [includeFlashlight, setIncludeFlashlight] = useState(false);
   const [sightMode, setSightMode] = useState('any');
   const [partsFilter, setPartsFilter] = useState('');
+  const [configTab, setConfigTab] = useState('basic');
+  const [requiredModuleSearch, setRequiredModuleSearch] = useState('');
+  const [requiredModuleIds, setRequiredModuleIds] = useState([]);
   
   useEffect(() => {
     savePriceModePreference(priceMode);
@@ -1063,6 +1102,8 @@ function Configurator() {
       }
 
       setBuildResult(null);
+      setRequiredModuleIds([]);
+      setRequiredModuleSearch('');
       setLoadError(null);
       setGenerationError(null);
       setLoading(false);
@@ -1185,6 +1226,18 @@ function Configurator() {
     }
   };
 
+  const handleAddRequiredModule = (item) => {
+    setRequiredModuleIds(prev => {
+      if (prev.includes(item.id)) return prev;
+      return [...prev, item.id];
+    });
+    setRequiredModuleSearch('');
+  };
+
+  const handleRemoveRequiredModule = (itemId) => {
+    setRequiredModuleIds(prev => prev.filter(id => id !== itemId));
+  };
+
   const handleGenerate = useCallback(async () => {
     if (!allMods) return;
     setGenerating(true);
@@ -1202,6 +1255,7 @@ function Configurator() {
         includeFlashlight,
         sightMode,
         requireSight: sightMode !== 'none',
+        requiredItemIds: requiredModuleIds,
       };
 
       const result = calculateBestBuild(weapon, targetType, customErgo, customRecoil, allMods, options);
@@ -1218,7 +1272,7 @@ function Configurator() {
     } finally {
       setGenerating(false);
     }
-  }, [allMods, suppressorMode, maxWeight, maxPrice, magazineCapacity, priceMode, includeLaser, includeFlashlight, sightMode, weapon, targetType, customErgo, customRecoil]);
+  }, [allMods, suppressorMode, maxWeight, maxPrice, magazineCapacity, priceMode, includeLaser, includeFlashlight, sightMode, requiredModuleIds, weapon, targetType, customErgo, customRecoil]);
 
   const isLoading = loading || (weapon && weapon.id !== weaponId);
 
@@ -1312,6 +1366,11 @@ function Configurator() {
     };
   }).filter(group => group.parts.length > 0);
 
+  const selectedRequiredModules = requiredModuleIds
+    .map(itemId => allMods?.[itemId])
+    .filter(Boolean);
+  const requiredModuleResults = getRequiredModuleSearchResults(allMods, requiredModuleSearch, requiredModuleIds);
+
   return (
     <div className="layout">
       {/* Левый сайдбар с конфигурацией сборки */}
@@ -1320,6 +1379,26 @@ function Configurator() {
           <h2>Build Configuration</h2>
         </div>
 
+        <section className="config__section config__section--tabs">
+          <div className="segmented segmented--tabs">
+            {[
+              { value: 'basic', label: 'Basic' },
+              { value: 'advanced', label: 'Advanced' }
+            ].map(option => (
+              <button
+                key={option.value}
+                className={`segmented__btn ${configTab === option.value ? 'is-active' : ''}`}
+                type="button"
+                onClick={() => setConfigTab(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {configTab === 'basic' && (
+          <>
         <section className="config__section">
           <label className="field-label">Build Goal</label>
           <div className="segmented">
@@ -1490,6 +1569,83 @@ function Configurator() {
             </label>
           </div>
         </section>
+          </>
+        )}
+
+        {configTab === 'advanced' && (
+          <section className="config__section advanced-builder">
+            <label className="field-label" htmlFor="requiredModuleSearch">Must Include Modules</label>
+            <input
+              id="requiredModuleSearch"
+              type="search"
+              placeholder="Search modules..."
+              value={requiredModuleSearch}
+              onChange={e => setRequiredModuleSearch(e.target.value)}
+            />
+
+            {requiredModuleResults.length > 0 && (
+              <div className="module-search-list">
+                {requiredModuleResults.map(item => {
+                  const priceInfo = getSelectedPriceInfo(item, priceMode);
+
+                  return (
+                    <button
+                      key={item.id}
+                      className="module-search-item"
+                      type="button"
+                      onClick={() => handleAddRequiredModule(item)}
+                    >
+                      <span className="module-search-item__media">
+                        <ImageWithLoader
+                          src={item.image512pxLink || item.iconLink || 'https://via.placeholder.com/48'}
+                          alt=""
+                          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                          containerStyle={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0 }}
+                        />
+                      </span>
+                      <span className="module-search-item__body">
+                        <strong>{formatPartName(item.shortName || item.name)}</strong>
+                        <span>{getModuleCategoryLabel(item)} В· {formatCurrency(priceInfo.value, priceInfo.currency)}</span>
+                      </span>
+                      <span className="module-search-item__action">Add</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="required-modules">
+              {selectedRequiredModules.length === 0 ? (
+                <div className="required-modules__empty">No required modules selected.</div>
+              ) : (
+                selectedRequiredModules.map(item => (
+                  <div key={item.id} className="required-module">
+                    <div className="required-module__media">
+                      <ImageWithLoader
+                        src={item.image512pxLink || item.iconLink || 'https://via.placeholder.com/48'}
+                        alt=""
+                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                        containerStyle={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0 }}
+                      />
+                    </div>
+                    <div className="required-module__body">
+                      <strong>{formatPartName(item.shortName || item.name)}</strong>
+                      <span>{getModuleCategoryLabel(item)}</span>
+                    </div>
+                    <button
+                      className="required-module__remove"
+                      type="button"
+                      onClick={() => handleRemoveRequiredModule(item.id)}
+                      aria-label={`Remove ${item.shortName || item.name}`}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+        )}
 
         <section className="config__section">
           <button 
@@ -1612,6 +1768,12 @@ function Configurator() {
                   {sightMode === 'none' ? 'NO SIGHT' : sightMode === 'any' ? 'ANY SIGHT' : sightMode === 'reflex' ? 'REFLEX (1x)' : sightMode === 'scope' ? 'SCOPE (Any zoom)' : `${sightMode}x Zoom`}
                 </strong>
               </div>
+              {selectedRequiredModules.length > 0 && (
+                <div className="chip">
+                  Required
+                  <strong>{selectedRequiredModules.length} modules</strong>
+                </div>
+              )}
             </div>
           </section>
 

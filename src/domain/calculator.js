@@ -1,4 +1,16 @@
-function _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMap, options = {}, ergoCap = 100, targetType = 'custom') {
+function _calculateWeighted(
+  weapon,
+  ergoWeight,
+  recoilWeight,
+  priceWeight,
+  modMap,
+  options = {},
+  ergoCap = 100,
+  targetType = 'custom',
+  weightWeight = 0.001,
+  overflowErgoWeight = 0,
+  ergoSoftCap = ergoCap,
+) {
   const build = [];
   let totalErgo = weapon.properties.ergonomics || 0;
   let totalRecoilMod = 0;
@@ -10,6 +22,20 @@ function _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMa
   const maxWeight = Number(options.maxWeight) || 0;
   const maxPrice = Number(options.maxPrice) || 0;
   const weightEpsilon = 0.0001;
+  const requiredItemIds = new Set(
+    (options.requiredItemIds || [])
+      .map(String)
+      .filter(itemId => itemId && itemId !== weapon.id && modMap[itemId]),
+  );
+  const requiredSightIds = new Set(
+    [...requiredItemIds].filter(itemId => hasCategory(modMap[itemId], 'Sights')),
+  );
+  const requiredLaserIds = new Set(
+    [...requiredItemIds].filter(itemId => hasCategory(modMap[itemId], 'Comb. tact. device')),
+  );
+  const requiredFlashlightIds = new Set(
+    [...requiredItemIds].filter(itemId => hasCategory(modMap[itemId], 'Flashlight')),
+  );
 
   let targetCapacity = 30;
   if (options.magazineCapacity !== undefined) {
@@ -29,24 +55,71 @@ function _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMa
   }
 
   const slotPriority = {
-    'receiver': 1,
-    'barrel': 2,
-    'gas block': 3,
-    'handguard': 4,
-    'muzzle': 5,
-    'stock': 6,
-    'pistol grip': 7,
-    'magazine': 8,
-    'scope': 9,
-    'mount': 10
+    'pistol grip': 1,
+    'receiver': 2,
+    'reciever': 2,
+    'cover': 2,
+    'dust cover': 2,
+    'slide': 2,
+    'bolt': 2,
+    'barrel': 3,
+    'gas block': 4,
+    'gas tube': 4,
+    'handguard': 5,
+    'foregrip': 6,
+    'muzzle': 7,
+    'stock': 8,
+    'magazine': 9,
+    'mag': 9,
+    'scope': 10,
+    'mount': 11,
+    'ch. handle': 12,
+    'charging handle': 12
   };
 
   function hasCategory(item, categoryName) {
     return item.categories?.some(category => category.name === categoryName) || false;
   }
 
+  function getSlotSearchName(slotName, slotNameId = '') {
+    return `${slotName || ''} ${slotNameId || ''}`.toLowerCase();
+  }
+
+  function isStockSlot(slotName, slotNameId = '') {
+    return getSlotSearchName(slotName, slotNameId).includes('stock');
+  }
+
+  function isPistolGripSlot(slotName, slotNameId = '') {
+    const name = getSlotSearchName(slotName, slotNameId);
+    return name.includes('pistol grip') || name.includes('mod_pistol_grip');
+  }
+
+  function isBarrelSlot(slotName, slotNameId = '') {
+    return getSlotSearchName(slotName, slotNameId).includes('barrel');
+  }
+
+  function isCombinedPistolGripStock(item) {
+    const name = `${item.name || ''} ${item.shortName || ''}`.toLowerCase();
+    return hasCategory(item, 'Stock')
+      || name.includes('pistol grip/buttstock')
+      || name.includes('grip/buttstock')
+      || name.includes('pistol grip-stock')
+      || name.includes('buttstock')
+      || name.includes(' stock');
+  }
+
   function isSuppressor(item) {
     return hasCategory(item, 'Silencer');
+  }
+
+  const weaponHasSeparateStockSlot = weapon.properties?.slots?.some(slot => isStockSlot(slot.name, slot.nameId)) || false;
+
+  function branchHasRequiredSight(branchEval) {
+    return branchEval.items.some(part => requiredSightIds.has(part.item.id));
+  }
+
+  function branchHasOnlyOptionalSight(branchEval) {
+    return requiredSightIds.size > 0 && branchEval.hasSight && !branchHasRequiredSight(branchEval);
   }
 
   function filterAllowedItems(allowedItems, targetCap) {
@@ -110,9 +183,43 @@ function getItemPrice(item) {
     getItemConflictIds(item).forEach(conflictId => targetSet.add(conflictId));
   }
 
+  function rebuildBuildState() {
+    installedIds.clear();
+    installedIds.add(weapon.id);
+
+    installedConflicts.clear();
+    if (weapon.conflictingItems) {
+      weapon.conflictingItems.forEach(conflict => installedConflicts.add(conflict.id));
+    }
+
+    totalErgo = weapon.properties.ergonomics || 0;
+    totalRecoilMod = 0;
+    totalWeight = weapon.weight || 0;
+    totalPrice = getItemPrice(weapon);
+    hasSight = hasCategory(weapon, 'Sights');
+    hasSuppressorGlobal = hasCategory(weapon, 'Silencer');
+
+    build.forEach(part => {
+      installedIds.add(part.item.id);
+      addItemConflictsToSet(part.item, installedConflicts);
+      totalErgo += part.item.ergonomicsModifier || 0;
+      totalRecoilMod += part.item.recoilModifier || 0;
+      totalWeight += part.item.weight || 0;
+      totalPrice += getItemPrice(part.item);
+      if (hasCategory(part.item, 'Sights')) hasSight = true;
+      if (isSuppressor(part.item)) hasSuppressorGlobal = true;
+    });
+  }
+
   function getSlotPriority(slotName) {
     const name = (slotName || '').toLowerCase();
-    return slotPriority[name] || 99;
+    if (slotPriority[name]) return slotPriority[name];
+
+    for (const [key, priority] of Object.entries(slotPriority)) {
+      if (name.includes(key)) return priority;
+    }
+
+    return 99;
   }
 
   function isTacticalSlot(slotName) {
@@ -191,8 +298,39 @@ function getItemPrice(item) {
     return false;
   }
 
+  function isReservedForRequiredTacticalDevice(item) {
+    if (requiredItemIds.has(item.id)) return false;
+
+    const cats = (item.categories || []).map(c => c.name);
+    const isLaser = cats.includes('Comb. tact. device');
+    const isFlashlight = cats.includes('Flashlight');
+
+    return (isLaser && requiredLaserIds.size > 0)
+      || (isFlashlight && requiredFlashlightIds.size > 0);
+  }
+
+  function itemTreeCanProvideRequiredItem(item, visitedIds = new Set(), unavailableIds = new Set()) {
+    if (!item || visitedIds.has(item.id)) return false;
+    if (unavailableIds.has(item.id)) return false;
+    if (requiredItemIds.has(item.id)) return true;
+
+    visitedIds.add(item.id);
+
+    return (item.properties?.slots || []).some(slot => slotCanProvideRequiredItem(slot, visitedIds, unavailableIds));
+  }
+
+  function slotCanProvideRequiredItem(slot, visitedIds = new Set(), unavailableIds = new Set()) {
+    return (slot.filters?.allowedItems || []).some(allowedItem => {
+      if (unavailableIds.has(allowedItem.id)) return false;
+      if (requiredItemIds.has(allowedItem.id)) return true;
+      return itemTreeCanProvideRequiredItem(modMap[allowedItem.id], new Set(visitedIds), unavailableIds);
+    });
+  }
+
   function isSkippedSlot(slot) {
     const slotNameId = (slot.nameId || '').toLowerCase();
+    if (slotCanProvideRequiredItem(slot)) return false;
+
     const hasAnyTactical = options.includeLaser || options.includeFlashlight;
     if (hasAnyTactical) {
       return slotNameId.includes('bipod')
@@ -218,6 +356,7 @@ function getItemPrice(item) {
       },
       hasSuppressor: false,
       hasSight: false,
+      requiredMatches: new Set(),
       conflicts: new Set(),
       isValid: false,
       warnings: [],
@@ -236,6 +375,7 @@ function getItemPrice(item) {
       },
       hasSuppressor: isSuppressor(item),
       hasSight: hasCategory(item, 'Sights'),
+      requiredMatches: requiredItemIds.has(item.id) ? new Set([item.id]) : new Set(),
       conflicts: new Set(getItemConflictIds(item)),
       isValid: true,
       warnings: [],
@@ -253,6 +393,7 @@ function getItemPrice(item) {
 
     target.hasSuppressor = target.hasSuppressor || source.hasSuppressor;
     target.hasSight = target.hasSight || source.hasSight;
+    source.requiredMatches.forEach(itemId => target.requiredMatches.add(itemId));
 
     source.conflicts.forEach(conflictId => target.conflicts.add(conflictId));
     target.warnings.push(...source.warnings);
@@ -274,9 +415,13 @@ function getItemPrice(item) {
     return true;
   }
 
-  function isBetterBranch(candidate, bestCandidate, mustFindSuppressor, mustFindSight) {
+  function isBetterBranch(candidate, bestCandidate, mustFindSuppressor, mustFindSight, mustFindRequired = false) {
     if (!candidate || !candidate.isValid || candidate.score === -Infinity) return false;
     if (!bestCandidate) return true;
+
+    if (mustFindRequired && candidate.requiredMatches.size !== bestCandidate.requiredMatches.size) {
+      return candidate.requiredMatches.size > bestCandidate.requiredMatches.size;
+    }
 
     if (mustFindSuppressor && candidate.hasSuppressor !== bestCandidate.hasSuppressor) {
       return candidate.hasSuppressor;
@@ -289,8 +434,12 @@ function getItemPrice(item) {
     return candidate.score > bestCandidate.score;
   }
 
-  function shouldApplyChildBranch(childEval, activeMustFindSuppressor, activeMustFindSight) {
+  function shouldApplyChildBranch(childEval, activeMustFindSuppressor, activeMustFindSight, activeMustFindRequired = false) {
     if (!childEval || !childEval.isValid || childEval.score === -Infinity) return false;
+
+    if (activeMustFindRequired) {
+      return childEval.requiredMatches.size > 0;
+    }
 
     if (activeMustFindSuppressor) {
       return childEval.hasSuppressor;
@@ -320,14 +469,30 @@ function getItemPrice(item) {
       return invalidBranchEvaluation();
     }
 
-    if (hasCategory(item, 'Sights') && !isValidSightForMode(item)) {
+    const isRequiredItem = requiredItemIds.has(item.id);
+    const unavailableRequiredProviderIds = new Set([
+      ...installedIds,
+      ...parentBranchInstalledIds,
+      ...pathIds,
+    ]);
+    const providesRequiredItem = itemTreeCanProvideRequiredItem(item, new Set(), unavailableRequiredProviderIds);
+
+    if (!isRequiredItem && weaponHasSeparateStockSlot && isPistolGripSlot(slotName) && isCombinedPistolGripStock(item)) {
+      return invalidBranchEvaluation();
+    }
+
+    if (!isRequiredItem && hasCategory(item, 'Sights') && !isValidSightForMode(item)) {
       return invalidBranchEvaluation();
     }
 
     const isTacSlot = isTacticalSlot(slotName);
     const hasAnyTactical = options.includeLaser || options.includeFlashlight;
     if (isTacSlot && hasAnyTactical) {
-      if (!isValidTacticalDevice(item)) {
+      if (isReservedForRequiredTacticalDevice(item)) {
+        return invalidBranchEvaluation();
+      }
+
+      if (!isRequiredItem && !providesRequiredItem && !isValidTacticalDevice(item)) {
         return invalidBranchEvaluation();
       }
       
@@ -335,14 +500,14 @@ function getItemPrice(item) {
       const isLaser = cats.includes('Comb. tact. device');
       const isFlashlight = cats.includes('Flashlight');
       
-      if (isLaser) {
+      if (isLaser && !isRequiredItem) {
         const alreadyHasLaser = hasLaserDevice(installedIds) || hasLaserDevice(parentBranchInstalledIds);
         if (alreadyHasLaser) {
           return invalidBranchEvaluation();
         }
       }
       
-      if (isFlashlight) {
+      if (isFlashlight && !isRequiredItem) {
         const alreadyHasFlashlight = hasFlashlightDevice(installedIds) || hasFlashlightDevice(parentBranchInstalledIds);
         if (alreadyHasFlashlight) {
           return invalidBranchEvaluation();
@@ -369,12 +534,19 @@ function getItemPrice(item) {
 
     const currentUsableErgo = Math.min(ergoCap, currentErgo);
     const newUsableErgo = Math.min(ergoCap, currentErgo + ergoMod);
-    const effectiveErgoMod = newUsableErgo - currentUsableErgo;
+    const cappedErgoMod = newUsableErgo - currentUsableErgo;
+    const currentOverflowErgo = Math.max(0, Math.min(ergoSoftCap, currentErgo) - ergoCap);
+    const newOverflowErgo = Math.max(0, Math.min(ergoSoftCap, currentErgo + ergoMod) - ergoCap);
+    const overflowErgoMod = newOverflowErgo - currentOverflowErgo;
+    const itemOverflowErgoWeight = targetType === 'meta' && hasCategory(item, 'Stock')
+      ? Math.max(overflowErgoWeight, 0.45)
+      : overflowErgoWeight;
+    const effectiveErgoMod = cappedErgoMod + (overflowErgoMod * itemOverflowErgoWeight);
 
     let branchScore = (effectiveErgoMod * ergoWeight)
       - (recoilMod * recoilWeight)
       - (price * priceWeight)
-      - (itemWeight * 0.001);
+      - (itemWeight * weightWeight);
 
     if (isTacSlot && hasAnyTactical) {
       branchScore += 10000; // Крупный бонус для гарантии установки
@@ -436,6 +608,7 @@ function getItemPrice(item) {
 
         let slotCanProvideSuppressor = false;
         let slotCanProvideSight = false;
+        let slotCanProvideRequired = false;
 
         const childEvals = [];
 
@@ -443,7 +616,7 @@ function getItemPrice(item) {
           const childItem = modMap[child.id];
           if (!childItem) return;
 
-          if ((hasSight || branchEval.hasSight) && hasCategory(childItem, 'Sights')) return;
+          if ((hasSight || branchEval.hasSight) && hasCategory(childItem, 'Sights') && !requiredItemIds.has(childItem.id)) return;
 
           const childEval = evaluateBranch(
             slot.name,
@@ -457,8 +630,10 @@ function getItemPrice(item) {
           );
 
           if (childEval.isValid && childEval.score !== -Infinity) {
+            if (branchHasOnlyOptionalSight(childEval)) return;
             if (childEval.hasSuppressor) slotCanProvideSuppressor = true;
             if (childEval.hasSight) slotCanProvideSight = true;
+            if (childEval.requiredMatches.size > 0) slotCanProvideRequired = true;
             childEvals.push(childEval);
           }
         });
@@ -466,14 +641,15 @@ function getItemPrice(item) {
         let bestChildEval = null;
         const activeMustFindSuppressor = mustFindSuppressor && slotCanProvideSuppressor;
         const activeMustFindSight = mustFindSight && slotCanProvideSight;
+        const activeMustFindRequired = slotCanProvideRequired;
 
         childEvals.forEach(childEval => {
-          if (isBetterBranch(childEval, bestChildEval, activeMustFindSuppressor, activeMustFindSight)) {
+          if (isBetterBranch(childEval, bestChildEval, activeMustFindSuppressor, activeMustFindSight, activeMustFindRequired)) {
             bestChildEval = childEval;
           }
         });
 
-        if (shouldApplyChildBranch(bestChildEval, activeMustFindSuppressor, activeMustFindSight)) {
+        if (shouldApplyChildBranch(bestChildEval, activeMustFindSuppressor, activeMustFindSight, activeMustFindRequired)) {
           mergeBranchEvaluation(branchEval, bestChildEval);
 
           branchErgo = Math.max(0, branchErgo + bestChildEval.statsDelta.ergonomics);
@@ -489,9 +665,10 @@ function getItemPrice(item) {
     return branchEval;
   }
 
-  function applyBranchPlan(branchEval) {
+  function applyBranchPlan(branchEval, insertIndex = build.length) {
+    build.splice(insertIndex, 0, ...branchEval.items);
+
     branchEval.items.forEach(part => {
-      build.push(part);
       installedIds.add(part.item.id);
       addItemConflictsToSet(part.item, installedConflicts);
 
@@ -524,6 +701,7 @@ function getItemPrice(item) {
 
       let slotCanProvideSuppressor = false;
       let slotCanProvideSight = false;
+      let slotCanProvideRequired = false;
 
       const candidates = [];
 
@@ -531,10 +709,11 @@ function getItemPrice(item) {
         const item = modMap[shallowItem.id];
         if (!item) return;
 
-        if (hasSight && hasCategory(item, 'Sights')) return;
+        if (hasSight && hasCategory(item, 'Sights') && !requiredItemIds.has(item.id)) return;
 
         const branchEval = evaluateBranch(slot.name, item.id, totalErgo, new Set(), totalWeight, new Set(), new Set(), totalPrice);
         if (!branchEval.isValid) return;
+        if (branchHasOnlyOptionalSight(branchEval)) return;
 
         if (maxWeight > 0) {
           const hypotheticalWeight = totalWeight + branchEval.statsDelta.weight;
@@ -548,12 +727,14 @@ function getItemPrice(item) {
 
         if (branchEval.hasSuppressor) slotCanProvideSuppressor = true;
         if (branchEval.hasSight) slotCanProvideSight = true;
+        if (branchEval.requiredMatches.size > 0) slotCanProvideRequired = true;
 
         candidates.push({
           branchEval,
           score: branchEval.score,
           hasSuppressor: branchEval.hasSuppressor,
           hasSight: branchEval.hasSight,
+          requiredMatches: branchEval.requiredMatches,
           isValid: branchEval.isValid,
         });
       });
@@ -564,9 +745,10 @@ function getItemPrice(item) {
 
       const activeMustFindSuppressor = mustFindSuppressor && slotCanProvideSuppressor;
       const activeMustFindSight = mustFindSight && slotCanProvideSight;
+      const activeMustFindRequired = slotCanProvideRequired;
 
       candidates.forEach(candidate => {
-        if (isBetterBranch(candidate, bestCandidate, activeMustFindSuppressor, activeMustFindSight)) {
+        if (isBetterBranch(candidate, bestCandidate, activeMustFindSuppressor, activeMustFindSight, activeMustFindRequired)) {
           bestCandidate = candidate;
         }
       });
@@ -574,6 +756,7 @@ function getItemPrice(item) {
       if (!bestCandidate) return;
       if (activeMustFindSuppressor && !bestCandidate.hasSuppressor) return;
       if (activeMustFindSight && !bestCandidate.hasSight) return;
+      if (activeMustFindRequired && bestCandidate.requiredMatches.size === 0) return;
 
       const rootItem = bestCandidate.branchEval.items[0]?.item;
       if (!rootItem) return;
@@ -592,7 +775,201 @@ function getItemPrice(item) {
     });
   }
 
+  function findInstalledSlotContextForItem(itemId) {
+    const installedParts = [weapon, ...build.map(part => part.item)];
+
+    for (const parentItem of installedParts) {
+      for (const slot of parentItem.properties?.slots || []) {
+        const allowed = slot.filters?.allowedItems || [];
+        if (allowed.some(allowedItem => allowedItem.id === itemId)) {
+          return { parentItem, slot };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function collectInstalledBranchIds(rootItem) {
+    const installedBuildIds = new Set(build.map(part => part.item.id));
+    const branchIds = new Set([rootItem.id]);
+
+    function walk(item) {
+      for (const slot of item.properties?.slots || []) {
+        for (const allowedItem of slot.filters?.allowedItems || []) {
+          if (!installedBuildIds.has(allowedItem.id) || branchIds.has(allowedItem.id)) continue;
+
+          const childItem = modMap[allowedItem.id];
+          if (!childItem) continue;
+
+          branchIds.add(childItem.id);
+          walk(childItem);
+        }
+      }
+    }
+
+    walk(rootItem);
+    return branchIds;
+  }
+
+  function createExistingBranchEvaluation(parts) {
+    const branchEval = {
+      score: 0,
+      items: parts,
+      statsDelta: {
+        ergonomics: 0,
+        recoil: 0,
+        weight: 0,
+        price: 0,
+      },
+      hasSuppressor: false,
+      hasSight: false,
+      requiredMatches: new Set(),
+      conflicts: new Set(),
+      isValid: true,
+      warnings: [],
+    };
+
+    parts.forEach(part => {
+      branchEval.statsDelta.ergonomics += part.item.ergonomicsModifier || 0;
+      branchEval.statsDelta.recoil += part.item.recoilModifier || 0;
+      branchEval.statsDelta.weight += part.item.weight || 0;
+      branchEval.statsDelta.price += getItemPrice(part.item);
+      if (isSuppressor(part.item)) branchEval.hasSuppressor = true;
+      if (hasCategory(part.item, 'Sights')) branchEval.hasSight = true;
+      if (requiredItemIds.has(part.item.id)) branchEval.requiredMatches.add(part.item.id);
+      addItemConflictsToSet(part.item, branchEval.conflicts);
+    });
+
+    return branchEval;
+  }
+
+  function getProjectedStats(branchEval) {
+    const recoilMod = totalRecoilMod + branchEval.statsDelta.recoil;
+
+    return {
+      ergonomics: totalErgo + branchEval.statsDelta.ergonomics,
+      recoilVertical: baseRecoilV * (1 + (recoilMod / 100)),
+      recoilHorizontal: baseRecoilH * (1 + (recoilMod / 100)),
+      weight: totalWeight + branchEval.statsDelta.weight,
+      price: totalPrice + branchEval.statsDelta.price,
+    };
+  }
+
+  function getBranchBarrelRecoil(branchEval) {
+    const barrelPart = branchEval.items.find(part => hasCategory(part.item, 'Barrel'));
+    return barrelPart?.item.recoilModifier || 0;
+  }
+
+  function withForcedSlotAllowedItem(slot, allowedItem, callback) {
+    const originalAllowedItems = slot.filters.allowedItems;
+    slot.filters.allowedItems = [allowedItem];
+
+    try {
+      return callback();
+    } finally {
+      slot.filters.allowedItems = originalAllowedItems;
+    }
+  }
+
+  function isBetterFinalBarrel(candidate, bestCandidate) {
+    if (!candidate) return false;
+    if (!bestCandidate) return true;
+
+    if (candidate.branchEval.requiredMatches.size !== bestCandidate.branchEval.requiredMatches.size) {
+      return candidate.branchEval.requiredMatches.size > bestCandidate.branchEval.requiredMatches.size;
+    }
+
+    const recoilDelta = bestCandidate.projected.recoilVertical - candidate.projected.recoilVertical;
+    if (recoilDelta > 0.25) return true;
+    if (recoilDelta < -0.25) return false;
+
+    if (candidate.barrelRecoil < bestCandidate.barrelRecoil - 0.1) return true;
+    if (candidate.barrelRecoil > bestCandidate.barrelRecoil + 0.1) return false;
+
+    if (candidate.projected.ergonomics > bestCandidate.projected.ergonomics + 0.25) return true;
+    if (candidate.projected.ergonomics < bestCandidate.projected.ergonomics - 0.25) return false;
+
+    return candidate.projected.weight < bestCandidate.projected.weight;
+  }
+
+  function optimizeFinalBarrelBlock() {
+    if (targetType !== 'meta') return;
+
+    const barrelIndex = build.findIndex(part => hasCategory(part.item, 'Barrel'));
+    if (barrelIndex === -1) return;
+
+    const currentBarrel = build[barrelIndex];
+    const barrelSlotContext = findInstalledSlotContextForItem(currentBarrel.item.id);
+    if (!barrelSlotContext || !isBarrelSlot(barrelSlotContext.slot.name, barrelSlotContext.slot.nameId)) return;
+
+    const parentHasBarrelSlot = barrelSlotContext.parentItem.properties?.slots?.some(slot => isBarrelSlot(slot.name, slot.nameId)) || false;
+    const rootItem = barrelSlotContext.parentItem !== weapon && parentHasBarrelSlot
+      ? barrelSlotContext.parentItem
+      : currentBarrel.item;
+    const rootSlotContext = rootItem === currentBarrel.item
+      ? barrelSlotContext
+      : findInstalledSlotContextForItem(rootItem.id);
+
+    if (!rootSlotContext) return;
+
+    const rootIndex = build.findIndex(part => part.item.id === rootItem.id);
+    if (rootIndex === -1) return;
+
+    const removedIds = collectInstalledBranchIds(rootItem);
+    const removedParts = build.filter(part => removedIds.has(part.item.id));
+    const restoreBranchEval = createExistingBranchEvaluation(removedParts);
+
+    for (let i = build.length - 1; i >= 0; i -= 1) {
+      if (removedIds.has(build[i].item.id)) {
+        build.splice(i, 1);
+      }
+    }
+    rebuildBuildState();
+
+    let bestCandidate = null;
+    const allowed = rootSlotContext.slot.filters?.allowedItems || [];
+
+    allowed.forEach(shallowItem => {
+      const item = modMap[shallowItem.id];
+      if (!item) return;
+
+      const barrelSlot = item.properties?.slots?.find(slot => isBarrelSlot(slot.name, slot.nameId));
+      const forcedBarrelItems = barrelSlot
+        ? barrelSlot.filters?.allowedItems?.filter(allowedItem => {
+          const allowedMod = modMap[allowedItem.id];
+          return allowedMod && hasCategory(allowedMod, 'Barrel');
+        }) || []
+        : [null];
+
+      if (!barrelSlot && !hasCategory(item, 'Barrel')) return;
+
+      forcedBarrelItems.forEach(forcedBarrelItem => {
+        const evaluateCandidate = () => evaluateBranch(rootSlotContext.slot.name, item.id, totalErgo, new Set(), totalWeight, new Set(), new Set(), totalPrice);
+        const branchEval = forcedBarrelItem && barrelSlot
+          ? withForcedSlotAllowedItem(barrelSlot, forcedBarrelItem, evaluateCandidate)
+          : evaluateCandidate();
+
+        if (!branchEval.isValid) return;
+        if (!branchEval.items.some(part => hasCategory(part.item, 'Barrel'))) return;
+
+        const projected = getProjectedStats(branchEval);
+        if (projected.ergonomics < ergoCap) return;
+        if (maxWeight > 0 && projected.weight > maxWeight + weightEpsilon) return;
+        if (maxPrice > 0 && projected.price > maxPrice) return;
+
+        const candidate = { branchEval, projected, barrelRecoil: getBranchBarrelRecoil(branchEval) };
+        if (isBetterFinalBarrel(candidate, bestCandidate)) {
+          bestCandidate = candidate;
+        }
+      });
+    });
+
+    applyBranchPlan(bestCandidate?.branchEval || restoreBranchEval, rootIndex);
+  }
+
   processSlots(weapon.properties.slots);
+  optimizeFinalBarrelBlock();
 
   const finalRecoilV = baseRecoilV * (1 + (totalRecoilMod / 100));
   const finalRecoilH = baseRecoilH * (1 + (totalRecoilMod / 100));
@@ -609,8 +986,16 @@ function getItemPrice(item) {
   };
 
   const warnings = [];
+  const errors = [];
   if (options.requireSuppressor && !hasSuppressorGlobal) {
-    result.error = 'No compatible suppressor could be installed with the current constraints.';
+    errors.push('No compatible suppressor could be installed with the current constraints.');
+  }
+  const missingRequiredIds = [...requiredItemIds].filter(itemId => !installedIds.has(itemId));
+  if (missingRequiredIds.length > 0) {
+    const missingNames = missingRequiredIds
+      .map(itemId => modMap[itemId]?.shortName || modMap[itemId]?.name || itemId)
+      .join(', ');
+    errors.push(`Required modules could not be installed with the current weapon and constraints: ${missingNames}.`);
   }
   if (maxWeight > 0 && totalWeight > maxWeight + weightEpsilon) {
     warnings.push('The base weapon already exceeds the selected max weight.');
@@ -621,6 +1006,9 @@ function getItemPrice(item) {
   if (warnings.length > 0) {
     result.warning = warnings.join(' ');
   }
+  if (errors.length > 0) {
+    result.error = errors.join(' ');
+  }
 
   return result;
 }
@@ -630,18 +1018,21 @@ export function calculateBestBuild(weapon, targetType, minErgo, maxRecoil, modMa
      let ergoWeight = 1;
      let recoilWeight = 1;
      let priceWeight = 0;
+     let weightWeight = 0.001;
+     let overflowErgoWeight = 0;
+     let ergoSoftCap = 100;
      let ergoCap = 100;
      
      if (targetType === 'max_ergo') { ergoWeight = 1; recoilWeight = 0; }
      else if (targetType === 'min_recoil') { ergoWeight = 0; recoilWeight = 1; }
-     else if (targetType === 'meta') { ergoWeight = 1; recoilWeight = 3; ergoCap = 50; }
+     else if (targetType === 'meta') { ergoWeight = 1; recoilWeight = 3; weightWeight = 15; overflowErgoWeight = 0.15; ergoCap = 50; ergoSoftCap = 70; }
      else if (targetType === 'budget') { 
        ergoWeight = 1; 
        recoilWeight = 1.5; 
        priceWeight = 0.0001; 
      }
      
-     return _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMap, options, ergoCap, targetType);
+     return _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMap, options, ergoCap, targetType, weightWeight, overflowErgoWeight, ergoSoftCap);
   }
 
   let bestBuild = null;
