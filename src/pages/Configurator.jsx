@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   PRICE_CONFIDENCE,
@@ -11,15 +11,35 @@ import {
   loadTargetTypePreference,
   saveTargetTypePreference,
 } from '../data/settings/buildPreferences.js';
-import { getWeaponDetails, getAllMods } from '../data/tarkovApi';
-import { calculateBestBuild, recalculateBuildStats } from '../domain/calculator.js';
+import { getWeaponDetails, getAllMods, isAbortError } from '../data/tarkovApi';
+import { recalculateBuildStats } from '../domain/calculator.js';
+
+function createCancelledCalculationError() {
+  const error = new Error('A newer build calculation replaced this request.');
+  error.name = 'AbortError';
+  return error;
+}
 
 function ImageWithLoader({ src, alt, style, containerStyle }) {
-  const [loaded, setLoaded] = useState(false);
+  return (
+    <ImageWithLoaderContent
+      key={src || 'missing-image'}
+      src={src}
+      alt={alt}
+      style={style}
+      containerStyle={containerStyle}
+    />
+  );
+}
+
+function ImageWithLoaderContent({ src, alt, style, containerStyle }) {
+  const [imageState, setImageState] = useState(src ? 'loading' : 'error');
+  const isLoading = Boolean(src) && imageState === 'loading';
+  const canDisplayImage = Boolean(src) && imageState !== 'error';
 
   return (
     <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', ...containerStyle }}>
-      {!loaded && (
+      {isLoading && (
         <div className="shimmer" style={{
           position: 'absolute',
           top: 0,
@@ -29,16 +49,23 @@ function ImageWithLoader({ src, alt, style, containerStyle }) {
           borderRadius: 'inherit'
         }} />
       )}
-      <img
-        src={src}
-        alt={alt}
-        onLoad={() => setLoaded(true)}
-        style={{
-          ...style,
-          opacity: loaded ? 1 : 0,
-          transition: 'opacity 0.3s ease-in-out'
-        }}
-      />
+      {canDisplayImage ? (
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          onLoad={() => setImageState('loaded')}
+          onError={() => setImageState('error')}
+          style={{
+            ...style,
+            opacity: imageState === 'loaded' ? 1 : 0,
+            transition: 'opacity 0.3s ease-in-out'
+          }}
+        />
+      ) : (
+        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>Image unavailable</span>
+      )}
     </div>
   );
 }
@@ -52,10 +79,12 @@ function buildAssemblyTree(weapon, buildParts) {
   };
 
   const queue = [root];
+  let queueIndex = 0;
   const remainingParts = [...buildParts];
 
-  while (queue.length > 0 && remainingParts.length > 0) {
-    const currentNode = queue.shift();
+  while (queueIndex < queue.length && remainingParts.length > 0) {
+    const currentNode = queue[queueIndex];
+    queueIndex += 1;
     const slots = currentNode.item.properties?.slots || [];
 
     slots.forEach(slot => {
@@ -92,6 +121,18 @@ function buildAssemblyTree(weapon, buildParts) {
   }
 
   return root;
+}
+
+function findTreeNodeByItemId(root, itemId) {
+  if (!root) return null;
+  if (root.item.id === itemId) return root;
+
+  for (const child of root.children) {
+    const match = findTreeNodeByItemId(child, itemId);
+    if (match) return match;
+  }
+
+  return null;
 }
 
 function getAlternativeAttachedParts(item) {
@@ -131,49 +172,53 @@ function getAlternativeDisplayName(item) {
     : formatPartName(item.shortName);
 }
 
-function calculateSimilarityDistance(node, b, priceMode) {
-  const subtreeParts = [];
-  function collect(n) {
-    if (n && n.item) {
-      subtreeParts.push(n.item);
-      (n.children || []).forEach(collect);
-    }
+function getRawItemPrice(item) {
+  return item.avg24hPrice
+    || item.lastLowPrice
+    || item.low24hPrice
+    || item.basePrice
+    || 0;
+}
+
+function getItemPriceForMode(item, priceMode) {
+  if (!priceMode || item.price?.mode === priceMode) {
+    return item.price?.value ?? getRawItemPrice(item);
+  }
+  return getRawItemPrice(item);
+}
+
+function getItemsMetrics(items, priceMode) {
+  return items.reduce((metrics, item) => ({
+    ergonomics: metrics.ergonomics + (item.ergonomicsModifier || 0),
+    recoil: metrics.recoil + (item.recoilModifier || 0),
+    weight: metrics.weight + (item.weight || 0),
+    price: metrics.price + getItemPriceForMode(item, priceMode),
+  }), {
+    ergonomics: 0,
+    recoil: 0,
+    weight: 0,
+    price: 0,
+  });
+}
+
+function getNodeMetrics(node, priceMode) {
+  const items = [];
+  function collect(currentNode) {
+    if (!currentNode?.item) return;
+    items.push(currentNode.item);
+    currentNode.children.forEach(collect);
   }
   collect(node);
+  return getItemsMetrics(items, priceMode);
+}
 
-  const ergoA = subtreeParts.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
-  const recoilA = subtreeParts.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
-  const weightA = subtreeParts.reduce((sum, item) => sum + (item.weight || 0), 0);
+function getSimilarityDistance(referenceMetrics, item, priceMode) {
+  const candidateMetrics = getItemsMetrics(getAlternativePackageItems(item), priceMode);
 
-  function getRawPrice(item) {
-    return item.avg24hPrice
-      || item.lastLowPrice
-      || item.low24hPrice
-      || item.basePrice
-      || 0;
-  }
-
-  function getPrice(item) {
-    if (!priceMode || item.price?.mode === priceMode) {
-      return item.price?.value ?? getRawPrice(item);
-    }
-    return getRawPrice(item);
-  }
-
-  const priceA = subtreeParts.reduce((sum, item) => sum + getPrice(item), 0);
-
-  const packageItems = getAlternativePackageItems(b);
-  const ergoB = packageItems.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
-  const recoilB = packageItems.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
-  const weightB = packageItems.reduce((sum, item) => sum + (item.weight || 0), 0);
-  const priceB = packageItems.reduce((sum, item) => sum + getPrice(item), 0);
-
-  const dErgo = Math.abs(ergoA - ergoB) * 1.5;
-  const dRecoil = Math.abs(recoilA - recoilB) * 4.0;
-  const dWeight = Math.abs(weightA - weightB) * 2.0;
-  const dPrice = Math.abs(priceA - priceB) * 0.0001;
-
-  return dErgo + dRecoil + dWeight + dPrice;
+  return (Math.abs(referenceMetrics.ergonomics - candidateMetrics.ergonomics) * 1.5)
+    + (Math.abs(referenceMetrics.recoil - candidateMetrics.recoil) * 4.0)
+    + (Math.abs(referenceMetrics.weight - candidateMetrics.weight) * 2.0)
+    + (Math.abs(referenceMetrics.price - candidateMetrics.price) * 0.0001);
 }
 
 function isValidSightForMode(item, sightMode) {
@@ -186,7 +231,8 @@ function isValidSightForMode(item, sightMode) {
   }
 
   const mode = sightMode || 'any';
-  if (mode === 'none' || mode === 'any') return true;
+  if (mode === 'none') return false;
+  if (mode === 'any') return true;
 
   const isReflex = cats.includes('Reflex sight') || cats.includes('Compact reflex sight');
   const isMagnified = cats.includes('Scope') || cats.includes('Assault scope');
@@ -214,23 +260,7 @@ function scoreScope(item, priceMode) {
   const ergo = item.ergonomicsModifier || 0;
   const recoil = item.recoilModifier || 0;
   const weight = item.weight || 0;
-  
-  function getRawPrice(it) {
-    return it.avg24hPrice
-      || it.lastLowPrice
-      || it.low24hPrice
-      || it.basePrice
-      || 0;
-  }
-
-  function getPrice(it) {
-    if (!priceMode || it.price?.mode === priceMode) {
-      return it.price?.value ?? getRawPrice(it);
-    }
-    return getRawPrice(it);
-  }
-
-  const price = getPrice(item);
+  const price = getItemPriceForMode(item, priceMode);
 
   return ergo - recoil * 5 - weight * 10 - (price > 0 ? price * 0.0001 : 0);
 }
@@ -304,7 +334,7 @@ function getReplaceTarget(node, mode) {
   return node;
 }
 
-function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sightMode, mode = 'EXACT_ITEM') {
+function findCompatibleAlternatives(node, allMods, priceMode, sightMode, mode = 'EXACT_ITEM') {
   if (!node) return [];
 
   // Находим реальную цель для замены
@@ -315,7 +345,7 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
   const parentSlot = parentItem.properties?.slots?.find(s => s.name === targetNode.slotName);
   if (!parentSlot) return [];
 
-  const allowedIds = new Set((parentSlot.filters?.allowedItems || []).map(a => a.id));
+  const allowedItems = parentSlot.filters?.allowedItems || [];
 
   // Собираем текущий прицел (если он есть в поддереве targetNode)
   const subtreeParts = [];
@@ -346,7 +376,7 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
       n.children.forEach(collectRemaining);
     }
   }
-  collectRemaining(buildAssemblyTree(rootNode.item, currentBuild.build));
+  collectRemaining(rootNode);
 
   const targetIsSight = isSightItem(targetNode.item);
   const targetIsMount = isMountItem(targetNode.item);
@@ -369,7 +399,7 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
         n.children.forEach(collectRemainingNode);
       }
     }
-    collectRemainingNode(buildAssemblyTree(rootNode.item, currentBuild.build));
+    collectRemainingNode(rootNode);
     return ids;
   }
 
@@ -391,6 +421,25 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
   function itemsConflictWithEachOther(a, b) {
     return (a.conflictingItems || []).some(conflict => conflict.id === b.id)
       || (b.conflictingItems || []).some(conflict => conflict.id === a.id);
+  }
+
+  function isPackageCompatibleWithInstalled(packageItems, installedIds) {
+    const packageIds = new Set();
+
+    for (const packageItem of packageItems) {
+      if (!packageItem || packageIds.has(packageItem.id)) return false;
+      if (installedIds.has(packageItem.id)) return false;
+      if (itemConflictsWithInstalled(packageItem, installedIds)) return false;
+
+      for (const existingItem of packageItems) {
+        if (existingItem === packageItem) break;
+        if (itemsConflictWithEachOther(packageItem, existingItem)) return false;
+      }
+
+      packageIds.add(packageItem.id);
+    }
+
+    return true;
   }
 
   function collectSightPackages(rootItem, remainingIds, currentSightItem, pathItems = [rootItem]) {
@@ -442,12 +491,10 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
     return packages;
   }
 
-  Object.keys(allMods).forEach(modId => {
-    if (modId === targetNode.item.id) return;
-    if (!allowedIds.has(modId)) return;
-
-    const altItem = allMods[modId];
+  allowedItems.forEach(allowedItem => {
+    const altItem = allMods[allowedItem.id];
     if (!altItem) return;
+    if (altItem.id === targetNode.item.id) return;
 
     if (currentSight && altItem.id === currentSight.id) return;
 
@@ -491,6 +538,7 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
 
           if (!isValidSightForMode(scopeItem, sightMode)) continue;
           if (currentSight && scopeItem.id === currentSight.id) continue;
+          if (!isPackageCompatibleWithInstalled([altItem, scopeItem], remainingInstalledIds)) continue;
 
           const score = scoreScope(scopeItem, priceMode);
           if (score > bestScopeScore) {
@@ -560,6 +608,7 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
         attachedScopeSlotName: sightSlot.name
       };
     }
+    if (!isPackageCompatibleWithInstalled(getAlternativePackageItems(altToPush), remainingInstalledIds)) return;
     alternatives.push(altToPush);
   });
 
@@ -581,10 +630,13 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
           if (!isValidSightForMode(mountOrSight, sightMode)) return;
           if (itemConflictsWithInstalled(mountOrSight, remainingIdsForAssembly)) return;
 
-          alternatives.push({
+          const alternative = {
             ...mountOrSight,
             replacementMode: 'SIGHT_ASSEMBLY'
-          });
+          };
+          if (isPackageCompatibleWithInstalled(getAlternativePackageItems(alternative), remainingIdsForAssembly)) {
+            alternatives.push(alternative);
+          }
           return;
         }
 
@@ -592,13 +644,16 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
         if (itemConflictsWithInstalled(mountOrSight, remainingIdsForAssembly)) return;
 
         collectSightPackages(mountOrSight, remainingIdsForAssembly, currentSight).forEach(pkg => {
-          alternatives.push({
+          const alternative = {
             ...mountOrSight,
             attachedParts: pkg.attachedParts,
             attachedScope: pkg.sight,
             attachedScopeSlotName: pkg.attachedParts[pkg.attachedParts.length - 1]?.slotName,
             replacementMode: 'SIGHT_ASSEMBLY'
-          });
+          };
+          if (isPackageCompatibleWithInstalled(getAlternativePackageItems(alternative), remainingIdsForAssembly)) {
+            alternatives.push(alternative);
+          }
         });
       });
     }
@@ -610,6 +665,22 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
       ? getReplaceTarget(targetNode, 'SIGHT_ASSEMBLY')
       : targetNode
   );
+  const referenceMetricsByNode = new Map();
+  const distanceByAlternative = new Map();
+  const getDistance = alt => {
+    if (distanceByAlternative.has(alt)) return distanceByAlternative.get(alt);
+
+    const distanceNode = getDistanceNode(alt);
+    let referenceMetrics = referenceMetricsByNode.get(distanceNode);
+    if (!referenceMetrics) {
+      referenceMetrics = getNodeMetrics(distanceNode, priceMode);
+      referenceMetricsByNode.set(distanceNode, referenceMetrics);
+    }
+
+    const distance = getSimilarityDistance(referenceMetrics, alt, priceMode);
+    distanceByAlternative.set(alt, distance);
+    return distance;
+  };
   alternatives.forEach(alt => {
     const isSightOrHasAttached = isSightItem(alt) || alt.attachedScope;
     if (isSightOrHasAttached) {
@@ -618,8 +689,8 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
       if (!existing) {
         uniqueAlternatives.set(sightId, alt);
       } else {
-        const distAlt = calculateSimilarityDistance(getDistanceNode(alt), alt, priceMode);
-        const distExisting = calculateSimilarityDistance(getDistanceNode(existing), existing, priceMode);
+        const distAlt = getDistance(alt);
+        const distExisting = getDistance(existing);
         if (distAlt < distExisting) {
           uniqueAlternatives.set(sightId, alt);
         }
@@ -632,8 +703,8 @@ function findCompatibleAlternatives(node, allMods, currentBuild, priceMode, sigh
   const filteredAlternatives = Array.from(uniqueAlternatives.values());
 
   filteredAlternatives.sort((a, b) => {
-    const distA = calculateSimilarityDistance(getDistanceNode(a), a, priceMode);
-    const distB = calculateSimilarityDistance(getDistanceNode(b), b, priceMode);
+    const distA = getDistance(a);
+    const distB = getDistance(b);
     return distA - distB;
   });
 
@@ -854,6 +925,101 @@ function getSuppressorOptions(suppressorMode) {
   };
 }
 
+function isSuppressorItem(item) {
+  return getCategoryNames(item).includes('silencer');
+}
+
+function getReplacementConstraintErrors({
+  weapon,
+  buildParts,
+  priceMode,
+  maxWeight,
+  maxPrice,
+  requiredItemIds,
+  suppressorMode,
+  sightMode,
+}) {
+  const errors = [];
+  const items = [weapon, ...buildParts.map(part => part.item)];
+  const itemsById = new Map();
+
+  for (const item of items) {
+    if (!item?.id) {
+      errors.push('The replacement contains an invalid item.');
+      continue;
+    }
+
+    if (itemsById.has(item.id)) {
+      errors.push(`The replacement would install ${getItemDisplayName(item)} more than once.`);
+      continue;
+    }
+
+    itemsById.set(item.id, item);
+  }
+
+  for (const item of itemsById.values()) {
+    const conflictingItem = (item.conflictingItems || [])
+      .map(conflict => itemsById.get(conflict.id))
+      .find(Boolean);
+
+    if (conflictingItem) {
+      errors.push(`${getItemDisplayName(item)} conflicts with ${getItemDisplayName(conflictingItem)}.`);
+      break;
+    }
+  }
+
+  const requiredIds = new Set((requiredItemIds || []).map(String));
+  const missingRequiredIds = [...requiredIds].filter(itemId => !itemsById.has(itemId));
+  if (missingRequiredIds.length > 0) {
+    errors.push(`Required module${missingRequiredIds.length > 1 ? 's' : ''} would be removed by this replacement.`);
+  }
+
+  const suppressorCount = [...itemsById.values()].filter(isSuppressorItem).length;
+  if (suppressorMode === 'require' && suppressorCount === 0) {
+    errors.push('This replacement would remove the required suppressor.');
+  }
+  if (suppressorMode === 'forbid' && suppressorCount > 0) {
+    errors.push('This replacement would install a forbidden suppressor.');
+  }
+
+  const installedSights = [...itemsById.values()].filter(isSightItem);
+  if (sightMode === 'none' && installedSights.length > 0) {
+    errors.push('This replacement would install a sight while “No sight” is selected.');
+  } else if (sightMode !== 'none' && !installedSights.some(item => isValidSightForMode(item, sightMode))) {
+    errors.push('This replacement would no longer satisfy the selected sight requirement.');
+  }
+
+  const stats = recalculateBuildStats(weapon, buildParts, { priceMode });
+  const parsedMaxWeight = Number(maxWeight) || 0;
+  const parsedMaxPrice = Number(maxPrice) || 0;
+
+  if (parsedMaxWeight > 0 && Number(stats.weight) > parsedMaxWeight + 0.0001) {
+    errors.push(`This replacement exceeds the ${parsedMaxWeight} kg weight limit.`);
+  }
+  if (parsedMaxPrice > 0 && stats.price > parsedMaxPrice) {
+    errors.push(`This replacement exceeds the ${parsedMaxPrice} RUB budget limit.`);
+  }
+
+  return { errors, stats };
+}
+
+function getUnattachedBuildPartError(weapon, buildParts) {
+  const tree = buildAssemblyTree(weapon, buildParts);
+  let attachedPartCount = 0;
+
+  function countAttachedParts(node) {
+    node.children.forEach(child => {
+      attachedPartCount += 1;
+      countAttachedParts(child);
+    });
+  }
+
+  countAttachedParts(tree);
+  return attachedPartCount === buildParts.length
+    ? null
+    : 'This replacement would leave one or more parts without a compatible parent slot.';
+}
+
 function InlineMessage({ type = 'info', title, children }) {
   const isError = type === 'error';
   const isWarning = type === 'warning';
@@ -958,8 +1124,9 @@ function getRequiredModuleSearchResults(allMods, query, selectedIds) {
   if (!allMods || query.trim().length < 2) return [];
 
   const normalizedQuery = query.trim().toLowerCase();
+  const selectedIdSet = new Set(selectedIds);
   return Object.values(allMods)
-    .filter(item => !selectedIds.includes(item.id))
+    .filter(item => !selectedIdSet.has(item.id))
     .filter(item => getModuleSearchText(item).includes(normalizedQuery))
     .sort((a, b) => {
       const aName = (a.shortName || a.name || '').toLowerCase();
@@ -1061,10 +1228,120 @@ function Configurator() {
   const [includeLaser, setIncludeLaser] = useState(false);
   const [includeFlashlight, setIncludeFlashlight] = useState(false);
   const [sightMode, setSightMode] = useState('any');
+  const [isSightSelectOpen, setIsSightSelectOpen] = useState(false);
   const [partsFilter, setPartsFilter] = useState('');
   const [configTab, setConfigTab] = useState('basic');
   const [requiredModuleSearch, setRequiredModuleSearch] = useState('');
   const [requiredModuleIds, setRequiredModuleIds] = useState([]);
+  const [replacementError, setReplacementError] = useState(null);
+  const calculatorWorkerRef = useRef(null);
+  const calculatorDataRef = useRef({ modMap: null, version: 0 });
+  const nextCalculationRequestIdRef = useRef(0);
+  const latestCalculationRequestIdRef = useRef(0);
+  const pendingCalculationsRef = useRef(new Map());
+
+  const cancelPendingCalculations = useCallback((exceptRequestId = null) => {
+    const worker = calculatorWorkerRef.current;
+
+    pendingCalculationsRef.current.forEach((pendingCalculation, requestId) => {
+      if (requestId === exceptRequestId) return;
+      worker?.postMessage({ type: 'cancel', requestId });
+      pendingCalculation.reject(createCancelledCalculationError());
+      pendingCalculationsRef.current.delete(requestId);
+    });
+  }, []);
+
+  useEffect(() => {
+    const pendingCalculations = pendingCalculationsRef.current;
+    const worker = new Worker(
+      new URL('../workers/buildCalculator.worker.js', import.meta.url),
+      { type: 'module' },
+    );
+
+    calculatorWorkerRef.current = worker;
+    calculatorDataRef.current = {
+      modMap: null,
+      version: calculatorDataRef.current.version + 1,
+    };
+
+    worker.onmessage = ({ data }) => {
+      const pendingCalculation = pendingCalculations.get(data.requestId);
+      if (!pendingCalculation) return;
+
+      pendingCalculations.delete(data.requestId);
+      if (data.type === 'result') {
+        pendingCalculation.resolve(data.result);
+        return;
+      }
+
+      const error = new Error(data.error?.message ?? 'Build calculation failed in the worker.');
+      error.name = data.error?.name ?? 'CalculatorWorkerError';
+      pendingCalculation.reject(error);
+    };
+
+    worker.onerror = event => {
+      const error = new Error(event.message || 'Build calculation worker failed to start.');
+      pendingCalculations.forEach(pendingCalculation => pendingCalculation.reject(error));
+      pendingCalculations.clear();
+    };
+
+    return () => {
+      worker.terminate();
+      if (calculatorWorkerRef.current === worker) {
+        calculatorWorkerRef.current = null;
+      }
+      pendingCalculations.forEach(pendingCalculation => (
+        pendingCalculation.reject(createCancelledCalculationError())
+      ));
+      pendingCalculations.clear();
+    };
+  }, []);
+
+  const runBuildCalculation = useCallback((calculationInput) => {
+    const worker = calculatorWorkerRef.current;
+    if (!worker) {
+      const error = new Error('Build calculation worker is not ready yet. Please try again.');
+      error.name = 'CalculatorWorkerUnavailableError';
+      return {
+        requestId: latestCalculationRequestIdRef.current,
+        promise: Promise.reject(error),
+      };
+    }
+
+    const requestId = nextCalculationRequestIdRef.current + 1;
+    nextCalculationRequestIdRef.current = requestId;
+    latestCalculationRequestIdRef.current = requestId;
+    cancelPendingCalculations(requestId);
+
+    if (calculatorDataRef.current.modMap !== calculationInput.allMods) {
+      calculatorDataRef.current = {
+        modMap: calculationInput.allMods,
+        version: calculatorDataRef.current.version + 1,
+      };
+      worker.postMessage({
+        type: 'initialize',
+        modMap: calculationInput.allMods,
+        modMapVersion: calculatorDataRef.current.version,
+      });
+    }
+
+    const promise = new Promise((resolve, reject) => {
+      pendingCalculationsRef.current.set(requestId, { resolve, reject });
+    });
+
+    worker.postMessage({
+      type: 'calculate',
+      requestId,
+      modMapVersion: calculatorDataRef.current.version,
+      weapon: calculationInput.weapon,
+      targetType: calculationInput.targetType,
+      customErgo: calculationInput.customErgo,
+      customRecoil: calculationInput.customRecoil,
+      options: calculationInput.options,
+    });
+
+    return { requestId, promise };
+  }, [cancelPendingCalculations]);
   
   useEffect(() => {
     savePriceModePreference(priceMode);
@@ -1076,13 +1353,14 @@ function Configurator() {
   
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
 
     Promise.resolve().then(() => {
       if (cancelled) return;
       setLoading(true);
       return Promise.all([
-        getWeaponDetails(weaponId, priceMode),
-        getAllMods(priceMode)
+        getWeaponDetails(weaponId, priceMode, { signal: controller.signal }),
+        getAllMods(priceMode, { signal: controller.signal }),
       ]);
     }).then(result => {
       if (cancelled || !result) return;
@@ -1106,9 +1384,10 @@ function Configurator() {
       setRequiredModuleSearch('');
       setLoadError(null);
       setGenerationError(null);
+      setReplacementError(null);
       setLoading(false);
     }).catch(err => {
-      if (cancelled) return;
+      if (cancelled || controller.signal.aborted || isAbortError(err)) return;
 
       console.error(err);
       setWeapon(null);
@@ -1116,27 +1395,18 @@ function Configurator() {
       setLoadError('Failed to load weapon details. Please go back to the weapon list and try again.');
       setBuildResult(null);
       setGenerationError(null);
+      setReplacementError(null);
       setLoading(false);
     });
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [weaponId, priceMode]);
 
-  const handleReplacePart = (targetPart, alternativeItem, mode = 'EXACT_ITEM') => {
-    if (!buildResult) return;
-    
-    const assemblyTree = buildAssemblyTree(weapon, buildResult.build);
-    let targetNode = null;
-    function findNode(n) {
-      if (n.item.id === targetPart.id) {
-        targetNode = n;
-        return;
-      }
-      n.children.forEach(findNode);
-    }
-    findNode(assemblyTree);
+  const handleReplacePart = (targetNode, alternativeItem, mode = 'EXACT_ITEM') => {
+    if (!buildResult || !targetNode) return;
 
     const actualTargetNode = getReplaceTarget(targetNode, mode);
     if (!actualTargetNode) return;
@@ -1205,13 +1475,31 @@ function Configurator() {
       });
     }
 
-    const updatedResult = recalculateBuildStats(weapon, updatedBuild, { priceMode });
-    
-    setBuildResult(updatedResult);
+    const attachmentError = getUnattachedBuildPartError(weapon, updatedBuild);
+    const { errors, stats } = getReplacementConstraintErrors({
+      weapon,
+      buildParts: updatedBuild,
+      priceMode,
+      maxWeight,
+      maxPrice,
+      requiredItemIds: requiredModuleIds,
+      suppressorMode,
+      sightMode,
+    });
+
+    if (attachmentError) errors.unshift(attachmentError);
+    if (errors.length > 0) {
+      setReplacementError(errors.join(' '));
+      return;
+    }
+
+    setReplacementError(null);
+    setBuildResult(stats);
     setActiveReplacePartId(null);
   };
 
   const handleOpenReplaceDrawer = (part) => {
+    setReplacementError(null);
     if (activeReplacePartId === part.item.id) {
       setActiveReplacePartId(null);
     } else {
@@ -1242,7 +1530,9 @@ function Configurator() {
     if (!allMods) return;
     setGenerating(true);
     setGenerationError(null);
+    setReplacementError(null);
     setBuildResult(null);
+    let requestId = null;
 
     try {
       const options = {
@@ -1258,21 +1548,95 @@ function Configurator() {
         requiredItemIds: requiredModuleIds,
       };
 
-      const result = calculateBestBuild(weapon, targetType, customErgo, customRecoil, allMods, options);
+      const calculation = runBuildCalculation({
+        weapon,
+        targetType,
+        customErgo,
+        customRecoil,
+        allMods,
+        options,
+      });
+      requestId = calculation.requestId;
+      const result = await calculation.promise;
+      if (requestId !== latestCalculationRequestIdRef.current) return;
       setBuildResult(result);
-
-      console.log(`=== GENERATED BUILD (${weapon.shortName} - ${targetType}) ===`);
-      console.log(JSON.stringify({
-        stats: result.stats,
-        parts: result.build.map(p => ({ slot: p.slotName, name: p.item.shortName, id: p.item.id }))
-      }, null, 2));
     } catch (err) {
+      if (err?.name === 'AbortError') return;
+      if (requestId !== null && requestId !== latestCalculationRequestIdRef.current) return;
       console.error(err);
       setGenerationError('Failed to generate build. Mod data could not be loaded or the calculation failed.');
     } finally {
-      setGenerating(false);
+      if (requestId === latestCalculationRequestIdRef.current) {
+        setGenerating(false);
+      }
     }
-  }, [allMods, suppressorMode, maxWeight, maxPrice, magazineCapacity, priceMode, includeLaser, includeFlashlight, sightMode, requiredModuleIds, weapon, targetType, customErgo, customRecoil]);
+  }, [allMods, suppressorMode, maxWeight, maxPrice, magazineCapacity, priceMode, includeLaser, includeFlashlight, sightMode, requiredModuleIds, weapon, targetType, customErgo, customRecoil, runBuildCalculation]);
+
+  const hasCalculationError = buildResult ? Boolean(buildResult.error) : false;
+  const hasBuildParts = buildResult ? (Array.isArray(buildResult.build) && buildResult.build.length > 0) : false;
+  const canShowBuildDetails = Boolean(buildResult && !hasCalculationError && hasBuildParts);
+  const availableCapacities = useMemo(
+    () => getAvailableCapacities(weapon, allMods),
+    [weapon, allMods],
+  );
+  const availableZoomLevels = useMemo(
+    () => getAvailableZoomLevels(allMods),
+    [allMods],
+  );
+  const selectedRequiredModules = useMemo(
+    () => requiredModuleIds.map(itemId => allMods?.[itemId]).filter(Boolean),
+    [allMods, requiredModuleIds],
+  );
+  const requiredModuleResults = useMemo(
+    () => getRequiredModuleSearchResults(allMods, requiredModuleSearch, requiredModuleIds),
+    [allMods, requiredModuleSearch, requiredModuleIds],
+  );
+  const replacementContext = useMemo(() => {
+    if (!weapon || !buildResult || !hasBuildParts || !activeReplacePartId) return null;
+
+    const assemblyTree = buildAssemblyTree(weapon, buildResult.build);
+    const activePart = buildResult.build.find(part => part.item.id === activeReplacePartId);
+    const targetNode = activePart
+      ? findTreeNodeByItemId(assemblyTree, activePart.item.id)
+      : null;
+
+    if (!activePart || !targetNode) return null;
+
+    const assemblyRoot = getReplaceTarget(targetNode, 'SIGHT_ASSEMBLY');
+    const hasSightChain = Boolean(assemblyRoot && subtreeHasSight(assemblyRoot));
+    let hasMountInChain = false;
+
+    if (hasSightChain) {
+      let currentNode = targetNode;
+      while (currentNode) {
+        if (isMountItem(currentNode.item)) {
+          hasMountInChain = true;
+          break;
+        }
+        currentNode = currentNode.parent;
+      }
+
+      if (!hasMountInChain && assemblyRoot) {
+        const stack = [assemblyRoot];
+        while (stack.length > 0) {
+          const currentNode = stack.pop();
+          if (isMountItem(currentNode.item)) {
+            hasMountInChain = true;
+            break;
+          }
+          stack.push(...currentNode.children);
+        }
+      }
+    }
+
+    return {
+      activePart,
+      targetNode,
+      hasSightChain,
+      hasMountInChain,
+      alternatives: findCompatibleAlternatives(targetNode, allMods, priceMode, sightMode, replaceMode),
+    };
+  }, [weapon, buildResult, hasBuildParts, activeReplacePartId, allMods, priceMode, sightMode, replaceMode]);
 
   const isLoading = loading || (weapon && weapon.id !== weaponId);
 
@@ -1303,9 +1667,6 @@ function Configurator() {
     );
   }
 
-  const hasCalculationError = buildResult ? Boolean(buildResult.error) : false;
-  const hasBuildParts = buildResult ? (Array.isArray(buildResult.build) && buildResult.build.length > 0) : false;
-  const canShowBuildDetails = buildResult && !hasCalculationError && hasBuildParts;
   const priceDiagnostics = canShowBuildDetails
     ? collectBuildPriceDiagnostics(weapon, buildResult, priceMode)
     : null;
@@ -1365,11 +1726,6 @@ function Configurator() {
       parts: filteredParts
     };
   }).filter(group => group.parts.length > 0);
-
-  const selectedRequiredModules = requiredModuleIds
-    .map(itemId => allMods?.[itemId])
-    .filter(Boolean);
-  const requiredModuleResults = getRequiredModuleSearchResults(allMods, requiredModuleSearch, requiredModuleIds);
 
   return (
     <div className="layout">
@@ -1508,7 +1864,7 @@ function Configurator() {
         <section className="config__section">
           <label className="field-label">Magazine Capacity (rounds)</label>
           <div className="segmented segmented--small">
-            {getAvailableCapacities(weapon, allMods).map(capacity => (
+            {availableCapacities.map(capacity => (
               <button
                 key={capacity}
                 className={`segmented__btn ${Number(magazineCapacity) === capacity ? 'is-active' : ''}`}
@@ -1523,29 +1879,40 @@ function Configurator() {
 
         <section className="config__section">
           <label className="field-label" htmlFor="sightZoom">Sight Zoom / Type</label>
-          <select 
-            id="sightZoom" 
-            value={sightMode} 
-            onChange={e => setSightMode(e.target.value)}
-          >
-            {[
-              { value: 'none', label: 'NO SIGHT' },
-              { value: 'any', label: 'ANY SIGHT' },
-              { value: 'reflex', label: 'REFLEX (1x)' },
-              { value: 'scope', label: 'SCOPE (Any zoom)' },
-              ...getAvailableZoomLevels(allMods)
-                .filter(z => z > 1)
-                .map(z => ({ value: String(z), label: `${z}x Zoom` }))
-            ].map(option => (
-              <option 
-                key={option.value} 
-                value={option.value}
-                style={{ backgroundColor: 'var(--surface-3)', color: 'var(--text)' }}
-              >
-                {option.label}
-              </option>
-            ))}
-          </select>
+          <div className={`config-select-wrap ${isSightSelectOpen ? 'is-open' : ''}`}>
+            <select
+              id="sightZoom"
+              className="config-select"
+              value={sightMode}
+              onChange={e => {
+                setSightMode(e.target.value);
+                setIsSightSelectOpen(false);
+              }}
+              onFocus={() => setIsSightSelectOpen(true)}
+              onBlur={() => setIsSightSelectOpen(false)}
+              onKeyDown={e => {
+                if (e.key === 'Escape') setIsSightSelectOpen(false);
+              }}
+            >
+              {[
+                { value: 'none', label: 'NO SIGHT' },
+                { value: 'any', label: 'ANY SIGHT' },
+                { value: 'reflex', label: 'REFLEX (1x)' },
+                { value: 'scope', label: 'SCOPE (Any zoom)' },
+                ...availableZoomLevels
+                  .filter(z => z > 1)
+                  .map(z => ({ value: String(z), label: `${z}x Zoom` }))
+              ].map(option => (
+                <option
+                  key={option.value}
+                  value={option.value}
+                  style={{ backgroundColor: 'var(--surface-3)', color: 'var(--text)' }}
+                >
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </section>
 
         <section className="config__section">
@@ -1803,6 +2170,12 @@ function Configurator() {
               </InlineMessage>
             )}
 
+            {replacementError && (
+              <InlineMessage type="error" title="Replacement rejected">
+                {replacementError}
+              </InlineMessage>
+            )}
+
             {buildResult && hasCalculationError && (
               <InlineMessage type="error" title="Constraint satisfaction failed">
                 {buildResult.error}
@@ -1875,51 +2248,15 @@ function Configurator() {
       </main>
 
       {/* Оверлей бокового слайдера (Drawer) для замены деталей */}
-      {activeReplacePartId && (() => {
-        const activePart = buildResult?.build.find(p => p.item.id === activeReplacePartId);
-        if (!activePart) return null;
-        
+      {replacementContext && (() => {
+        const {
+          activePart,
+          targetNode,
+          hasSightChain,
+          hasMountInChain,
+          alternatives,
+        } = replacementContext;
         const priceInfo = getSelectedPriceInfo(activePart.item, priceMode);
-        const assemblyTree = buildAssemblyTree(weapon, buildResult.build);
-        
-        let targetNode = null;
-        function findNode(n) {
-          if (n.item.id === activePart.item.id) {
-            targetNode = n;
-            return;
-          }
-          n.children.forEach(findNode);
-        }
-        findNode(assemblyTree);
-
-        const assemblyRoot = targetNode ? getReplaceTarget(targetNode, 'SIGHT_ASSEMBLY') : null;
-        const hasSightChain = assemblyRoot ? subtreeHasSight(assemblyRoot) : false;
-
-        let hasMountInChain = false;
-        if (targetNode && hasSightChain) {
-          let curr = targetNode;
-          while (curr) {
-            if (isMountItem(curr.item)) {
-              hasMountInChain = true;
-              break;
-            }
-            curr = curr.parent;
-          }
-          if (!hasMountInChain && assemblyRoot) {
-            function walk(n) {
-              if (isMountItem(n.item)) {
-                hasMountInChain = true;
-                return;
-              }
-              n.children.forEach(walk);
-            }
-            walk(assemblyRoot);
-          }
-        }
-
-        const alternatives = targetNode 
-          ? findCompatibleAlternatives(targetNode, allMods, buildResult, priceMode, sightMode, replaceMode)
-          : [];
 
         return (
           <div className="drawer is-open" onClick={() => setActiveReplacePartId(null)}>
@@ -2047,8 +2384,7 @@ function Configurator() {
                             onClick={(e) => {
                               e.stopPropagation();
                               const effectiveMode = alt.replacementMode || replaceMode;
-                              const actualReplaceTarget = getReplaceTarget(targetNode, effectiveMode);
-                              handleReplacePart(actualReplaceTarget.item, alt, effectiveMode);
+                              handleReplacePart(targetNode, alt, effectiveMode);
                             }}
                             style={{
                               display: 'flex',

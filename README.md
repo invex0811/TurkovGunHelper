@@ -12,9 +12,9 @@ The project currently includes:
 - HashRouter-based navigation.
 - Main weapon list page.
 - Weapon configurator page.
-- External GraphQL API integration.
+- External GraphQL API integration with timeout, cancellation, and short-lived in-memory caching.
 - Domain calculator for weapon build generation.
-- Calculator unit tests.
+- Calculator and API unit tests.
 - Local fixtures for calculator regression tests.
 - Research scripts for manual API/calculator experiments.
 - ESLint configuration.
@@ -97,6 +97,12 @@ research/
     test_*.js
 
 src/
+  data/
+    tarkovApi/
+      client.js
+      repository.js
+      queries.js
+
   domain/
     calculator.js
 
@@ -104,12 +110,15 @@ src/
     Home.jsx
     Configurator.jsx
 
-  services/
-    api.js
+  workers/
+    buildCalculator.worker.js
 
 tests/
   calculator/
     calculator.test.js
+
+  data/
+    tarkovApi.test.js
 
   fixtures/
     mods.json
@@ -120,7 +129,7 @@ tests/
 
 `src/pages` contains application pages.
 
-`src/services` contains the current API access layer.
+`src/data/tarkovApi` contains the current GraphQL client, repository, and query definitions.
 
 `src/domain` contains domain-level calculation logic. The calculator should not depend on React, DOM state, or browser UI concerns.
 
@@ -167,8 +176,8 @@ Current known limitations:
 - `requireSuppressor` is a known sensitive scenario and should be treated as a hard constraint in the calculator stabilization stage.
 - Hard constraints and soft preferences are still being clarified.
 - Budget scoring currently depends on the available item price data shape.
-- PvP/PvE price mode is not yet exposed as an explicit user setting.
-- Price source normalization is planned for a later stage.
+- PvP/PvE price mode is exposed in the configurator; prices still depend on the freshness and schema of the external API.
+- Price fields are normalized with primary and fallback values, but unavailable market data can still reduce result accuracy.
 
 ## Data and API assumptions
 
@@ -178,8 +187,10 @@ Important assumptions:
 
 - Weapon, mod, slot, conflict, stats, and price data come from the external API.
 - API availability and schema stability are external dependencies.
-- Price data is currently used in the form provided by the existing API layer.
-- PvP/PvE price source support needs additional research before implementation.
+- Requests time out after 15 seconds by default and can be cancelled with an `AbortSignal`.
+- Weapon and mod catalog responses are cached in memory for five minutes; concurrent requests share one in-flight request.
+- Price data is normalized by the API layer before it reaches the calculator.
+- PvP/PvE price mode maps to the corresponding tarkov.dev game mode.
 - Missing or changed API fields may affect the configurator and calculator behavior.
 
 ## Troubleshooting

@@ -218,6 +218,41 @@ for (const targetType of ['meta', 'max_ergo', 'min_recoil', 'budget', 'custom'])
   });
 }
 
+test('empty required modules skip reachability traversal in skipped tactical slots', () => {
+  const skippedTacticalDescendant = createTestMod({
+    id: 'skipped-tactical-descendant',
+    categories: createCategories(['Comb. tact. device']),
+  });
+  Object.defineProperty(skippedTacticalDescendant, 'properties', {
+    configurable: true,
+    get() {
+      throw new Error('reachability traversal should not inspect this descendant');
+    },
+  });
+
+  const stock = createTestMod({
+    id: 'stock-with-skipped-tactical-slot',
+    categories: createCategories(['Stock']),
+    ergonomicsModifier: 5,
+    slots: [createSlot('Tactical', [skippedTacticalDescendant.id], 'mod_tactical_000')],
+  });
+  const testWeapon = createTestWeapon({
+    slots: [createSlot('Stock', [stock.id])],
+  });
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'max_ergo',
+    70,
+    50,
+    createModMap(stock, skippedTacticalDescendant),
+    { ...defaultOptions, requiredItemIds: [] },
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, stock.id);
+});
+
 test('meta build selects critical ergonomics parts before choosing a longer barrel', () => {
   const cqrPistolGripId = '5a33e75ac4a2826c6e06d759';
   const adarWoodStockId = '5c0e2ff6d174af02a1659d4a';

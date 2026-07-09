@@ -1,6 +1,21 @@
+import { lazy, Suspense } from 'react';
 import { HashRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import Home from './pages/Home';
-import Configurator from './pages/Configurator';
+
+const Configurator = lazy(() => import('./pages/Configurator'));
+
+function ConfiguratorLoading() {
+  return (
+    <div id="loader-wrapper">
+      <div className="loader">
+        <div className="loader-ring"></div>
+        <div className="loader-ring"></div>
+        <div className="loader-ring"></div>
+        <p className="loader-text">Loading configurator...</p>
+      </div>
+    </div>
+  );
+}
 
 function MainLayout() {
   return (
@@ -21,7 +36,14 @@ function MainLayout() {
       <main>
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/configure/:weaponId" element={<Configurator />} />
+          <Route
+            path="/configure/:weaponId"
+            element={(
+              <Suspense fallback={<ConfiguratorLoading />}>
+                <Configurator />
+              </Suspense>
+            )}
+          />
         </Routes>
       </main>
     </div>
