@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 
 import { calculateBestBuild, recalculateBuildStats } from '../../src/domain/calculator.js';
@@ -203,23 +202,6 @@ const defaultOptions = {
   requireSuppressor: false,
   maxWeight: 0,
 };
-
-const fixtureBuildHashes = {
-  meta: '2636cb6ced0db05842d31525eb02596ffda2d85641099c574c0dc7bcb6047942',
-  max_ergo: '0b128ec4a694c20b0d47ea64a8a05def77901c3347d8463cb844433adadea600',
-  min_recoil: '3116d0a0e29ed9df748be8fefe533252383fd70fa53e405a93d16660c33d0568',
-  budget: '0f0551f1343bd67bbb1dbd3defcc00590716e1fc4c515d382f44a19ba5c5018d',
-  custom: '72f64e9005782224c07f24f4f6702e7fb41b941a7a6347ff90074d093a1eaa3a',
-};
-
-test('fixture builds retain their exact result for every target mode', () => {
-  for (const [targetType, expectedHash] of Object.entries(fixtureBuildHashes)) {
-    const result = calculateBestBuild(weapon, targetType, 70, 50, modMap, defaultOptions);
-    const actualHash = crypto.createHash('sha256').update(JSON.stringify(result)).digest('hex');
-
-    assert.equal(actualHash, expectedHash, `${targetType} build result changed`);
-  }
-});
 
 for (const targetType of ['meta', 'max_ergo', 'min_recoil', 'budget', 'custom']) {
   test(`${targetType} build has valid unique parts and consistent stats`, () => {

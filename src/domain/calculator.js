@@ -803,7 +803,14 @@ function _calculateWeighted(
         if (branchEval.hasSight) slotCanProvideSight = true;
         if (branchEval.requiredMatches.size > 0) slotCanProvideRequired = true;
 
-        candidates.push(branchEval);
+        candidates.push({
+          branchEval,
+          score: branchEval.score,
+          hasSuppressor: branchEval.hasSuppressor,
+          hasSight: branchEval.hasSight,
+          requiredMatches: branchEval.requiredMatches,
+          isValid: branchEval.isValid,
+        });
       });
 
       let bestCandidate = null;
@@ -825,7 +832,7 @@ function _calculateWeighted(
       if (activeMustFindSight && !bestCandidate.hasSight) return;
       if (activeMustFindRequired && bestCandidate.requiredMatches.size === 0) return;
 
-      const rootItem = bestCandidate.items[0]?.item;
+      const rootItem = bestCandidate.branchEval.items[0]?.item;
       if (!rootItem) return;
 
       const isMount = hasCategory(rootItem, 'Mount');
@@ -838,7 +845,7 @@ function _calculateWeighted(
         return;
       }
 
-      applyBranchPlan(bestCandidate);
+      applyBranchPlan(bestCandidate.branchEval);
     });
   }
 
@@ -1101,7 +1108,7 @@ export function calculateBestBuild(weapon, targetType, minErgo, maxRecoil, modMa
        priceWeight = 0.0001; 
      }
      
-     return _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMap, options, ergoCap, targetType, weightWeight, overflowErgoWeight, ergoSoftCap, calculationCache);
+    return _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMap, options, ergoCap, targetType, weightWeight, overflowErgoWeight, ergoSoftCap, calculationCache);
   }
 
   let bestBuild = null;
