@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   PRICE_CONFIDENCE,
   PRICE_MODE_LABELS,
@@ -12,6 +12,12 @@ import {
   saveTargetTypePreference,
 } from '../data/settings/buildPreferences.js';
 import { getWeaponDetails, getAllMods, isAbortError } from '../data/tarkovApi';
+import {
+  createBuildSnapshot,
+  getSavedBuild,
+  restoreBuildParts,
+  saveBuildSnapshot,
+} from '../data/savedBuilds.js';
 import { recalculateBuildStats } from '../domain/calculator.js';
 
 function createCancelledCalculationError() {
@@ -1208,13 +1214,21 @@ const GROUP_ORDER = [
 
 function Configurator() {
   const { weaponId } = useParams();
+  const [searchParams] = useSearchParams();
+  const requestedSavedBuildId = searchParams.get('build');
+  const requestedSavedBuild = useMemo(
+    () => getSavedBuild(requestedSavedBuildId),
+    [requestedSavedBuildId],
+  );
   const [weapon, setWeapon] = useState(null);
   const [loading, setLoading] = useState(true);
   const [targetType, setTargetType] = useState(loadTargetTypePreference);
   const [customErgo, setCustomErgo] = useState(50);
   const [customRecoil, setCustomRecoil] = useState(50);
   const [suppressorMode, setSuppressorMode] = useState('allow');
-  const [priceMode, setPriceMode] = useState(loadPriceModePreference);
+  const [priceMode, setPriceMode] = useState(
+    () => requestedSavedBuild?.settings.priceMode || loadPriceModePreference(),
+  );
   const [maxWeight, setMaxWeight] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
   const [activeReplacePartId, setActiveReplacePartId] = useState(null);
@@ -1234,6 +1248,9 @@ function Configurator() {
   const [requiredModuleSearch, setRequiredModuleSearch] = useState('');
   const [requiredModuleIds, setRequiredModuleIds] = useState([]);
   const [replacementError, setReplacementError] = useState(null);
+  const [activeSavedBuildId, setActiveSavedBuildId] = useState(requestedSavedBuildId);
+  const [saveName, setSaveName] = useState(requestedSavedBuild?.name || '');
+  const [saveFeedback, setSaveFeedback] = useState(null);
   const calculatorWorkerRef = useRef(null);
   const calculatorDataRef = useRef({ modMap: null, version: 0 });
   const nextCalculationRequestIdRef = useRef(0);
@@ -1350,7 +1367,7 @@ function Configurator() {
   useEffect(() => {
     saveTargetTypePreference(targetType);
   }, [targetType]);
-  
+
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
@@ -1379,12 +1396,48 @@ function Configurator() {
         }
       }
 
-      setBuildResult(null);
-      setRequiredModuleIds([]);
+      if (requestedSavedBuild && requestedSavedBuild.weapon.id === weaponData.id) {
+        const restored = restoreBuildParts(requestedSavedBuild, modsData);
+        const restoredStats = recalculateBuildStats(weaponData, restored.build, { priceMode });
+        const settings = requestedSavedBuild.settings;
+
+        setBuildResult({
+          build: restored.build,
+          stats: restoredStats,
+          warning: restored.missingItemIds.length > 0
+            ? `${restored.missingItemIds.length} saved module(s) are no longer available and were skipped.`
+            : undefined,
+        });
+        setTargetType(settings.targetType || 'meta');
+        setCustomErgo(Number(settings.customErgo) || 50);
+        setCustomRecoil(Number(settings.customRecoil) || 50);
+        setSuppressorMode(settings.suppressorMode || 'allow');
+        setMaxWeight(settings.maxWeight ? String(settings.maxWeight) : '');
+        setMaxPrice(settings.maxPrice ? String(settings.maxPrice) : '');
+        setMagazineCapacity(Number(settings.magazineCapacity) || capacities[0] || 30);
+        setIncludeLaser(settings.includeLaser === true);
+        setIncludeFlashlight(settings.includeFlashlight === true);
+        setSightMode(settings.sightMode || 'any');
+        setRequiredModuleIds(
+          (settings.requiredModuleIds || []).filter(itemId => Boolean(modsData[itemId])),
+        );
+        setActiveSavedBuildId(requestedSavedBuild.id);
+        setSaveName(requestedSavedBuild.name);
+      } else {
+        setBuildResult(null);
+        setRequiredModuleIds([]);
+        setActiveSavedBuildId(null);
+        setSaveName(`${weaponData.shortName || weaponData.name} build`);
+      }
       setRequiredModuleSearch('');
       setLoadError(null);
-      setGenerationError(null);
+      setGenerationError(
+        requestedSavedBuildId && !requestedSavedBuild
+          ? 'This saved build no longer exists in local storage.'
+          : null,
+      );
       setReplacementError(null);
+      setSaveFeedback(null);
       setLoading(false);
     }).catch(err => {
       if (cancelled || controller.signal.aborted || isAbortError(err)) return;
@@ -1403,7 +1456,7 @@ function Configurator() {
       cancelled = true;
       controller.abort();
     };
-  }, [weaponId, priceMode]);
+  }, [weaponId, priceMode, requestedSavedBuild, requestedSavedBuildId]);
 
   const handleReplacePart = (targetNode, alternativeItem, mode = 'EXACT_ITEM') => {
     if (!buildResult || !targetNode) return;
@@ -1571,6 +1624,45 @@ function Configurator() {
       }
     }
   }, [allMods, suppressorMode, maxWeight, maxPrice, magazineCapacity, priceMode, includeLaser, includeFlashlight, sightMode, requiredModuleIds, weapon, targetType, customErgo, customRecoil, runBuildCalculation]);
+
+  const handleSaveBuild = () => {
+    if (!weapon || !buildResult || buildResult.error || !Array.isArray(buildResult.build) || buildResult.build.length === 0) {
+      setSaveFeedback({ type: 'error', message: 'Generate a valid build before saving it.' });
+      return;
+    }
+
+    try {
+      const savedBuild = saveBuildSnapshot(createBuildSnapshot({
+        id: activeSavedBuildId,
+        name: saveName.trim() || `${weapon.shortName || weapon.name} build`,
+        weapon,
+        buildResult,
+        settings: {
+          targetType,
+          customErgo,
+          customRecoil,
+          suppressorMode,
+          priceMode,
+          maxWeight: Number(maxWeight) || 0,
+          maxPrice: Number(maxPrice) || 0,
+          magazineCapacity,
+          includeLaser,
+          includeFlashlight,
+          sightMode,
+          requiredModuleIds,
+        },
+      }));
+
+      setActiveSavedBuildId(savedBuild.id);
+      setSaveName(savedBuild.name);
+      setSaveFeedback({ type: 'success', message: activeSavedBuildId ? 'Saved build updated.' : 'Build saved locally.' });
+    } catch (error) {
+      setSaveFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'The build could not be saved.',
+      });
+    }
+  };
 
   const hasCalculationError = buildResult ? Boolean(buildResult.error) : false;
   const hasBuildParts = buildResult ? (Array.isArray(buildResult.build) && buildResult.build.length > 0) : false;
@@ -2146,6 +2238,37 @@ function Configurator() {
 
           {/* Правая панель - Список деталей */}
           <section className="panel parts-panel">
+            {canShowBuildDetails && (
+              <div className="save-build-bar">
+                <label htmlFor="saveBuildName">
+                  <span>Build name</span>
+                  <input
+                    id="saveBuildName"
+                    type="text"
+                    maxLength={80}
+                    value={saveName}
+                    onChange={event => {
+                      setSaveName(event.target.value);
+                      setSaveFeedback(null);
+                    }}
+                    placeholder={`${weapon.shortName || weapon.name} build`}
+                  />
+                </label>
+                <button className="btn btn--primary" type="button" onClick={handleSaveBuild}>
+                  {activeSavedBuildId ? 'Update saved build' : 'Save build'}
+                </button>
+              </div>
+            )}
+
+            {saveFeedback && (
+              <InlineMessage
+                type={saveFeedback.type}
+                title={saveFeedback.type === 'error' ? 'Save failed' : 'Saved locally'}
+              >
+                {saveFeedback.message}
+              </InlineMessage>
+            )}
+
             {/* Поле поиска */}
             <div className="parts-toolbar">
               <input 

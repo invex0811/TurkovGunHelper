@@ -3,6 +3,7 @@ import { HashRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import Home from './pages/Home';
 
 const Configurator = lazy(() => import('./pages/Configurator'));
+const Builds = lazy(() => import('./pages/Builds'));
 
 function ConfiguratorLoading() {
   return (
@@ -21,21 +22,30 @@ function MainLayout() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
+        <Link to="/" className="brand" aria-label="Open weapon list">
           <div className="brand__mark">TGH</div>
           <div>
             <h1>Tarkov Gun Helper</h1>
             <p>Optimal Weapon Builds</p>
           </div>
-        </div>
+        </Link>
         <div className="topbar__actions">
           <Link to="/" className="btn btn--ghost">Weapons</Link>
+          <Link to="/builds" className="btn btn--ghost">Builds</Link>
         </div>
       </header>
 
       <main>
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route
+            path="/builds"
+            element={(
+              <Suspense fallback={<ConfiguratorLoading />}>
+                <Builds />
+              </Suspense>
+            )}
+          />
           <Route
             path="/configure/:weaponId"
             element={(
