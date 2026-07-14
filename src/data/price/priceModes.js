@@ -23,6 +23,12 @@ export const PRICE_SOURCE = {
   TARKOV_DEV: 'tarkov.dev',
 };
 
+export const PRICE_SOURCE_TYPE = {
+  FLEA_MARKET: 'fleaMarket',
+  TRADER: 'trader',
+  MISSING: 'missing',
+};
+
 export const PRICE_CONFIDENCE = {
   HIGH: 'high',
   FALLBACK: 'fallback',

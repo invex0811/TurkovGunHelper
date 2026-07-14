@@ -65,6 +65,13 @@ export function readSavedBuilds(storage = getDefaultStorage()) {
 
     return parsed
       .filter(isValidSavedBuild)
+      .map(build => ({
+        ...build,
+        settings: {
+          ...build.settings,
+          includeTraderPrices: build.settings.includeTraderPrices !== false,
+        },
+      }))
       .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
   } catch {
     return [];

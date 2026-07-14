@@ -4,6 +4,9 @@ import {
 } from '../price/priceModes.js';
 
 const PRICE_MODE_STORAGE_KEY = 'tarkovGunHelper.priceMode';
+const INCLUDE_TRADER_PRICES_STORAGE_KEY = 'tarkovGunHelper.includeTraderPrices';
+
+export const DEFAULT_INCLUDE_TRADER_PRICES = true;
 
 export function loadPriceModePreference() {
   if (typeof window === 'undefined') {
@@ -55,6 +58,36 @@ export function saveTargetTypePreference(targetType) {
   try {
     if (!SUPPORTED_TARGET_TYPES.includes(targetType)) return;
     window.localStorage.setItem(TARGET_TYPE_STORAGE_KEY, targetType);
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+export function loadIncludeTraderPricesPreference() {
+  if (typeof window === 'undefined') {
+    return DEFAULT_INCLUDE_TRADER_PRICES;
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(INCLUDE_TRADER_PRICES_STORAGE_KEY);
+    if (storedValue === 'false') return false;
+    if (storedValue === 'true') return true;
+    return DEFAULT_INCLUDE_TRADER_PRICES;
+  } catch {
+    return DEFAULT_INCLUDE_TRADER_PRICES;
+  }
+}
+
+export function saveIncludeTraderPricesPreference(includeTraderPrices) {
+  if (typeof window === 'undefined' || typeof includeTraderPrices !== 'boolean') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      INCLUDE_TRADER_PRICES_STORAGE_KEY,
+      String(includeTraderPrices),
+    );
   } catch {
     // Ignore storage errors.
   }

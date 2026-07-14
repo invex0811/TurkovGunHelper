@@ -610,6 +610,47 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   cursor: pointer;
 }
 
+.price-source-checks {
+  gap: 2px;
+  margin-top: 8px;
+}
+
+.field-help {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.item-price {
+  display: inline-grid;
+  min-width: 0;
+  justify-items: end;
+  color: var(--gold);
+  line-height: 1.2;
+  text-align: right;
+}
+
+.item-price > strong {
+  color: var(--gold);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.item-price__source {
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-price--drawer .item-price__source {
+  white-space: normal;
+}
+
 .advanced-builder {
   display: grid;
   gap: 12px;
@@ -1223,6 +1264,11 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
 /* Hundreds of offscreen lazy-image placeholders otherwise repaint on every
    animation frame while the weapon list scrolls. Keep the skeleton styling,
    but reserve the animated shimmer for isolated loaders such as Configurator. */
+.weapon-card {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 .weapon-card .shimmer {
   animation: none;
 }

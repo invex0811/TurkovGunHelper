@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
+import { sumPurchasePrices } from '../../src/data/price/priceMapper.js';
 import { PRICE_MODES } from '../../src/data/price/priceModes.js';
 import { calculateBestBuild } from '../../src/domain/calculator.js';
 
@@ -84,25 +85,13 @@ function assertNotInstalled(result, itemId) {
   assert.equal(getInstalledItemIds(result).includes(itemId), false, `${itemId} should not be installed`);
 }
 
-function getExpectedItemPrice(item, priceMode) {
-  const rawPrice = item.avg24hPrice
-    || item.lastLowPrice
-    || item.low24hPrice
-    || item.basePrice
-    || 0;
-
-  if (!priceMode || item.price?.mode === priceMode) {
-    return item.price?.value ?? rawPrice;
-  }
-
-  return rawPrice;
-}
-
 function assertStatsPriceMatchesParts(weapon, result, priceMode) {
-  const expectedPrice = getExpectedItemPrice(weapon, priceMode)
-    + result.build.reduce((sum, part) => sum + getExpectedItemPrice(part.item, priceMode), 0);
+  const expectedPrice = sumPurchasePrices(
+    [weapon, ...result.build.map(part => part.item)],
+    { priceMode, includeTraderPrices: true },
+  ).value;
 
-  assert.equal(result.stats.price, Math.round(expectedPrice));
+  assert.equal(result.stats.price, expectedPrice == null ? null : Math.round(expectedPrice));
 }
 
 function calculateBudgetScenario(scenario) {

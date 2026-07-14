@@ -87,3 +87,20 @@ test('restoreBuildParts reports modules that are no longer available', () => {
     missingItemIds: ['missing'],
   });
 });
+
+test('saved builds preserve includeTraderPrices and default old snapshots to true', () => {
+  const storage = createStorage();
+  saveBuildSnapshot(createSnapshot({
+    settings: {
+      targetType: 'meta',
+      priceMode: 'pvp',
+      includeTraderPrices: false,
+    },
+  }), storage, { id: 'flea-only' });
+
+  assert.equal(getSavedBuild('flea-only', storage).settings.includeTraderPrices, false);
+
+  const oldStorage = createStorage();
+  saveBuildSnapshot(createSnapshot(), oldStorage, { id: 'legacy' });
+  assert.equal(getSavedBuild('legacy', oldStorage).settings.includeTraderPrices, true);
+});
