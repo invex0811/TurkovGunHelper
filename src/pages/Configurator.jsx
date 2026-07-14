@@ -905,9 +905,9 @@ function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode) {
 }
 
 const SUPPRESSOR_MODE_OPTIONS = [
-  { value: 'allow', label: 'Allow suppressors' },
-  { value: 'forbid', label: 'Forbid suppressors' },
-  { value: 'require', label: 'Require suppressor' },
+  { value: 'allow', label: 'Allow' },
+  { value: 'forbid', label: 'Forbid' },
+  { value: 'require', label: 'Require' },
 ];
 
 function getSuppressorOptions(suppressorMode) {
@@ -1849,10 +1849,10 @@ function Configurator() {
           <>
         <section className="config__section">
           <label className="field-label">Build Goal</label>
-          <div className="segmented">
+          <div className="segmented segmented--goals">
             {[
               { value: 'meta', label: 'Meta (Top)' },
-              { value: 'max_ergo', label: 'Max Ergonomics' },
+              { value: 'max_ergo', label: 'Max Ergo' },
               { value: 'min_recoil', label: 'Min Recoil' },
               { value: 'budget', label: 'Budget' },
               { value: 'custom', label: 'Custom' }
@@ -1894,7 +1894,7 @@ function Configurator() {
 
         <section className="config__section">
           <label className="field-label">Suppressor Mode</label>
-          <div className="segmented">
+          <div className="segmented segmented--three">
             {SUPPRESSOR_MODE_OPTIONS.map(option => (
               <button
                 key={option.value}
@@ -1910,7 +1910,7 @@ function Configurator() {
 
         <section className="config__section">
           <label className="field-label">Price Mode</label>
-          <div className="segmented">
+          <div className="segmented segmented--two">
             {PRICE_MODE_OPTIONS.map(option => (
               <button
                 key={option.value}
@@ -1955,7 +1955,7 @@ function Configurator() {
 
         <section className="config__section">
           <label className="field-label">Magazine Capacity (rounds)</label>
-          <div className="segmented segmented--small">
+          <div className="segmented segmented--capacity">
             {availableCapacities.map(capacity => (
               <button
                 key={capacity}
