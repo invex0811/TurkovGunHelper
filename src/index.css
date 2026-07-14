@@ -233,19 +233,12 @@ a {
 }
 
 .brand__mark {
-  display: grid;
   width: 44px;
   height: 44px;
-  place-items: center;
   border: 1.5px solid var(--color-gold);
   border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, rgba(199, 192, 154, 0.15), rgba(92, 214, 138, 0.05));
-  color: var(--color-gold);
-  font-family: var(--font-mono);
-  font-weight: 800;
-  font-size: 1.3rem;
-  letter-spacing: 1px;
-  text-shadow: 0 0 8px rgba(199, 192, 154, 0.3);
+  background: #000;
+  object-fit: cover;
 }
 
 .brand h1 {
@@ -1114,32 +1107,25 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   border-color: var(--panel-border-active);
 }
 
-.glass-panel a > .glass-panel {
+.home-page-panel {
+  background: rgba(20, 24, 22, 0.94);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.weapon-card {
   position: relative;
   overflow: hidden;
   background: rgba(16, 19, 17, 0.8);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition: border-color 0.16s ease, background-color 0.16s ease;
 }
 
-.glass-panel a > .glass-panel::before {
-  position: absolute;
-  inset: 0 0 auto;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--color-gold), transparent);
-  content: '';
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.glass-panel a > .glass-panel:hover {
+.weapon-card:hover {
   border-color: var(--panel-border-active);
   background: rgba(20, 24, 22, 0.95);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
-  transform: translateY(-4px);
-}
-
-.glass-panel a > .glass-panel:hover::before {
-  opacity: 1;
 }
 
 .app > main > .glass-panel > div:first-child > h2 {
@@ -1264,11 +1250,6 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
 /* Hundreds of offscreen lazy-image placeholders otherwise repaint on every
    animation frame while the weapon list scrolls. Keep the skeleton styling,
    but reserve the animated shimmer for isolated loaders such as Configurator. */
-.weapon-card {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
 .weapon-card .shimmer {
   animation: none;
 }
