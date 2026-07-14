@@ -4,9 +4,17 @@ import {
   PRICE_CONFIDENCE,
   PRICE_MODE_LABELS,
   PRICE_MODE_OPTIONS,
+  PRICE_SOURCE_TYPE,
 } from '../data/price/priceModes.js';
 import {
+  getPurchasePriceValue,
+  selectPurchasePrice,
+  sumPurchasePrices,
+} from '../data/price/priceMapper.js';
+import {
+  loadIncludeTraderPricesPreference,
   loadPriceModePreference,
+  saveIncludeTraderPricesPreference,
   savePriceModePreference,
   loadTargetTypePreference,
   saveTargetTypePreference,
@@ -19,6 +27,12 @@ import {
   saveBuildSnapshot,
 } from '../data/savedBuilds.js';
 import { recalculateBuildStats } from '../domain/calculator.js';
+import {
+  WEAPON_STAT_UI_RANGES,
+  normalizeStatPercent,
+  toFiniteStatNumber,
+  withBaseStatMaximum,
+} from '../ui/weaponStatMeters.js';
 
 function createCancelledCalculationError() {
   const error = new Error('A newer build calculation replaced this request.');
@@ -178,27 +192,17 @@ function getAlternativeDisplayName(item) {
     : formatPartName(item.shortName);
 }
 
-function getRawItemPrice(item) {
-  return item.avg24hPrice
-    || item.lastLowPrice
-    || item.low24hPrice
-    || item.basePrice
-    || 0;
-}
+const MISSING_PRICE_COMPARISON_VALUE = 1_000_000_000_000;
 
-function getItemPriceForMode(item, priceMode) {
-  if (!priceMode || item.price?.mode === priceMode) {
-    return item.price?.value ?? getRawItemPrice(item);
-  }
-  return getRawItemPrice(item);
-}
-
-function getItemsMetrics(items, priceMode) {
+function getItemsMetrics(items, priceMode, includeTraderPrices) {
   return items.reduce((metrics, item) => ({
     ergonomics: metrics.ergonomics + (item.ergonomicsModifier || 0),
     recoil: metrics.recoil + (item.recoilModifier || 0),
     weight: metrics.weight + (item.weight || 0),
-    price: metrics.price + getItemPriceForMode(item, priceMode),
+    price: metrics.price + getPurchasePriceValue(item, {
+      priceMode,
+      includeTraderPrices,
+    }, MISSING_PRICE_COMPARISON_VALUE),
   }), {
     ergonomics: 0,
     recoil: 0,
@@ -207,7 +211,7 @@ function getItemsMetrics(items, priceMode) {
   });
 }
 
-function getNodeMetrics(node, priceMode) {
+function getNodeMetrics(node, priceMode, includeTraderPrices) {
   const items = [];
   function collect(currentNode) {
     if (!currentNode?.item) return;
@@ -215,11 +219,15 @@ function getNodeMetrics(node, priceMode) {
     currentNode.children.forEach(collect);
   }
   collect(node);
-  return getItemsMetrics(items, priceMode);
+  return getItemsMetrics(items, priceMode, includeTraderPrices);
 }
 
-function getSimilarityDistance(referenceMetrics, item, priceMode) {
-  const candidateMetrics = getItemsMetrics(getAlternativePackageItems(item), priceMode);
+function getSimilarityDistance(referenceMetrics, item, priceMode, includeTraderPrices) {
+  const candidateMetrics = getItemsMetrics(
+    getAlternativePackageItems(item),
+    priceMode,
+    includeTraderPrices,
+  );
 
   return (Math.abs(referenceMetrics.ergonomics - candidateMetrics.ergonomics) * 1.5)
     + (Math.abs(referenceMetrics.recoil - candidateMetrics.recoil) * 4.0)
@@ -262,11 +270,14 @@ function isValidSightForMode(item, sightMode) {
   return true;
 }
 
-function scoreScope(item, priceMode) {
+function scoreScope(item, priceMode, includeTraderPrices) {
   const ergo = item.ergonomicsModifier || 0;
   const recoil = item.recoilModifier || 0;
   const weight = item.weight || 0;
-  const price = getItemPriceForMode(item, priceMode);
+  const price = getPurchasePriceValue(item, {
+    priceMode,
+    includeTraderPrices,
+  }, MISSING_PRICE_COMPARISON_VALUE);
 
   return ergo - recoil * 5 - weight * 10 - (price > 0 ? price * 0.0001 : 0);
 }
@@ -340,7 +351,14 @@ function getReplaceTarget(node, mode) {
   return node;
 }
 
-function findCompatibleAlternatives(node, allMods, priceMode, sightMode, mode = 'EXACT_ITEM') {
+function findCompatibleAlternatives(
+  node,
+  allMods,
+  priceMode,
+  includeTraderPrices,
+  sightMode,
+  mode = 'EXACT_ITEM',
+) {
   if (!node) return [];
 
   // Находим реальную цель для замены
@@ -546,7 +564,7 @@ function findCompatibleAlternatives(node, allMods, priceMode, sightMode, mode = 
           if (currentSight && scopeItem.id === currentSight.id) continue;
           if (!isPackageCompatibleWithInstalled([altItem, scopeItem], remainingInstalledIds)) continue;
 
-          const score = scoreScope(scopeItem, priceMode);
+          const score = scoreScope(scopeItem, priceMode, includeTraderPrices);
           if (score > bestScopeScore) {
             bestScopeScore = score;
             bestScope = scopeItem;
@@ -679,11 +697,16 @@ function findCompatibleAlternatives(node, allMods, priceMode, sightMode, mode = 
     const distanceNode = getDistanceNode(alt);
     let referenceMetrics = referenceMetricsByNode.get(distanceNode);
     if (!referenceMetrics) {
-      referenceMetrics = getNodeMetrics(distanceNode, priceMode);
+      referenceMetrics = getNodeMetrics(distanceNode, priceMode, includeTraderPrices);
       referenceMetricsByNode.set(distanceNode, referenceMetrics);
     }
 
-    const distance = getSimilarityDistance(referenceMetrics, alt, priceMode);
+    const distance = getSimilarityDistance(
+      referenceMetrics,
+      alt,
+      priceMode,
+      includeTraderPrices,
+    );
     distanceByAlternative.set(alt, distance);
     return distance;
   };
@@ -728,20 +751,6 @@ function isPositivePrice(value) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
-function getRawFallbackPrice(item) {
-  const candidates = [
-    { field: 'avg24hPrice', value: item?.avg24hPrice },
-    { field: 'lastLowPrice', value: item?.lastLowPrice },
-    { field: 'low24hPrice', value: item?.low24hPrice },
-    { field: 'basePrice', value: item?.basePrice },
-  ];
-
-  return candidates.find(candidate => isPositivePrice(candidate.value)) ?? {
-    field: null,
-    value: 0,
-  };
-}
-
 function formatCurrency(value, currency = 'RUB') {
   if (typeof value !== 'number' || !Number.isFinite(value) || value === 0) return 'N/A';
   return `${Math.round(value).toLocaleString()} ${currency}`;
@@ -751,67 +760,68 @@ function getItemDisplayName(item, fallbackLabel = 'Item') {
   return item?.shortName || item?.name || fallbackLabel;
 }
 
-function getSelectedPriceInfo(item, selectedPriceMode) {
-  const normalizedPrice = item?.price;
-  const rawFallback = getRawFallbackPrice(item);
-  const modeMismatch = Boolean(
-    normalizedPrice?.mode
-    && selectedPriceMode
-    && normalizedPrice.mode !== selectedPriceMode,
-  );
-
-  if (normalizedPrice && !modeMismatch) {
-    const value = isPositivePrice(normalizedPrice.value) ? normalizedPrice.value : 0;
-    const confidence = normalizedPrice.confidence
-      ?? (normalizedPrice.fallbackUsed ? PRICE_CONFIDENCE.FALLBACK : PRICE_CONFIDENCE.HIGH);
-    const isMissing = confidence === PRICE_CONFIDENCE.MISSING || !isPositivePrice(value);
-
-    return {
-      value,
-      currency: normalizedPrice.currency ?? 'RUB',
-      mode: normalizedPrice.mode ?? selectedPriceMode,
-      source: normalizedPrice.source ?? 'Unknown source',
-      field: normalizedPrice.field ?? null,
-      fallbackUsed: Boolean(normalizedPrice.fallbackUsed),
-      updatedAt: normalizedPrice.updatedAt ?? null,
-      confidence: isMissing ? PRICE_CONFIDENCE.MISSING : confidence,
-      usesSelectedMode: true,
-      usesRawFallback: false,
-      modeMismatch: false,
-      isMissing,
-    };
-  }
-
-  if (isPositivePrice(rawFallback.value)) {
-    return {
-      value: rawFallback.value,
-      currency: normalizedPrice?.currency ?? 'RUB',
-      mode: selectedPriceMode,
-      source: normalizedPrice?.source ?? 'Raw item fields',
-      field: rawFallback.field,
-      fallbackUsed: true,
-      updatedAt: normalizedPrice?.updatedAt ?? item?.updated ?? null,
-      confidence: PRICE_CONFIDENCE.FALLBACK,
-      usesSelectedMode: false,
-      usesRawFallback: true,
-      modeMismatch,
-      isMissing: false,
-    };
-  }
+function getSelectedPriceInfo(item, selectedPriceMode, includeTraderPrices) {
+  const priceInfo = selectPurchasePrice(item, {
+    priceMode: selectedPriceMode,
+    includeTraderPrices,
+  });
 
   return {
-    value: 0,
-    currency: normalizedPrice?.currency ?? 'RUB',
-    mode: selectedPriceMode,
-    source: normalizedPrice?.source ?? 'Unknown source',
-    field: null,
-    fallbackUsed: true,
-    updatedAt: normalizedPrice?.updatedAt ?? item?.updated ?? null,
-    confidence: PRICE_CONFIDENCE.MISSING,
-    usesSelectedMode: false,
-    usesRawFallback: true,
-    modeMismatch,
-    isMissing: true,
+    ...priceInfo,
+    isMissing: priceInfo.confidence === PRICE_CONFIDENCE.MISSING
+      || !isPositivePrice(priceInfo.value),
+    modeMismatch: Boolean(
+      item?.purchaseOffers?.mode
+      && selectedPriceMode
+      && item.purchaseOffers.mode !== selectedPriceMode,
+    ),
+  };
+}
+
+function formatPriceSource(priceInfo) {
+  if (priceInfo?.sourceLabel) return priceInfo.sourceLabel;
+  if (priceInfo?.sourceType !== PRICE_SOURCE_TYPE.TRADER) return '';
+
+  const level = isPositivePrice(priceInfo.traderLevel)
+    ? `LL${priceInfo.traderLevel}`
+    : 'LL unknown';
+  return [
+    priceInfo.vendorName || 'Trader',
+    level,
+    priceInfo.questRequired ? 'Quest required' : null,
+  ].filter(Boolean).join(' · ');
+}
+
+function ItemPrice({ priceInfo, className = '' }) {
+  const sourceLabel = formatPriceSource(priceInfo);
+
+  return (
+    <span className={`item-price ${className}`.trim()}>
+      <strong>{formatCurrency(priceInfo?.value, priceInfo?.currency)}</strong>
+      {sourceLabel && <span className="item-price__source">{sourceLabel}</span>}
+    </span>
+  );
+}
+
+function PriceSource({ priceInfo }) {
+  const sourceLabel = formatPriceSource(priceInfo);
+  return sourceLabel
+    ? <span className="item-price__source">{sourceLabel}</span>
+    : null;
+}
+
+function getPackagePriceInfo(items, selectedPriceMode, includeTraderPrices) {
+  const packagePrice = sumPurchasePrices(items, {
+    priceMode: selectedPriceMode,
+    includeTraderPrices,
+  });
+  const sourceLabels = Array.from(new Set(
+    packagePrice.priceInfos.map(formatPriceSource).filter(Boolean),
+  ));
+
+  return {
+    ...packagePrice,
+    sourceLabel: sourceLabels.join(' + '),
   };
 }
 
@@ -829,13 +839,13 @@ function formatDiagnosticsList(entries, limit = 3) {
   return names.join(', ');
 }
 
-function getPriceSummaryStatus(diagnostics) {
+function getPriceSummaryStatus(diagnostics, includeTraderPrices) {
   if (diagnostics.missingEntries.length > 0) return 'some prices missing';
   if (diagnostics.fallbackEntries.length > 0) return 'includes fallback prices';
-  return 'primary market prices';
+  return includeTraderPrices ? 'cheapest Flea/Trader prices' : 'Flea Market only';
 }
 
-function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode) {
+function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode, includeTraderPrices) {
   const entries = [
     {
       label: 'Base weapon',
@@ -847,7 +857,7 @@ function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode) {
     })),
   ].map(entry => ({
     ...entry,
-    priceInfo: getSelectedPriceInfo(entry.item, selectedPriceMode),
+    priceInfo: getSelectedPriceInfo(entry.item, selectedPriceMode, includeTraderPrices),
   }));
 
   const fallbackEntries = entries.filter(entry => (
@@ -900,14 +910,14 @@ function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode) {
     summaryLabel: `${modeLabel} · ${sourceLabel} · ${getPriceSummaryStatus({
       fallbackEntries,
       missingEntries,
-    })}`,
+    }, includeTraderPrices)}`,
   };
 }
 
 const SUPPRESSOR_MODE_OPTIONS = [
-  { value: 'allow', label: 'Allow suppressors' },
-  { value: 'forbid', label: 'Forbid suppressors' },
-  { value: 'require', label: 'Require suppressor' },
+  { value: 'allow', label: 'Allow' },
+  { value: 'forbid', label: 'Forbid' },
+  { value: 'require', label: 'Require' },
 ];
 
 function getSuppressorOptions(suppressorMode) {
@@ -939,6 +949,7 @@ function getReplacementConstraintErrors({
   weapon,
   buildParts,
   priceMode,
+  includeTraderPrices,
   maxWeight,
   maxPrice,
   requiredItemIds,
@@ -995,14 +1006,19 @@ function getReplacementConstraintErrors({
     errors.push('This replacement would no longer satisfy the selected sight requirement.');
   }
 
-  const stats = recalculateBuildStats(weapon, buildParts, { priceMode });
+  const stats = recalculateBuildStats(weapon, buildParts, {
+    priceMode,
+    includeTraderPrices,
+  });
   const parsedMaxWeight = Number(maxWeight) || 0;
   const parsedMaxPrice = Number(maxPrice) || 0;
 
   if (parsedMaxWeight > 0 && Number(stats.weight) > parsedMaxWeight + 0.0001) {
     errors.push(`This replacement exceeds the ${parsedMaxWeight} kg weight limit.`);
   }
-  if (parsedMaxPrice > 0 && stats.price > parsedMaxPrice) {
+  if (parsedMaxPrice > 0 && !isPositivePrice(stats.price)) {
+    errors.push('This replacement contains an item without an available price for the active policy.');
+  } else if (parsedMaxPrice > 0 && stats.price > parsedMaxPrice) {
     errors.push(`This replacement exceeds the ${parsedMaxPrice} RUB budget limit.`);
   }
 
@@ -1212,6 +1228,36 @@ const GROUP_ORDER = [
   'Underbarrel Launcher'
 ];
 
+function StatMeterRow({ label, value, displayValue = value, range }) {
+  const hasNumericValue = typeof value === 'number' && Number.isFinite(value);
+  const percent = normalizeStatPercent(value, range.min, range.max);
+  const accessibleValue = hasNumericValue
+    ? Math.min(range.max, Math.max(range.min, value))
+    : undefined;
+
+  return (
+    <div className={`stat-row stat-row--${range.direction}`}>
+      <span>{label}</span>
+      <div
+        className="bar"
+        role="meter"
+        aria-label={label}
+        aria-valuemin={range.min}
+        aria-valuemax={range.max}
+        aria-valuenow={accessibleValue}
+        aria-valuetext={hasNumericValue ? undefined : 'Not available'}
+      >
+        <span
+          className="bar__gradient"
+          style={{ '--meter-value': `${percent}%` }}
+          aria-hidden="true"
+        />
+      </div>
+      <strong>{displayValue}</strong>
+    </div>
+  );
+}
+
 function Configurator() {
   const { weaponId } = useParams();
   const [searchParams] = useSearchParams();
@@ -1228,6 +1274,10 @@ function Configurator() {
   const [suppressorMode, setSuppressorMode] = useState('allow');
   const [priceMode, setPriceMode] = useState(
     () => requestedSavedBuild?.settings.priceMode || loadPriceModePreference(),
+  );
+  const [includeTraderPrices, setIncludeTraderPrices] = useState(
+    () => requestedSavedBuild?.settings.includeTraderPrices
+      ?? loadIncludeTraderPricesPreference(),
   );
   const [maxWeight, setMaxWeight] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
@@ -1248,6 +1298,7 @@ function Configurator() {
   const [requiredModuleSearch, setRequiredModuleSearch] = useState('');
   const [requiredModuleIds, setRequiredModuleIds] = useState([]);
   const [replacementError, setReplacementError] = useState(null);
+  const [pricePolicyWarning, setPricePolicyWarning] = useState(null);
   const [activeSavedBuildId, setActiveSavedBuildId] = useState(requestedSavedBuildId);
   const [saveName, setSaveName] = useState(requestedSavedBuild?.name || '');
   const [saveFeedback, setSaveFeedback] = useState(null);
@@ -1365,6 +1416,10 @@ function Configurator() {
   }, [priceMode]);
 
   useEffect(() => {
+    saveIncludeTraderPricesPreference(includeTraderPrices);
+  }, [includeTraderPrices]);
+
+  useEffect(() => {
     saveTargetTypePreference(targetType);
   }, [targetType]);
 
@@ -1398,8 +1453,12 @@ function Configurator() {
 
       if (requestedSavedBuild && requestedSavedBuild.weapon.id === weaponData.id) {
         const restored = restoreBuildParts(requestedSavedBuild, modsData);
-        const restoredStats = recalculateBuildStats(weaponData, restored.build, { priceMode });
         const settings = requestedSavedBuild.settings;
+        const restoredIncludeTraderPrices = settings.includeTraderPrices !== false;
+        const restoredStats = recalculateBuildStats(weaponData, restored.build, {
+          priceMode,
+          includeTraderPrices: restoredIncludeTraderPrices,
+        });
 
         setBuildResult({
           build: restored.build,
@@ -1412,6 +1471,7 @@ function Configurator() {
         setCustomErgo(Number(settings.customErgo) || 50);
         setCustomRecoil(Number(settings.customRecoil) || 50);
         setSuppressorMode(settings.suppressorMode || 'allow');
+        setIncludeTraderPrices(restoredIncludeTraderPrices);
         setMaxWeight(settings.maxWeight ? String(settings.maxWeight) : '');
         setMaxPrice(settings.maxPrice ? String(settings.maxPrice) : '');
         setMagazineCapacity(Number(settings.magazineCapacity) || capacities[0] || 30);
@@ -1533,6 +1593,7 @@ function Configurator() {
       weapon,
       buildParts: updatedBuild,
       priceMode,
+      includeTraderPrices,
       maxWeight,
       maxPrice,
       requiredItemIds: requiredModuleIds,
@@ -1579,11 +1640,36 @@ function Configurator() {
     setRequiredModuleIds(prev => prev.filter(id => id !== itemId));
   };
 
+  const handleIncludeTraderPricesChange = (nextValue) => {
+    setIncludeTraderPrices(nextValue);
+
+    if (!weapon || !buildResult || !Array.isArray(buildResult.build)) return;
+
+    const recalculated = recalculateBuildStats(weapon, buildResult.build, {
+      priceMode,
+      includeTraderPrices: nextValue,
+    });
+    const budgetLimit = Number(maxPrice) || 0;
+
+    setBuildResult(current => current ? {
+      ...current,
+      stats: recalculated.stats,
+    } : current);
+    setPricePolicyWarning(
+      budgetLimit > 0 && !isPositivePrice(recalculated.stats.price)
+        ? 'The current build contains an item without an available price for this policy.'
+        : budgetLimit > 0 && recalculated.stats.price > budgetLimit
+          ? `The current build exceeds the ${budgetLimit} RUB budget under this price policy.`
+          : null,
+    );
+  };
+
   const handleGenerate = useCallback(async () => {
     if (!allMods) return;
     setGenerating(true);
     setGenerationError(null);
     setReplacementError(null);
+    setPricePolicyWarning(null);
     setBuildResult(null);
     let requestId = null;
 
@@ -1594,6 +1680,7 @@ function Configurator() {
         maxPrice: parseFloat(maxPrice) || 0,
         magazineCapacity: Number(magazineCapacity) || 30,
         priceMode,
+        includeTraderPrices,
         includeLaser,
         includeFlashlight,
         sightMode,
@@ -1623,7 +1710,7 @@ function Configurator() {
         setGenerating(false);
       }
     }
-  }, [allMods, suppressorMode, maxWeight, maxPrice, magazineCapacity, priceMode, includeLaser, includeFlashlight, sightMode, requiredModuleIds, weapon, targetType, customErgo, customRecoil, runBuildCalculation]);
+  }, [allMods, suppressorMode, maxWeight, maxPrice, magazineCapacity, priceMode, includeTraderPrices, includeLaser, includeFlashlight, sightMode, requiredModuleIds, weapon, targetType, customErgo, customRecoil, runBuildCalculation]);
 
   const handleSaveBuild = () => {
     if (!weapon || !buildResult || buildResult.error || !Array.isArray(buildResult.build) || buildResult.build.length === 0) {
@@ -1643,6 +1730,7 @@ function Configurator() {
           customRecoil,
           suppressorMode,
           priceMode,
+          includeTraderPrices,
           maxWeight: Number(maxWeight) || 0,
           maxPrice: Number(maxPrice) || 0,
           magazineCapacity,
@@ -1726,9 +1814,16 @@ function Configurator() {
       targetNode,
       hasSightChain,
       hasMountInChain,
-      alternatives: findCompatibleAlternatives(targetNode, allMods, priceMode, sightMode, replaceMode),
+      alternatives: findCompatibleAlternatives(
+        targetNode,
+        allMods,
+        priceMode,
+        includeTraderPrices,
+        sightMode,
+        replaceMode,
+      ),
     };
-  }, [weapon, buildResult, hasBuildParts, activeReplacePartId, allMods, priceMode, sightMode, replaceMode]);
+  }, [weapon, buildResult, hasBuildParts, activeReplacePartId, allMods, priceMode, includeTraderPrices, sightMode, replaceMode]);
 
   const isLoading = loading || (weapon && weapon.id !== weaponId);
 
@@ -1760,17 +1855,59 @@ function Configurator() {
   }
 
   const priceDiagnostics = canShowBuildDetails
-    ? collectBuildPriceDiagnostics(weapon, buildResult, priceMode)
-    : null;
+    ? collectBuildPriceDiagnostics(weapon, buildResult, priceMode, includeTraderPrices)
+    : {
+      summaryLabel: `${PRICE_MODE_LABELS[priceMode]} · tarkov.dev · ${includeTraderPrices ? 'cheapest Flea/Trader prices' : 'Flea Market only'}`,
+      warningMessages: [],
+    };
 
   // Рассчитываем текущие значения для панели метрик
   const currentErgo = canShowBuildDetails ? buildResult.stats.ergonomics : (weapon.properties?.ergonomics ?? 'N/A');
+  const currentWeightValue = toFiniteStatNumber(
+    canShowBuildDetails ? buildResult.stats.weight : weapon.weight,
+  );
   const currentWeight = canShowBuildDetails ? `${buildResult.stats.weight} kg` : (weapon.weight ? `${weapon.weight} kg` : 'N/A');
   const currentRecoilV = canShowBuildDetails ? buildResult.stats.recoilVertical : (weapon.properties?.recoilVertical ?? 'N/A');
   const currentRecoilH = canShowBuildDetails ? buildResult.stats.recoilHorizontal : (weapon.properties?.recoilHorizontal ?? 'N/A');
   const currentPrice = canShowBuildDetails 
     ? formatCurrency(buildResult.stats.price, 'RUB') 
-    : formatCurrency(getSelectedPriceInfo(weapon, priceMode).value, 'RUB');
+    : formatCurrency(
+      getSelectedPriceInfo(weapon, priceMode, includeTraderPrices).value,
+      'RUB',
+    );
+  const statMeters = [
+    {
+      key: 'weight',
+      label: 'Weight',
+      value: currentWeightValue,
+      displayValue: currentWeight,
+      range: WEAPON_STAT_UI_RANGES.weight,
+    },
+    {
+      key: 'ergonomics',
+      label: 'Ergonomics',
+      value: currentErgo,
+      range: WEAPON_STAT_UI_RANGES.ergonomics,
+    },
+    {
+      key: 'vertical-recoil',
+      label: 'Vertical Recoil',
+      value: currentRecoilV,
+      range: withBaseStatMaximum(
+        WEAPON_STAT_UI_RANGES.verticalRecoil,
+        weapon.properties?.recoilVertical,
+      ),
+    },
+    {
+      key: 'horizontal-recoil',
+      label: 'Horizontal Recoil',
+      value: currentRecoilH,
+      range: withBaseStatMaximum(
+        WEAPON_STAT_UI_RANGES.horizontalRecoil,
+        weapon.properties?.recoilHorizontal,
+      ),
+    },
+  ];
 
   // Группировка деталей сборки
   const partsGroups = [];
@@ -1849,10 +1986,10 @@ function Configurator() {
           <>
         <section className="config__section">
           <label className="field-label">Build Goal</label>
-          <div className="segmented">
+          <div className="segmented segmented--goals">
             {[
               { value: 'meta', label: 'Meta (Top)' },
-              { value: 'max_ergo', label: 'Max Ergonomics' },
+              { value: 'max_ergo', label: 'Max Ergo' },
               { value: 'min_recoil', label: 'Min Recoil' },
               { value: 'budget', label: 'Budget' },
               { value: 'custom', label: 'Custom' }
@@ -1894,7 +2031,7 @@ function Configurator() {
 
         <section className="config__section">
           <label className="field-label">Suppressor Mode</label>
-          <div className="segmented">
+          <div className="segmented segmented--three">
             {SUPPRESSOR_MODE_OPTIONS.map(option => (
               <button
                 key={option.value}
@@ -1910,7 +2047,7 @@ function Configurator() {
 
         <section className="config__section">
           <label className="field-label">Price Mode</label>
-          <div className="segmented">
+          <div className="segmented segmented--two">
             {PRICE_MODE_OPTIONS.map(option => (
               <button
                 key={option.value}
@@ -1921,6 +2058,21 @@ function Configurator() {
                 {option.label}
               </button>
             ))}
+          </div>
+          <div className="checks price-source-checks">
+            <label className="check" htmlFor="includeTraderPrices">
+              <input
+                id="includeTraderPrices"
+                type="checkbox"
+                checked={includeTraderPrices}
+                onChange={event => handleIncludeTraderPricesChange(event.target.checked)}
+                aria-describedby="includeTraderPricesHelp"
+              />
+              <span>Include trader prices</span>
+            </label>
+            <span id="includeTraderPricesHelp" className="field-help">
+              Use the lowest available price from the Flea Market or traders.
+            </span>
           </div>
         </section>
 
@@ -1955,7 +2107,7 @@ function Configurator() {
 
         <section className="config__section">
           <label className="field-label">Magazine Capacity (rounds)</label>
-          <div className="segmented segmented--small">
+          <div className="segmented segmented--capacity">
             {availableCapacities.map(capacity => (
               <button
                 key={capacity}
@@ -2045,7 +2197,7 @@ function Configurator() {
             {requiredModuleResults.length > 0 && (
               <div className="module-search-list">
                 {requiredModuleResults.map(item => {
-                  const priceInfo = getSelectedPriceInfo(item, priceMode);
+                  const priceInfo = getSelectedPriceInfo(item, priceMode, includeTraderPrices);
 
                   return (
                     <button
@@ -2064,7 +2216,8 @@ function Configurator() {
                       </span>
                       <span className="module-search-item__body">
                         <strong>{formatPartName(item.shortName || item.name)}</strong>
-                        <span>{getModuleCategoryLabel(item)} В· {formatCurrency(priceInfo.value, priceInfo.currency)}</span>
+                        <span>{getModuleCategoryLabel(item)} · {formatCurrency(priceInfo.value, priceInfo.currency)}</span>
+                        <PriceSource priceInfo={priceInfo} />
                       </span>
                       <span className="module-search-item__action">Add</span>
                     </button>
@@ -2121,30 +2274,6 @@ function Configurator() {
 
       {/* Правая основная область */}
       <main>
-        {/* Панель метрик сверху */}
-        <section className="summary" aria-label="Build Stats">
-          <div className="metric">
-            <span>Ergonomics</span>
-            <strong>{currentErgo}</strong>
-          </div>
-          <div className="metric">
-            <span>Weight</span>
-            <strong>{currentWeight}</strong>
-          </div>
-          <div className="metric">
-            <span>V. Recoil / H. Recoil</span>
-            <strong>
-              {typeof currentRecoilV === 'number' && typeof currentRecoilH === 'number'
-                ? `${currentRecoilV} / ${currentRecoilH}`
-                : currentRecoilV}
-            </strong>
-          </div>
-          <div className="metric">
-            <span>Estimated Price</span>
-            <strong>{currentPrice}</strong>
-          </div>
-        </section>
-
         {/* Сетка: Карточка оружия и Сводка деталей */}
         <div className="main-grid">
           {/* Левая панель - Оружие */}
@@ -2155,7 +2284,7 @@ function Configurator() {
                 <p>{weapon.name}</p>
               </div>
               <div className="source">
-                {priceDiagnostics?.summaryLabel || `${PRICE_MODE_LABELS[priceMode]} · tarkov.dev · primary market prices`}
+                {priceDiagnostics.summaryLabel}
               </div>
             </div>
 
@@ -2170,105 +2299,53 @@ function Configurator() {
 
             {/* Шкалы сравнения статов */}
             <div className="stat-compare">
-              {(() => {
-                const ergoVal = typeof currentErgo === 'number' ? currentErgo : 0;
-                const recVal = typeof currentRecoilV === 'number' ? currentRecoilV : 0;
-                const recHVal = typeof currentRecoilH === 'number' ? currentRecoilH : 0;
-                
-                return (
-                  <>
-                    <div className="stat-row">
-                      <span>Ergonomics</span>
-                      <div className="bar">
-                        <span style={{ '--value': `${Math.min(100, Math.max(0, ergoVal))}%` }} className="is-good"></span>
-                      </div>
-                      <strong>{currentErgo}</strong>
-                    </div>
-                    <div className="stat-row">
-                      <span>Vertical Recoil</span>
-                      <div className="bar">
-                        <span style={{ '--value': `${Math.min(100, Math.max(0, recVal))}%` }} className="is-good"></span>
-                      </div>
-                      <strong>{currentRecoilV}</strong>
-                    </div>
-                    <div className="stat-row">
-                      <span>Horizontal Recoil</span>
-                      <div className="bar">
-                        <span style={{ '--value': `${Math.min(100, Math.max(0, recHVal))}%` }} className="is-good"></span>
-                      </div>
-                      <strong>{currentRecoilH}</strong>
-                    </div>
-                  </>
-                );
-              })()}
+              {statMeters.map((stat) => (
+                <StatMeterRow key={stat.key} {...stat} />
+              ))}
             </div>
 
-            {/* Чипсы настроек сборки */}
-            <div className="control-state">
-              <div className="chip">
-                Goal 
-                <strong>
-                  {targetType === 'meta' ? 'Meta (Top)' : targetType === 'max_ergo' ? 'Max Ergonomics' : targetType === 'min_recoil' ? 'Min Recoil' : targetType === 'budget' ? 'Budget' : 'Custom'}
-                </strong>
+            <div className="weapon__actions">
+              <div className="price-box">
+                <span className="price-title">Est. Build Price</span>
+                <span className="price-amount">{currentPrice}</span>
               </div>
-              <div className="chip">
-                Suppressor 
-                <strong>
-                  {suppressorMode === 'allow' ? 'Allow suppressors' : suppressorMode === 'forbid' ? 'Forbid suppressors' : 'Require suppressor'}
-                </strong>
-              </div>
-              <div className="chip">
-                Magazine 
-                <strong>{magazineCapacity} rounds</strong>
-              </div>
-              <div className="chip">
-                Sight 
-                <strong>
-                  {sightMode === 'none' ? 'NO SIGHT' : sightMode === 'any' ? 'ANY SIGHT' : sightMode === 'reflex' ? 'REFLEX (1x)' : sightMode === 'scope' ? 'SCOPE (Any zoom)' : `${sightMode}x Zoom`}
-                </strong>
-              </div>
-              {selectedRequiredModules.length > 0 && (
-                <div className="chip">
-                  Required
-                  <strong>{selectedRequiredModules.length} modules</strong>
+
+              {canShowBuildDetails && (
+                <div className="save-build-bar">
+                  <label htmlFor="saveBuildName">
+                    <span>Build name</span>
+                    <input
+                      id="saveBuildName"
+                      type="text"
+                      maxLength={80}
+                      value={saveName}
+                      onChange={event => {
+                        setSaveName(event.target.value);
+                        setSaveFeedback(null);
+                      }}
+                      placeholder={`${weapon.shortName || weapon.name} build`}
+                    />
+                  </label>
+                  <button className="btn btn--primary" type="button" onClick={handleSaveBuild}>
+                    {activeSavedBuildId ? 'Update saved build' : 'Save build'}
+                  </button>
                 </div>
               )}
+
+              {saveFeedback && (
+                <InlineMessage
+                  type={saveFeedback.type}
+                  title={saveFeedback.type === 'error' ? 'Save failed' : 'Saved locally'}
+                >
+                  {saveFeedback.message}
+                </InlineMessage>
+              )}
             </div>
+
           </section>
 
           {/* Правая панель - Список деталей */}
           <section className="panel parts-panel">
-            {canShowBuildDetails && (
-              <div className="save-build-bar">
-                <label htmlFor="saveBuildName">
-                  <span>Build name</span>
-                  <input
-                    id="saveBuildName"
-                    type="text"
-                    maxLength={80}
-                    value={saveName}
-                    onChange={event => {
-                      setSaveName(event.target.value);
-                      setSaveFeedback(null);
-                    }}
-                    placeholder={`${weapon.shortName || weapon.name} build`}
-                  />
-                </label>
-                <button className="btn btn--primary" type="button" onClick={handleSaveBuild}>
-                  {activeSavedBuildId ? 'Update saved build' : 'Save build'}
-                </button>
-              </div>
-            )}
-
-            {saveFeedback && (
-              <InlineMessage
-                type={saveFeedback.type}
-                title={saveFeedback.type === 'error' ? 'Save failed' : 'Saved locally'}
-              >
-                {saveFeedback.message}
-              </InlineMessage>
-            )}
-
             {/* Поле поиска */}
             <div className="parts-toolbar">
               <input 
@@ -2290,6 +2367,12 @@ function Configurator() {
             {generationError && (
               <InlineMessage type="error" title="Build generation failed">
                 {generationError}
+              </InlineMessage>
+            )}
+
+            {pricePolicyWarning && (
+              <InlineMessage type="warning" title="Price policy notice">
+                {pricePolicyWarning}
               </InlineMessage>
             )}
 
@@ -2326,7 +2409,11 @@ function Configurator() {
                 </div>
                 <div className="parts-grid">
                   {group.parts.map(part => {
-                    const partPriceInfo = getSelectedPriceInfo(part.item, priceMode);
+                    const partPriceInfo = getSelectedPriceInfo(
+                      part.item,
+                      priceMode,
+                      includeTraderPrices,
+                    );
                     
                     return (
                       <article key={part.item.id} className="part-card">
@@ -2341,7 +2428,7 @@ function Configurator() {
                         <div className="part-card__body">
                           <div className="part-card__topline">
                             <h4>{formatPartName(part.item.shortName)}</h4>
-                            <strong>{formatCurrency(partPriceInfo.value, partPriceInfo.currency)}</strong>
+                            <ItemPrice priceInfo={partPriceInfo} />
                           </div>
                           <button 
                             className={`replace-btn ${activeReplacePartId === part.item.id ? 'active' : ''}`}
@@ -2379,7 +2466,11 @@ function Configurator() {
           hasMountInChain,
           alternatives,
         } = replacementContext;
-        const priceInfo = getSelectedPriceInfo(activePart.item, priceMode);
+        const priceInfo = getSelectedPriceInfo(
+          activePart.item,
+          priceMode,
+          includeTraderPrices,
+        );
 
         return (
           <div className="drawer is-open" onClick={() => setActiveReplacePartId(null)}>
@@ -2431,7 +2522,7 @@ function Configurator() {
                   <div>
                     <div className="generated-meta">{getReadableSlotGroupName(activePart.slotName)} - Slot: {activePart.slotName}</div>
                     <h3 style={{ margin: '8px 0 6px', fontSize: '1.1rem' }}>{formatPartName(activePart.item.shortName)}</h3>
-                    <strong style={{ color: 'var(--color-accent-gold)' }}>{formatCurrency(priceInfo.value, priceInfo.currency)}</strong>
+                    <ItemPrice priceInfo={priceInfo} />
                   </div>
                 </div>
 
@@ -2448,10 +2539,13 @@ function Configurator() {
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                       {alternatives.map(alt => {
-                        const altPriceInfo = getSelectedPriceInfo(alt, priceMode);
                         const altPackageItems = getAlternativePackageItems(alt);
-                        const altPriceValue = altPackageItems
-                          .reduce((sum, item) => sum + getSelectedPriceInfo(item, priceMode).value, 0);
+                        const altPriceInfo = getPackagePriceInfo(
+                          altPackageItems,
+                          priceMode,
+                          includeTraderPrices,
+                        );
+                        const altPriceValue = altPriceInfo.value;
                         
                         const effectiveReplaceMode = alt.replacementMode || replaceMode;
                         const actualReplaceTarget = getReplaceTarget(targetNode, effectiveReplaceMode);
@@ -2469,7 +2563,12 @@ function Configurator() {
                           }
                         }
 
-                        const baselinePrice = baselineParts.reduce((sum, item) => sum + getSelectedPriceInfo(item, priceMode).value, 0);
+                        const baselinePriceInfo = getPackagePriceInfo(
+                          baselineParts,
+                          priceMode,
+                          includeTraderPrices,
+                        );
+                        const baselinePrice = baselinePriceInfo.value;
                         const baselineErgo = baselineParts.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
                         const baselineRecoil = baselineParts.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
                         const baselineWeight = baselineParts.reduce((sum, item) => sum + (item.weight || 0), 0);
@@ -2479,7 +2578,10 @@ function Configurator() {
                         const altWeight = altPackageItems.reduce((sum, item) => sum + (item.weight || 0), 0);
                         const ergoDiff = altErgo - baselineErgo;
                         const recoilDiff = altRecoil - baselineRecoil;
-                        const priceDiff = altPriceValue - baselinePrice;
+                        const priceDiff = isPositivePrice(altPriceValue)
+                          && isPositivePrice(baselinePrice)
+                          ? altPriceValue - baselinePrice
+                          : null;
                         const weightDiff = altWeight - baselineWeight;
                       
                         const baseRecoilV = weapon.properties?.recoilVertical || 0;
@@ -2566,11 +2668,15 @@ function Configurator() {
                               </div>
                             </div>
                             <div style={{ textAlign: 'right', marginLeft: '0.5rem' }}>
-                              <div style={{ fontSize: '0.85rem', color: 'var(--gold)', fontWeight: 'bold' }}>
-                                {formatCurrency(altPriceValue, altPriceInfo.currency)}
-                              </div>
+                              <ItemPrice priceInfo={altPriceInfo} className="item-price--drawer" />
                               <div style={{ fontSize: '0.7rem', color: priceDiff < 0 ? 'var(--green)' : priceDiff > 0 ? 'var(--red)' : 'var(--muted)' }}>
-                                {priceDiff > 0 ? `+${formatCurrency(priceDiff, altPriceInfo.currency)}` : priceDiff < 0 ? formatCurrency(priceDiff, altPriceInfo.currency) : '0 RUB'}
+                                {priceDiff === null
+                                  ? 'Price diff unavailable'
+                                  : priceDiff > 0
+                                    ? `+${formatCurrency(priceDiff, altPriceInfo.currency)}`
+                                    : priceDiff < 0
+                                      ? formatCurrency(priceDiff, altPriceInfo.currency)
+                                      : '0 RUB'}
                               </div>
                             </div>
                           </div>

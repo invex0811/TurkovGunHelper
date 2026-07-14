@@ -1,3 +1,5 @@
+import { getPurchasePriceValue } from '../data/price/priceMapper.js';
+
 function createCalculationCache() {
   return {
     categoryNamesByItem: new WeakMap(),
@@ -198,23 +200,12 @@ function _calculateWeighted(
     return nearestAllowedItems;
   }
 
-  function getRawItemPrice(item) {
-    return item.avg24hPrice
-      || item.lastLowPrice
-      || item.low24hPrice
-      || item.basePrice
-      || 0;
-  }
-
   function getItemPrice(item) {
     if (calculationCache.itemPricesByItem.has(item)) {
       return calculationCache.itemPricesByItem.get(item);
     }
 
-    const expectedPriceMode = options.priceMode;
-    const price = !expectedPriceMode || item.price?.mode === expectedPriceMode
-      ? item.price?.value ?? getRawItemPrice(item)
-      : getRawItemPrice(item);
+    const price = getPurchasePriceValue(item, options, Number.POSITIVE_INFINITY);
 
     calculationCache.itemPricesByItem.set(item, price);
     return price;
@@ -617,9 +608,10 @@ function _calculateWeighted(
       : overflowErgoWeight;
     const effectiveErgoMod = cappedErgoMod + (overflowErgoMod * itemOverflowErgoWeight);
 
+    const scoringPrice = Number.isFinite(price) ? price : Number.MAX_SAFE_INTEGER;
     let branchScore = (effectiveErgoMod * ergoWeight)
       - (recoilMod * recoilWeight)
-      - (price * priceWeight)
+      - (scoringPrice * priceWeight)
       - (itemWeight * weightWeight);
 
     if (isTacSlot && hasAnyTactical) {
@@ -631,7 +623,7 @@ function _calculateWeighted(
       const loadMod = item.properties?.loadModifier || 0;
       const ammoCheckMod = item.properties?.ammoCheckModifier || 0;
       const ergoM = item.ergonomicsModifier || 0;
-      const lowPrice = getItemPrice(item) || 1;
+      const lowPrice = Number.isFinite(price) ? price : Number.MAX_SAFE_INTEGER;
 
       if (targetType === 'meta' || targetType === 'min_recoil') {
         branchScore = (recoil * 100) - (loadMod * 10) - (ammoCheckMod * 10) + (ergoM * 0.2);
@@ -1055,7 +1047,7 @@ function _calculateWeighted(
       recoilVertical: Math.round(finalRecoilV),
       recoilHorizontal: Math.round(finalRecoilH),
       weight: totalWeight.toFixed(2),
-      price: Math.round(totalPrice),
+      price: Number.isFinite(totalPrice) ? Math.round(totalPrice) : null,
     },
   };
 
@@ -1076,6 +1068,9 @@ function _calculateWeighted(
   }
   if (maxPrice > 0 && totalPrice > maxPrice) {
     warnings.push('The build exceeds the selected max price.');
+  }
+  if (!Number.isFinite(totalPrice)) {
+    warnings.push('One or more selected items have no available price under the active price policy.');
   }
   if (warnings.length > 0) {
     result.warning = warnings.join(' ');
@@ -1162,20 +1157,8 @@ export function recalculateBuildStats(weapon, buildParts, options = {}) {
   let totalRecoilMod = 0;
   let totalWeight = weapon.weight || 0;
 
-  function getRawItemPrice(item) {
-    return item.avg24hPrice
-      || item.lastLowPrice
-      || item.low24hPrice
-      || item.basePrice
-      || 0;
-  }
-
   function getItemPrice(item) {
-    const expectedPriceMode = options.priceMode;
-    if (!expectedPriceMode || item.price?.mode === expectedPriceMode) {
-      return item.price?.value ?? getRawItemPrice(item);
-    }
-    return getRawItemPrice(item);
+    return getPurchasePriceValue(item, options, Number.POSITIVE_INFINITY);
   }
 
   let totalPrice = getItemPrice(weapon);
@@ -1200,7 +1183,7 @@ export function recalculateBuildStats(weapon, buildParts, options = {}) {
       recoilVertical: Math.round(finalRecoilV),
       recoilHorizontal: Math.round(finalRecoilH),
       weight: totalWeight.toFixed(2),
-      price: Math.round(totalPrice),
+      price: Number.isFinite(totalPrice) ? Math.round(totalPrice) : null,
     }
   };
 }

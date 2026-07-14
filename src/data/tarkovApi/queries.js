@@ -34,6 +34,21 @@ export const GET_ALL_MODS_QUERY = `
       low24hPrice
       high24hPrice
       lastOfferCount
+      buyFor {
+        price
+        priceRUB
+        currency
+        vendor {
+          __typename
+          name
+          normalizedName
+          ... on TraderOffer {
+            minTraderLevel
+            buyLimit
+            taskUnlock { id }
+          }
+        }
+      }
       categories { name }
       accuracyModifier
       recoilModifier
@@ -101,6 +116,21 @@ export const GET_WEAPON_DETAILS_QUERY = `
       low24hPrice
       high24hPrice
       lastOfferCount
+      buyFor {
+        price
+        priceRUB
+        currency
+        vendor {
+          __typename
+          name
+          normalizedName
+          ... on TraderOffer {
+            minTraderLevel
+            buyLimit
+            taskUnlock { id }
+          }
+        }
+      }
       categories { name }
       properties {
         ... on ItemPropertiesWeapon {

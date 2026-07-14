@@ -120,7 +120,7 @@ function Home() {
   };
 
   return (
-    <div className="glass-panel" style={{ marginTop: '18px', padding: '2rem' }}>
+    <div className="glass-panel home-page-panel" style={{ marginTop: '18px', padding: '2rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
         <h2>Select Weapon</h2>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
@@ -196,7 +196,7 @@ function Home() {
             }}>
               {filteredWeapons.map(weapon => (
                 <Link to={`/configure/${weapon.id}`} key={weapon.id} style={{ textDecoration: 'none' }}>
-                  <div className="glass-panel" style={{
+                  <div className="glass-panel weapon-card" style={{
                     padding: '1rem',
                     textAlign: 'center',
                     height: '100%',

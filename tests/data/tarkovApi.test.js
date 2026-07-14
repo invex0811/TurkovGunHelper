@@ -12,6 +12,10 @@ import {
   TARKOV_API_CACHE_TTL_MS,
 } from '../../src/data/tarkovApi/repository.js';
 import { PRICE_MODES } from '../../src/data/price/priceModes.js';
+import {
+  GET_ALL_MODS_QUERY,
+  GET_WEAPON_DETAILS_QUERY,
+} from '../../src/data/tarkovApi/queries.js';
 
 function createResponse(data, { ok = true, status = 200, statusText = 'OK' } = {}) {
   return {
@@ -244,4 +248,17 @@ test('getAllMods caches independently by effective price mode', async () => {
     assert.equal(pveMods['mod-pve'].price.mode, PRICE_MODES.PVE);
     assert.deepEqual(requestedGameModes, ['regular', 'pve']);
   });
+});
+
+test('mod and weapon detail queries request monetary buyFor metadata', () => {
+  for (const query of [GET_ALL_MODS_QUERY, GET_WEAPON_DETAILS_QUERY]) {
+    assert.match(query, /buyFor\s*\{/);
+    assert.match(query, /priceRUB/);
+    assert.match(query, /currency/);
+    assert.match(query, /__typename/);
+    assert.match(query, /\.\.\. on TraderOffer/);
+    assert.match(query, /minTraderLevel/);
+    assert.match(query, /taskUnlock\s*\{\s*id\s*\}/);
+    assert.doesNotMatch(query, /bartersFor/);
+  }
 });
