@@ -378,8 +378,6 @@ a {
   border-radius: var(--radius-md);
   background: rgba(20, 24, 22, 0.92);
   box-shadow: var(--shadow-lg);
-  backdrop-filter: var(--blur-amount);
-  -webkit-backdrop-filter: var(--blur-amount);
 }
 
 .config__head {
@@ -715,37 +713,34 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   text-align: center;
 }
 
-.summary {
+.weapon__actions {
   display: grid;
-  grid-template-columns: repeat(4, minmax(130px, 1fr));
-  gap: 10px;
-  margin-bottom: 18px;
+  gap: 14px;
+  padding: 18px;
 }
 
-.metric {
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  background: var(--panel-bg);
-  padding: 14px;
+.price-box {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: 10px 14px;
+  border: 1px dashed var(--panel-border);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.2);
 }
 
-.metric span {
-  display: block;
-  color: var(--muted);
-  font-size: .74rem;
-  font-weight: 800;
+.price-title {
+  color: var(--text-muted);
+  font-size: 0.8rem;
   text-transform: uppercase;
-  font-family: var(--font-sans);
-  letter-spacing: 0.5px;
 }
 
-.metric strong {
-  display: block;
-  margin-top: 8px;
-  color: var(--gold);
+.price-amount {
+  color: var(--color-green);
   font-family: var(--font-mono);
-  font-size: clamp(1.1rem, 2vw, 1.55rem);
-  line-height: 1;
+  font-size: 1.25rem;
+  font-weight: 800;
 }
 
 .main-grid {
@@ -760,8 +755,6 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   border-radius: var(--radius-md);
   background: var(--panel-bg);
   box-shadow: var(--shadow-lg);
-  backdrop-filter: var(--blur-amount);
-  -webkit-backdrop-filter: var(--blur-amount);
 }
 
 .weapon {
@@ -837,25 +830,21 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   background: rgba(255, 255, 255, 0.05);
 }
 
-.bar span {
+.bar__gradient {
   position: absolute;
-  inset: 0 auto 0 0;
-  width: var(--value);
+  inset: 0;
+  width: 100%;
   height: 100%;
   border-radius: inherit;
-  transition: width 0.4s cubic-bezier(0.1, 0.8, 0.2, 1);
+  clip-path: polygon(0 0, var(--meter-value) 0, var(--meter-value) 100%, 0 100%);
+  transition: clip-path 0.4s cubic-bezier(0.1, 0.8, 0.2, 1);
 }
 
-.bar span.is-good {
-  background: var(--color-green);
-}
-
-.stat-row:first-child .bar span {
+.stat-row--higher-is-better .bar__gradient {
   background: linear-gradient(90deg, var(--color-red), var(--color-orange), var(--color-green));
 }
 
-.stat-row:nth-child(2) .bar span,
-.stat-row:nth-child(3) .bar span {
+.stat-row--lower-is-better .bar__gradient {
   background: linear-gradient(90deg, var(--color-green), var(--color-orange), var(--color-red));
 }
 
@@ -863,30 +852,6 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   color: var(--color-gold);
   font-family: var(--font-mono);
   font-weight: 700;
-}
-
-.control-state {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 8px;
-  padding: 18px;
-}
-
-.chip {
-  border: 1px solid var(--panel-border);
-  border-radius: 6px;
-  background: rgba(255,255,255,.025);
-  padding: 9px 10px;
-  color: var(--muted);
-  font-size: .78rem;
-}
-
-.chip strong {
-  display: block;
-  margin-top: 4px;
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: .9rem;
 }
 
 .parts-panel {
@@ -1214,10 +1179,6 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
     grid-template-columns: 1fr 1fr;
   }
 
-  .summary {
-    grid-template-columns: 1fr 1fr;
-  }
-
   .input-grid {
     grid-template-columns: 1fr;
   }
@@ -1228,8 +1189,9 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
 }
 
 @media (max-width: 520px) {
-  .summary {
-    grid-template-columns: 1fr;
+  .price-box {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .parts-grid {
@@ -1256,6 +1218,13 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
+}
+
+/* Hundreds of offscreen lazy-image placeholders otherwise repaint on every
+   animation frame while the weapon list scrolls. Keep the skeleton styling,
+   but reserve the animated shimmer for isolated loaders such as Configurator. */
+.weapon-card .shimmer {
+  animation: none;
 }
 
 .btn-replace-part {
@@ -1299,7 +1268,6 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   grid-template-columns: minmax(180px, 1fr) auto;
   gap: 10px;
   align-items: end;
-  margin-bottom: 14px;
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -1312,21 +1280,22 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
 }
 
 .save-build-bar label span {
-  color: var(--muted);
-  font-size: .72rem;
+  color: var(--text-muted);
+  font-size: 0.72rem;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: .05em;
+  letter-spacing: 0.05em;
 }
 
 .save-build-bar input {
   width: 100%;
+  height: 40px;
   min-height: 40px;
+  padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: rgba(8, 10, 9, 0.7);
   color: var(--text);
-  padding: 0 12px;
   outline: none;
 }
 
@@ -1335,6 +1304,8 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
 }
 
 .save-build-bar .btn--primary {
+  height: 40px;
+  min-height: 40px;
   padding: 8px 12px;
 }
 

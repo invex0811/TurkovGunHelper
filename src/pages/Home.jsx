@@ -196,7 +196,7 @@ function Home() {
             }}>
               {filteredWeapons.map(weapon => (
                 <Link to={`/configure/${weapon.id}`} key={weapon.id} style={{ textDecoration: 'none' }}>
-                  <div className="glass-panel" style={{
+                  <div className="glass-panel weapon-card" style={{
                     padding: '1rem',
                     textAlign: 'center',
                     height: '100%',

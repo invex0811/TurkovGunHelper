@@ -19,6 +19,12 @@ import {
   saveBuildSnapshot,
 } from '../data/savedBuilds.js';
 import { recalculateBuildStats } from '../domain/calculator.js';
+import {
+  WEAPON_STAT_UI_RANGES,
+  normalizeStatPercent,
+  toFiniteStatNumber,
+  withBaseStatMaximum,
+} from '../ui/weaponStatMeters.js';
 
 function createCancelledCalculationError() {
   const error = new Error('A newer build calculation replaced this request.');
@@ -1212,6 +1218,36 @@ const GROUP_ORDER = [
   'Underbarrel Launcher'
 ];
 
+function StatMeterRow({ label, value, displayValue = value, range }) {
+  const hasNumericValue = typeof value === 'number' && Number.isFinite(value);
+  const percent = normalizeStatPercent(value, range.min, range.max);
+  const accessibleValue = hasNumericValue
+    ? Math.min(range.max, Math.max(range.min, value))
+    : undefined;
+
+  return (
+    <div className={`stat-row stat-row--${range.direction}`}>
+      <span>{label}</span>
+      <div
+        className="bar"
+        role="meter"
+        aria-label={label}
+        aria-valuemin={range.min}
+        aria-valuemax={range.max}
+        aria-valuenow={accessibleValue}
+        aria-valuetext={hasNumericValue ? undefined : 'Not available'}
+      >
+        <span
+          className="bar__gradient"
+          style={{ '--meter-value': `${percent}%` }}
+          aria-hidden="true"
+        />
+      </div>
+      <strong>{displayValue}</strong>
+    </div>
+  );
+}
+
 function Configurator() {
   const { weaponId } = useParams();
   const [searchParams] = useSearchParams();
@@ -1765,12 +1801,48 @@ function Configurator() {
 
   // Рассчитываем текущие значения для панели метрик
   const currentErgo = canShowBuildDetails ? buildResult.stats.ergonomics : (weapon.properties?.ergonomics ?? 'N/A');
+  const currentWeightValue = toFiniteStatNumber(
+    canShowBuildDetails ? buildResult.stats.weight : weapon.weight,
+  );
   const currentWeight = canShowBuildDetails ? `${buildResult.stats.weight} kg` : (weapon.weight ? `${weapon.weight} kg` : 'N/A');
   const currentRecoilV = canShowBuildDetails ? buildResult.stats.recoilVertical : (weapon.properties?.recoilVertical ?? 'N/A');
   const currentRecoilH = canShowBuildDetails ? buildResult.stats.recoilHorizontal : (weapon.properties?.recoilHorizontal ?? 'N/A');
   const currentPrice = canShowBuildDetails 
     ? formatCurrency(buildResult.stats.price, 'RUB') 
     : formatCurrency(getSelectedPriceInfo(weapon, priceMode).value, 'RUB');
+  const statMeters = [
+    {
+      key: 'weight',
+      label: 'Weight',
+      value: currentWeightValue,
+      displayValue: currentWeight,
+      range: WEAPON_STAT_UI_RANGES.weight,
+    },
+    {
+      key: 'ergonomics',
+      label: 'Ergonomics',
+      value: currentErgo,
+      range: WEAPON_STAT_UI_RANGES.ergonomics,
+    },
+    {
+      key: 'vertical-recoil',
+      label: 'Vertical Recoil',
+      value: currentRecoilV,
+      range: withBaseStatMaximum(
+        WEAPON_STAT_UI_RANGES.verticalRecoil,
+        weapon.properties?.recoilVertical,
+      ),
+    },
+    {
+      key: 'horizontal-recoil',
+      label: 'Horizontal Recoil',
+      value: currentRecoilH,
+      range: withBaseStatMaximum(
+        WEAPON_STAT_UI_RANGES.horizontalRecoil,
+        weapon.properties?.recoilHorizontal,
+      ),
+    },
+  ];
 
   // Группировка деталей сборки
   const partsGroups = [];
@@ -2121,30 +2193,6 @@ function Configurator() {
 
       {/* Правая основная область */}
       <main>
-        {/* Панель метрик сверху */}
-        <section className="summary" aria-label="Build Stats">
-          <div className="metric">
-            <span>Ergonomics</span>
-            <strong>{currentErgo}</strong>
-          </div>
-          <div className="metric">
-            <span>Weight</span>
-            <strong>{currentWeight}</strong>
-          </div>
-          <div className="metric">
-            <span>V. Recoil / H. Recoil</span>
-            <strong>
-              {typeof currentRecoilV === 'number' && typeof currentRecoilH === 'number'
-                ? `${currentRecoilV} / ${currentRecoilH}`
-                : currentRecoilV}
-            </strong>
-          </div>
-          <div className="metric">
-            <span>Estimated Price</span>
-            <strong>{currentPrice}</strong>
-          </div>
-        </section>
-
         {/* Сетка: Карточка оружия и Сводка деталей */}
         <div className="main-grid">
           {/* Левая панель - Оружие */}
@@ -2170,105 +2218,53 @@ function Configurator() {
 
             {/* Шкалы сравнения статов */}
             <div className="stat-compare">
-              {(() => {
-                const ergoVal = typeof currentErgo === 'number' ? currentErgo : 0;
-                const recVal = typeof currentRecoilV === 'number' ? currentRecoilV : 0;
-                const recHVal = typeof currentRecoilH === 'number' ? currentRecoilH : 0;
-                
-                return (
-                  <>
-                    <div className="stat-row">
-                      <span>Ergonomics</span>
-                      <div className="bar">
-                        <span style={{ '--value': `${Math.min(100, Math.max(0, ergoVal))}%` }} className="is-good"></span>
-                      </div>
-                      <strong>{currentErgo}</strong>
-                    </div>
-                    <div className="stat-row">
-                      <span>Vertical Recoil</span>
-                      <div className="bar">
-                        <span style={{ '--value': `${Math.min(100, Math.max(0, recVal))}%` }} className="is-good"></span>
-                      </div>
-                      <strong>{currentRecoilV}</strong>
-                    </div>
-                    <div className="stat-row">
-                      <span>Horizontal Recoil</span>
-                      <div className="bar">
-                        <span style={{ '--value': `${Math.min(100, Math.max(0, recHVal))}%` }} className="is-good"></span>
-                      </div>
-                      <strong>{currentRecoilH}</strong>
-                    </div>
-                  </>
-                );
-              })()}
+              {statMeters.map((stat) => (
+                <StatMeterRow key={stat.key} {...stat} />
+              ))}
             </div>
 
-            {/* Чипсы настроек сборки */}
-            <div className="control-state">
-              <div className="chip">
-                Goal 
-                <strong>
-                  {targetType === 'meta' ? 'Meta (Top)' : targetType === 'max_ergo' ? 'Max Ergonomics' : targetType === 'min_recoil' ? 'Min Recoil' : targetType === 'budget' ? 'Budget' : 'Custom'}
-                </strong>
+            <div className="weapon__actions">
+              <div className="price-box">
+                <span className="price-title">Est. Build Price</span>
+                <span className="price-amount">{currentPrice}</span>
               </div>
-              <div className="chip">
-                Suppressor 
-                <strong>
-                  {suppressorMode === 'allow' ? 'Allow suppressors' : suppressorMode === 'forbid' ? 'Forbid suppressors' : 'Require suppressor'}
-                </strong>
-              </div>
-              <div className="chip">
-                Magazine 
-                <strong>{magazineCapacity} rounds</strong>
-              </div>
-              <div className="chip">
-                Sight 
-                <strong>
-                  {sightMode === 'none' ? 'NO SIGHT' : sightMode === 'any' ? 'ANY SIGHT' : sightMode === 'reflex' ? 'REFLEX (1x)' : sightMode === 'scope' ? 'SCOPE (Any zoom)' : `${sightMode}x Zoom`}
-                </strong>
-              </div>
-              {selectedRequiredModules.length > 0 && (
-                <div className="chip">
-                  Required
-                  <strong>{selectedRequiredModules.length} modules</strong>
+
+              {canShowBuildDetails && (
+                <div className="save-build-bar">
+                  <label htmlFor="saveBuildName">
+                    <span>Build name</span>
+                    <input
+                      id="saveBuildName"
+                      type="text"
+                      maxLength={80}
+                      value={saveName}
+                      onChange={event => {
+                        setSaveName(event.target.value);
+                        setSaveFeedback(null);
+                      }}
+                      placeholder={`${weapon.shortName || weapon.name} build`}
+                    />
+                  </label>
+                  <button className="btn btn--primary" type="button" onClick={handleSaveBuild}>
+                    {activeSavedBuildId ? 'Update saved build' : 'Save build'}
+                  </button>
                 </div>
               )}
+
+              {saveFeedback && (
+                <InlineMessage
+                  type={saveFeedback.type}
+                  title={saveFeedback.type === 'error' ? 'Save failed' : 'Saved locally'}
+                >
+                  {saveFeedback.message}
+                </InlineMessage>
+              )}
             </div>
+
           </section>
 
           {/* Правая панель - Список деталей */}
           <section className="panel parts-panel">
-            {canShowBuildDetails && (
-              <div className="save-build-bar">
-                <label htmlFor="saveBuildName">
-                  <span>Build name</span>
-                  <input
-                    id="saveBuildName"
-                    type="text"
-                    maxLength={80}
-                    value={saveName}
-                    onChange={event => {
-                      setSaveName(event.target.value);
-                      setSaveFeedback(null);
-                    }}
-                    placeholder={`${weapon.shortName || weapon.name} build`}
-                  />
-                </label>
-                <button className="btn btn--primary" type="button" onClick={handleSaveBuild}>
-                  {activeSavedBuildId ? 'Update saved build' : 'Save build'}
-                </button>
-              </div>
-            )}
-
-            {saveFeedback && (
-              <InlineMessage
-                type={saveFeedback.type}
-                title={saveFeedback.type === 'error' ? 'Save failed' : 'Saved locally'}
-              >
-                {saveFeedback.message}
-              </InlineMessage>
-            )}
-
             {/* Поле поиска */}
             <div className="parts-toolbar">
               <input 
