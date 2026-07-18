@@ -1,3 +1,16 @@
+import { getPurchasePriceValue } from '../data/price/priceMapper.js';
+
+function createCalculationCache() {
+  return {
+    categoryNamesByItem: new WeakMap(),
+    conflictIdsByItem: new WeakMap(),
+    itemPricesByItem: new WeakMap(),
+    sortedSlotsBySource: new WeakMap(),
+    filteredAllowedItemsBySource: new WeakMap(),
+    slotPrioritiesByName: new Map(),
+  };
+}
+
 function _calculateWeighted(
   weapon,
   ergoWeight,
@@ -10,6 +23,7 @@ function _calculateWeighted(
   weightWeight = 0.001,
   overflowErgoWeight = 0,
   ergoSoftCap = ergoCap,
+  calculationCache = createCalculationCache(),
 ) {
   const build = [];
   let totalErgo = weapon.properties.ergonomics || 0;
@@ -36,6 +50,7 @@ function _calculateWeighted(
   const requiredFlashlightIds = new Set(
     [...requiredItemIds].filter(itemId => hasCategory(modMap[itemId], 'Flashlight')),
   );
+  const hasRequiredItemRequirements = requiredItemIds.size > 0;
 
   let targetCapacity = 30;
   if (options.magazineCapacity !== undefined) {
@@ -77,8 +92,17 @@ function _calculateWeighted(
     'charging handle': 12
   };
 
+  function getCategoryNames(item) {
+    const cachedCategoryNames = calculationCache.categoryNamesByItem.get(item);
+    if (cachedCategoryNames) return cachedCategoryNames;
+
+    const categoryNames = new Set((item.categories || []).map(category => category.name));
+    calculationCache.categoryNamesByItem.set(item, categoryNames);
+    return categoryNames;
+  }
+
   function hasCategory(item, categoryName) {
-    return item.categories?.some(category => category.name === categoryName) || false;
+    return getCategoryNames(item).has(categoryName);
   }
 
   function getSlotSearchName(slotName, slotNameId = '') {
@@ -125,18 +149,35 @@ function _calculateWeighted(
   function filterAllowedItems(allowedItems, targetCap) {
     if (!allowedItems || allowedItems.length === 0) return allowedItems;
 
-    const magazines = allowedItems
-      .map(child => modMap[child.id])
-      .filter(item => item && hasCategory(item, 'Magazine'));
+    let filteredAllowedItemsByCapacity = calculationCache.filteredAllowedItemsBySource.get(allowedItems);
+    if (!filteredAllowedItemsByCapacity) {
+      filteredAllowedItemsByCapacity = new Map();
+      calculationCache.filteredAllowedItemsBySource.set(allowedItems, filteredAllowedItemsByCapacity);
+    }
+
+    if (filteredAllowedItemsByCapacity.has(targetCap)) {
+      return filteredAllowedItemsByCapacity.get(targetCap);
+    }
+
+    const magazines = [];
+    allowedItems.forEach(child => {
+      const item = modMap[child.id];
+      if (item && hasCategory(item, 'Magazine')) {
+        magazines.push(item);
+      }
+    });
 
     if (magazines.length === 0) {
+      filteredAllowedItemsByCapacity.set(targetCap, allowedItems);
       return allowedItems;
     }
 
     const exactMatch = magazines.filter(m => m.properties?.capacity === targetCap);
     if (exactMatch.length > 0) {
       const exactIds = new Set(exactMatch.map(m => m.id));
-      return allowedItems.filter(child => exactIds.has(child.id));
+      const exactAllowedItems = allowedItems.filter(child => exactIds.has(child.id));
+      filteredAllowedItemsByCapacity.set(targetCap, exactAllowedItems);
+      return exactAllowedItems;
     }
 
     let minDiff = Infinity;
@@ -154,29 +195,29 @@ function _calculateWeighted(
     });
 
     const nearestIds = new Set(nearestMags.map(m => m.id));
-    return allowedItems.filter(child => nearestIds.has(child.id));
+    const nearestAllowedItems = allowedItems.filter(child => nearestIds.has(child.id));
+    filteredAllowedItemsByCapacity.set(targetCap, nearestAllowedItems);
+    return nearestAllowedItems;
   }
 
-  function getRawItemPrice(item) {
-    return item.avg24hPrice
-      || item.lastLowPrice
-      || item.low24hPrice
-      || item.basePrice
-      || 0;
+  function getItemPrice(item) {
+    if (calculationCache.itemPricesByItem.has(item)) {
+      return calculationCache.itemPricesByItem.get(item);
+    }
+
+    const price = getPurchasePriceValue(item, options, Number.POSITIVE_INFINITY);
+
+    calculationCache.itemPricesByItem.set(item, price);
+    return price;
   }
-
-function getItemPrice(item) {
-  const expectedPriceMode = options.priceMode;
-
-  if (!expectedPriceMode || item.price?.mode === expectedPriceMode) {
-    return item.price?.value ?? getRawItemPrice(item);
-  }
-
-  return getRawItemPrice(item);
-}
 
   function getItemConflictIds(item) {
-    return (item.conflictingItems || []).map(conflict => conflict.id);
+    const cachedConflictIds = calculationCache.conflictIdsByItem.get(item);
+    if (cachedConflictIds) return cachedConflictIds;
+
+    const conflictIds = (item.conflictingItems || []).map(conflict => conflict.id);
+    calculationCache.conflictIdsByItem.set(item, conflictIds);
+    return conflictIds;
   }
 
   function addItemConflictsToSet(item, targetSet) {
@@ -213,13 +254,34 @@ function getItemPrice(item) {
 
   function getSlotPriority(slotName) {
     const name = (slotName || '').toLowerCase();
-    if (slotPriority[name]) return slotPriority[name];
-
-    for (const [key, priority] of Object.entries(slotPriority)) {
-      if (name.includes(key)) return priority;
+    if (calculationCache.slotPrioritiesByName.has(name)) {
+      return calculationCache.slotPrioritiesByName.get(name);
     }
 
+    let priority = slotPriority[name];
+    if (priority) {
+      calculationCache.slotPrioritiesByName.set(name, priority);
+      return priority;
+    }
+
+    for (const [key, priority] of Object.entries(slotPriority)) {
+      if (name.includes(key)) {
+        calculationCache.slotPrioritiesByName.set(name, priority);
+        return priority;
+      }
+    }
+
+    calculationCache.slotPrioritiesByName.set(name, 99);
     return 99;
+  }
+
+  function getSortedSlots(slots) {
+    const cachedSortedSlots = calculationCache.sortedSlotsBySource.get(slots);
+    if (cachedSortedSlots) return cachedSortedSlots;
+
+    const sortedSlots = [...slots].sort((a, b) => getSlotPriority(a.name) - getSlotPriority(b.name));
+    calculationCache.sortedSlotsBySource.set(slots, sortedSlots);
+    return sortedSlots;
   }
 
   function isTacticalSlot(slotName) {
@@ -228,9 +290,8 @@ function getItemPrice(item) {
   }
 
   function isValidTacticalDevice(item) {
-    const cats = (item.categories || []).map(c => c.name);
-    const isLaser = cats.includes('Comb. tact. device');
-    const isFlashlight = cats.includes('Flashlight');
+    const isLaser = hasCategory(item, 'Comb. tact. device');
+    const isFlashlight = hasCategory(item, 'Flashlight');
 
     if (isLaser && options.includeLaser) return true;
     if (isFlashlight && options.includeFlashlight) return true;
@@ -238,11 +299,10 @@ function getItemPrice(item) {
   }
 
   function isValidSightForMode(item) {
-    const cats = (item.categories || []).map(c => c.name);
-    if (cats.includes('Ironsight')) {
+    if (hasCategory(item, 'Ironsight')) {
       return false;
     }
-    if (cats.includes('Thermal Vision') || cats.includes('Night Vision') || cats.includes('Special scope')) {
+    if (hasCategory(item, 'Thermal Vision') || hasCategory(item, 'Night Vision') || hasCategory(item, 'Special scope')) {
       return false;
     }
 
@@ -250,8 +310,8 @@ function getItemPrice(item) {
     if (mode === 'none') return false;
     if (mode === 'any') return true;
 
-    const isReflex = cats.includes('Reflex sight') || cats.includes('Compact reflex sight');
-    const isMagnified = cats.includes('Scope') || cats.includes('Assault scope');
+    const isReflex = hasCategory(item, 'Reflex sight') || hasCategory(item, 'Compact reflex sight');
+    const isMagnified = hasCategory(item, 'Scope') || hasCategory(item, 'Assault scope');
 
     if (mode === 'reflex') return isReflex;
     if (mode === 'scope') return isMagnified;
@@ -275,11 +335,8 @@ function getItemPrice(item) {
   function hasLaserDevice(installedSet) {
     for (const id of installedSet) {
       const item = modMap[id];
-      if (item) {
-        const cats = (item.categories || []).map(c => c.name);
-        if (cats.includes('Comb. tact. device')) {
-          return true;
-        }
+      if (item && hasCategory(item, 'Comb. tact. device')) {
+        return true;
       }
     }
     return false;
@@ -288,11 +345,8 @@ function getItemPrice(item) {
   function hasFlashlightDevice(installedSet) {
     for (const id of installedSet) {
       const item = modMap[id];
-      if (item) {
-        const cats = (item.categories || []).map(c => c.name);
-        if (cats.includes('Flashlight')) {
-          return true;
-        }
+      if (item && hasCategory(item, 'Flashlight')) {
+        return true;
       }
     }
     return false;
@@ -301,35 +355,44 @@ function getItemPrice(item) {
   function isReservedForRequiredTacticalDevice(item) {
     if (requiredItemIds.has(item.id)) return false;
 
-    const cats = (item.categories || []).map(c => c.name);
-    const isLaser = cats.includes('Comb. tact. device');
-    const isFlashlight = cats.includes('Flashlight');
+    const isLaser = hasCategory(item, 'Comb. tact. device');
+    const isFlashlight = hasCategory(item, 'Flashlight');
 
     return (isLaser && requiredLaserIds.size > 0)
       || (isFlashlight && requiredFlashlightIds.size > 0);
   }
 
-  function itemTreeCanProvideRequiredItem(item, visitedIds = new Set(), unavailableIds = new Set()) {
-    if (!item || visitedIds.has(item.id)) return false;
-    if (unavailableIds.has(item.id)) return false;
+  function itemTreeCanProvideRequiredItem(item, visitedIds, unavailableIds) {
+    if (!hasRequiredItemRequirements) return false;
+
+    const activeVisitedIds = visitedIds || new Set();
+    const activeUnavailableIds = unavailableIds || new Set();
+
+    if (!item || activeVisitedIds.has(item.id)) return false;
+    if (activeUnavailableIds.has(item.id)) return false;
     if (requiredItemIds.has(item.id)) return true;
 
-    visitedIds.add(item.id);
+    activeVisitedIds.add(item.id);
 
-    return (item.properties?.slots || []).some(slot => slotCanProvideRequiredItem(slot, visitedIds, unavailableIds));
+    return (item.properties?.slots || []).some(slot => slotCanProvideRequiredItem(slot, activeVisitedIds, activeUnavailableIds));
   }
 
-  function slotCanProvideRequiredItem(slot, visitedIds = new Set(), unavailableIds = new Set()) {
+  function slotCanProvideRequiredItem(slot, visitedIds, unavailableIds) {
+    if (!hasRequiredItemRequirements) return false;
+
+    const activeVisitedIds = visitedIds || new Set();
+    const activeUnavailableIds = unavailableIds || new Set();
+
     return (slot.filters?.allowedItems || []).some(allowedItem => {
-      if (unavailableIds.has(allowedItem.id)) return false;
+      if (activeUnavailableIds.has(allowedItem.id)) return false;
       if (requiredItemIds.has(allowedItem.id)) return true;
-      return itemTreeCanProvideRequiredItem(modMap[allowedItem.id], new Set(visitedIds), unavailableIds);
+      return itemTreeCanProvideRequiredItem(modMap[allowedItem.id], new Set(activeVisitedIds), activeUnavailableIds);
     });
   }
 
   function isSkippedSlot(slot) {
     const slotNameId = (slot.nameId || '').toLowerCase();
-    if (slotCanProvideRequiredItem(slot)) return false;
+    if (hasRequiredItemRequirements && slotCanProvideRequiredItem(slot)) return false;
 
     const hasAnyTactical = options.includeLaser || options.includeFlashlight;
     if (hasAnyTactical) {
@@ -470,12 +533,15 @@ function getItemPrice(item) {
     }
 
     const isRequiredItem = requiredItemIds.has(item.id);
-    const unavailableRequiredProviderIds = new Set([
-      ...installedIds,
-      ...parentBranchInstalledIds,
-      ...pathIds,
-    ]);
-    const providesRequiredItem = itemTreeCanProvideRequiredItem(item, new Set(), unavailableRequiredProviderIds);
+    const providesRequiredItem = hasRequiredItemRequirements && itemTreeCanProvideRequiredItem(
+      item,
+      new Set(),
+      new Set([
+        ...installedIds,
+        ...parentBranchInstalledIds,
+        ...pathIds,
+      ]),
+    );
 
     if (!isRequiredItem && weaponHasSeparateStockSlot && isPistolGripSlot(slotName) && isCombinedPistolGripStock(item)) {
       return invalidBranchEvaluation();
@@ -496,9 +562,8 @@ function getItemPrice(item) {
         return invalidBranchEvaluation();
       }
       
-      const cats = (item.categories || []).map(c => c.name);
-      const isLaser = cats.includes('Comb. tact. device');
-      const isFlashlight = cats.includes('Flashlight');
+      const isLaser = hasCategory(item, 'Comb. tact. device');
+      const isFlashlight = hasCategory(item, 'Flashlight');
       
       if (isLaser && !isRequiredItem) {
         const alreadyHasLaser = hasLaserDevice(installedIds) || hasLaserDevice(parentBranchInstalledIds);
@@ -543,9 +608,10 @@ function getItemPrice(item) {
       : overflowErgoWeight;
     const effectiveErgoMod = cappedErgoMod + (overflowErgoMod * itemOverflowErgoWeight);
 
+    const scoringPrice = Number.isFinite(price) ? price : Number.MAX_SAFE_INTEGER;
     let branchScore = (effectiveErgoMod * ergoWeight)
       - (recoilMod * recoilWeight)
-      - (price * priceWeight)
+      - (scoringPrice * priceWeight)
       - (itemWeight * weightWeight);
 
     if (isTacSlot && hasAnyTactical) {
@@ -557,7 +623,7 @@ function getItemPrice(item) {
       const loadMod = item.properties?.loadModifier || 0;
       const ammoCheckMod = item.properties?.ammoCheckModifier || 0;
       const ergoM = item.ergonomicsModifier || 0;
-      const lowPrice = getItemPrice(item) || 1;
+      const lowPrice = Number.isFinite(price) ? price : Number.MAX_SAFE_INTEGER;
 
       if (targetType === 'meta' || targetType === 'min_recoil') {
         branchScore = (recoil * 100) - (loadMod * 10) - (ammoCheckMod * 10) + (ergoM * 0.2);
@@ -587,7 +653,7 @@ function getItemPrice(item) {
     nextPathIds.add(itemId);
 
     if (item.properties?.slots) {
-      const sortedSlots = [...item.properties.slots].sort((a, b) => getSlotPriority(a.name) - getSlotPriority(b.name));
+      const sortedSlots = getSortedSlots(item.properties.slots);
 
       sortedSlots.forEach(slot => {
         if (isSkippedSlot(slot)) return;
@@ -683,7 +749,7 @@ function getItemPrice(item) {
   }
 
   function processSlots(slots) {
-    const sortedSlots = [...slots].sort((a, b) => getSlotPriority(a.name) - getSlotPriority(b.name));
+    const sortedSlots = getSortedSlots(slots);
 
     sortedSlots.forEach(slot => {
       if (isSkippedSlot(slot)) return;
@@ -981,7 +1047,7 @@ function getItemPrice(item) {
       recoilVertical: Math.round(finalRecoilV),
       recoilHorizontal: Math.round(finalRecoilH),
       weight: totalWeight.toFixed(2),
-      price: Math.round(totalPrice),
+      price: Number.isFinite(totalPrice) ? Math.round(totalPrice) : null,
     },
   };
 
@@ -1003,6 +1069,9 @@ function getItemPrice(item) {
   if (maxPrice > 0 && totalPrice > maxPrice) {
     warnings.push('The build exceeds the selected max price.');
   }
+  if (!Number.isFinite(totalPrice)) {
+    warnings.push('One or more selected items have no available price under the active price policy.');
+  }
   if (warnings.length > 0) {
     result.warning = warnings.join(' ');
   }
@@ -1014,6 +1083,8 @@ function getItemPrice(item) {
 }
 
 export function calculateBestBuild(weapon, targetType, minErgo, maxRecoil, modMap = {}, options = {}) {
+  const calculationCache = createCalculationCache();
+
   if (targetType !== 'custom') {
      let ergoWeight = 1;
      let recoilWeight = 1;
@@ -1032,7 +1103,7 @@ export function calculateBestBuild(weapon, targetType, minErgo, maxRecoil, modMa
        priceWeight = 0.0001; 
      }
      
-     return _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMap, options, ergoCap, targetType, weightWeight, overflowErgoWeight, ergoSoftCap);
+    return _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMap, options, ergoCap, targetType, weightWeight, overflowErgoWeight, ergoSoftCap, calculationCache);
   }
 
   let bestBuild = null;
@@ -1042,7 +1113,7 @@ export function calculateBestBuild(weapon, targetType, minErgo, maxRecoil, modMa
     const ergoWeight = i / 20;
     const recoilWeight = 1 - ergoWeight;
     const priceWeight = 0; 
-    const result = _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMap, options, 100, 'custom');
+    const result = _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMap, options, 100, 'custom', 0.001, 0, 100, calculationCache);
     if (result.error) return result;
     
     const e = result.stats.ergonomics;
@@ -1086,20 +1157,8 @@ export function recalculateBuildStats(weapon, buildParts, options = {}) {
   let totalRecoilMod = 0;
   let totalWeight = weapon.weight || 0;
 
-  function getRawItemPrice(item) {
-    return item.avg24hPrice
-      || item.lastLowPrice
-      || item.low24hPrice
-      || item.basePrice
-      || 0;
-  }
-
   function getItemPrice(item) {
-    const expectedPriceMode = options.priceMode;
-    if (!expectedPriceMode || item.price?.mode === expectedPriceMode) {
-      return item.price?.value ?? getRawItemPrice(item);
-    }
-    return getRawItemPrice(item);
+    return getPurchasePriceValue(item, options, Number.POSITIVE_INFINITY);
   }
 
   let totalPrice = getItemPrice(weapon);
@@ -1124,7 +1183,7 @@ export function recalculateBuildStats(weapon, buildParts, options = {}) {
       recoilVertical: Math.round(finalRecoilV),
       recoilHorizontal: Math.round(finalRecoilH),
       weight: totalWeight.toFixed(2),
-      price: Math.round(totalPrice),
+      price: Number.isFinite(totalPrice) ? Math.round(totalPrice) : null,
     }
   };
 }

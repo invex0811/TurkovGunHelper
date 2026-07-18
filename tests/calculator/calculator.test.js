@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
+import { getPurchasePriceValue, sumPurchasePrices } from '../../src/data/price/priceMapper.js';
 import { calculateBestBuild, recalculateBuildStats } from '../../src/domain/calculator.js';
 
 const modsFixture = JSON.parse(fs.readFileSync(new URL('../fixtures/mods.json', import.meta.url), 'utf8'));
@@ -16,17 +17,11 @@ function hasCategory(item, categoryName) {
 }
 
 function getExpectedItemPrice(item, priceMode) {
-  const rawPrice = item.avg24hPrice
-    || item.lastLowPrice
-    || item.low24hPrice
-    || item.basePrice
-    || 0;
-
-  if (!priceMode || item.price?.mode === priceMode) {
-    return item.price?.value ?? rawPrice;
-  }
-
-  return rawPrice;
+  return getPurchasePriceValue(
+    item,
+    { priceMode, includeTraderPrices: true },
+    Number.MAX_SAFE_INTEGER,
+  );
 }
 
 function assertNoDuplicateParts(result) {
@@ -53,14 +48,16 @@ function assertStatsMatchParts(result) {
     + result.build.reduce((sum, part) => sum + (part.item.ergonomicsModifier || 0), 0);
   const totalRecoilMod = result.build.reduce((sum, part) => sum + (part.item.recoilModifier || 0), 0);
   const totalWeight = weapon.weight + result.build.reduce((sum, part) => sum + (part.item.weight || 0), 0);
-  const totalPrice = (weapon.avg24hPrice || weapon.basePrice || 0)
-    + result.build.reduce((sum, part) => sum + (part.item.avg24hPrice || part.item.basePrice || 0), 0);
+  const totalPrice = sumPurchasePrices(
+    [weapon, ...result.build.map(part => part.item)],
+    { includeTraderPrices: true },
+  ).value;
 
   assert.equal(result.stats.ergonomics, Math.min(100, Math.round(totalErgo)));
   assert.equal(result.stats.recoilVertical, Math.round(weapon.properties.recoilVertical * (1 + totalRecoilMod / 100)));
   assert.equal(result.stats.recoilHorizontal, Math.round(weapon.properties.recoilHorizontal * (1 + totalRecoilMod / 100)));
   assert.equal(result.stats.weight, totalWeight.toFixed(2));
-  assert.equal(result.stats.price, Math.round(totalPrice));
+  assert.equal(result.stats.price, totalPrice == null ? null : Math.round(totalPrice));
 }
 
 function getWeightedPartScore(item, {
@@ -187,14 +184,16 @@ function assertStatsMatchPartsForWeapon(baseWeapon, result, options = {}) {
     + result.build.reduce((sum, part) => sum + (part.item.ergonomicsModifier || 0), 0);
   const totalRecoilMod = result.build.reduce((sum, part) => sum + (part.item.recoilModifier || 0), 0);
   const totalWeight = baseWeapon.weight + result.build.reduce((sum, part) => sum + (part.item.weight || 0), 0);
-  const totalPrice = getExpectedItemPrice(baseWeapon, options.priceMode)
-    + result.build.reduce((sum, part) => sum + getExpectedItemPrice(part.item, options.priceMode), 0);
+  const totalPrice = sumPurchasePrices(
+    [baseWeapon, ...result.build.map(part => part.item)],
+    { priceMode: options.priceMode, includeTraderPrices: true },
+  ).value;
 
   assert.equal(result.stats.ergonomics, Math.min(100, Math.round(totalErgo)));
   assert.equal(result.stats.recoilVertical, Math.round(baseWeapon.properties.recoilVertical * (1 + totalRecoilMod / 100)));
   assert.equal(result.stats.recoilHorizontal, Math.round(baseWeapon.properties.recoilHorizontal * (1 + totalRecoilMod / 100)));
   assert.equal(result.stats.weight, totalWeight.toFixed(2));
-  assert.equal(result.stats.price, Math.round(totalPrice));
+  assert.equal(result.stats.price, totalPrice == null ? null : Math.round(totalPrice));
 }
 
 const defaultOptions = {
@@ -217,6 +216,41 @@ for (const targetType of ['meta', 'max_ergo', 'min_recoil', 'budget', 'custom'])
     assertStatsMatchParts(result);
   });
 }
+
+test('empty required modules skip reachability traversal in skipped tactical slots', () => {
+  const skippedTacticalDescendant = createTestMod({
+    id: 'skipped-tactical-descendant',
+    categories: createCategories(['Comb. tact. device']),
+  });
+  Object.defineProperty(skippedTacticalDescendant, 'properties', {
+    configurable: true,
+    get() {
+      throw new Error('reachability traversal should not inspect this descendant');
+    },
+  });
+
+  const stock = createTestMod({
+    id: 'stock-with-skipped-tactical-slot',
+    categories: createCategories(['Stock']),
+    ergonomicsModifier: 5,
+    slots: [createSlot('Tactical', [skippedTacticalDescendant.id], 'mod_tactical_000')],
+  });
+  const testWeapon = createTestWeapon({
+    slots: [createSlot('Stock', [stock.id])],
+  });
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'max_ergo',
+    70,
+    50,
+    createModMap(stock, skippedTacticalDescendant),
+    { ...defaultOptions, requiredItemIds: [] },
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, stock.id);
+});
 
 test('meta build selects critical ergonomics parts before choosing a longer barrel', () => {
   const cqrPistolGripId = '5a33e75ac4a2826c6e06d759';
