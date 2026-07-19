@@ -772,6 +772,71 @@ test('Custom retries another weighting when an early recoil route starves a requ
   assert.equal(Number(result.stats.weight) <= 4, true);
 });
 
+test('budget Custom prioritizes required module branches before expensive optional root parts', () => {
+  const expensiveGrip = createTestMod({
+    id: 'expensive-grip',
+    avg24hPrice: 60,
+    ergonomicsModifier: 20,
+    categories: createCategories(['Pistol grip']),
+  });
+  const cheapGrip = createTestMod({
+    id: 'cheap-grip',
+    avg24hPrice: 10,
+    ergonomicsModifier: 1,
+    categories: createCategories(['Pistol grip']),
+  });
+  const requiredCup = createTestMod({
+    id: 'required-cup',
+    avg24hPrice: 5,
+    categories: createCategories(['Auxiliary Mod']),
+  });
+  const requiredScope = createTestMod({
+    id: 'required-scope',
+    avg24hPrice: 50,
+    categories: createCategories(['Sights', 'Special scope']),
+    slots: [createSlot('Tactical', [requiredCup.id])],
+  });
+  const receiver = createTestMod({
+    id: 'receiver',
+    avg24hPrice: 10,
+    categories: createCategories(['Receiver']),
+    slots: [createSlot('Scope', [requiredScope.id])],
+  });
+  const testWeapon = createTestWeapon({
+    avg24hPrice: 10,
+    ergonomics: 0,
+    slots: [
+      createSlot('Pistol Grip', [expensiveGrip.id, cheapGrip.id]),
+      createSlot('Receiver', [receiver.id]),
+    ],
+  });
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    0,
+    200,
+    createModMap(expensiveGrip, cheapGrip, receiver, requiredScope, requiredCup),
+    {
+      maxPrice: 85,
+      requiredItemIds: [requiredScope.id, requiredCup.id],
+    },
+    {
+      ergonomics: 0,
+      verticalRecoil: 200,
+      horizontalRecoil: 200,
+      weight: 0,
+      price: 85,
+    },
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, requiredScope.id);
+  assertInstalled(result, requiredCup.id);
+  assertInstalled(result, cheapGrip.id);
+  assertNotInstalled(result, expensiveGrip.id);
+  assert.equal(result.stats.price, 85);
+});
+
 test('budget build reserves enough money for every required nested weapon slot', () => {
   const gasBlock = createTestMod({
     id: 'required-gas-block',

@@ -292,7 +292,18 @@ function _calculateWeighted(
     const cachedSortedSlots = calculationCache.sortedSlotsBySource.get(slots);
     if (cachedSortedSlots) return cachedSortedSlots;
 
+    const requiredProviderBySlot = new Map();
+    if (hasRequiredItemRequirements) {
+      slots.forEach(slot => {
+        requiredProviderBySlot.set(slot, slotCanProvideRequiredItem(slot));
+      });
+    }
+
     const sortedSlots = [...slots].sort((a, b) => {
+      const requiredProviderOrder = Number(requiredProviderBySlot.get(b) === true)
+        - Number(requiredProviderBySlot.get(a) === true);
+      if (requiredProviderOrder !== 0) return requiredProviderOrder;
+
       const requiredOrder = Number(b.required === true) - Number(a.required === true);
       if (requiredOrder !== 0) return requiredOrder;
       return getSlotPriority(a.name) - getSlotPriority(b.name);
