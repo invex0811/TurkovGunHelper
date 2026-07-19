@@ -1168,27 +1168,6 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   margin-top: 16px;
 }
 
-.parts-list__section + .parts-list__section {
-  margin-top: 22px;
-}
-
-.parts-list__section-label {
-  margin: 18px 0 2px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid rgba(199, 192, 154, .16);
-  color: var(--muted);
-  font-family: var(--font-sans);
-  font-size: .7rem;
-  font-weight: 800;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
-
-.parts-list__section-label--critical {
-  border-color: rgba(201, 105, 57, .3);
-  color: #d68a5b;
-}
-
 .parts-group__head {
   display: flex;
   justify-content: space-between;
@@ -1269,7 +1248,8 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: center;
+  gap: 8px;
   min-height: 70px;
 }
 
@@ -1310,8 +1290,7 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   gap: 4px;
 }
 
-.critical-module-badge,
-.module-state-badge {
+.critical-module-badge {
   display: inline-flex;
   width: fit-content;
   max-width: 100%;
@@ -1335,12 +1314,6 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   width: 11px;
   height: 11px;
   flex: 0 0 auto;
-}
-
-.module-state-badge--installed {
-  border-color: rgba(92, 214, 138, .35);
-  background: rgba(92, 214, 138, .08);
-  color: #76d59a;
 }
 
 .part-card__media--warning {
@@ -1633,8 +1606,7 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
     gap: 5px;
   }
 
-  .critical-module-badge,
-  .module-state-badge {
+  .critical-module-badge {
     padding-inline: 5px;
   }
 }
