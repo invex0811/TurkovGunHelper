@@ -111,6 +111,7 @@ function createTestWeapon(overrides = {}) {
     weight: overrides.weight ?? 1,
     basePrice: overrides.basePrice ?? 1000,
     avg24hPrice: overrides.avg24hPrice ?? 1000,
+    buyFor: overrides.buyFor,
     categories: overrides.categories ?? createCategories(['Weapon']),
     conflictingItems: overrides.conflictingItems ?? [],
     properties: {
@@ -133,6 +134,7 @@ function createTestMod(overrides = {}) {
     weight: overrides.weight ?? 0.1,
     basePrice: overrides.basePrice ?? 1000,
     avg24hPrice: overrides.avg24hPrice ?? 1000,
+    buyFor: overrides.buyFor,
     categories: overrides.categories ?? [],
     accuracyModifier: overrides.accuracyModifier ?? 0,
     recoilModifier: overrides.recoilModifier ?? 0,
@@ -360,6 +362,414 @@ test('Custom profile passes weight and price limits through the existing price p
   assertInstalled(result, validPart.id);
   assert.equal(Number(result.stats.weight) <= 1.2, true);
   assert.equal(result.stats.price <= 3_000, true);
+});
+
+test('Custom reuses a Meta build when its displayed stats satisfy the profile', () => {
+  const metaResult = calculateBestBuild(weapon, 'meta', 0, 0, modMap, defaultOptions);
+  const profile = {
+    ergonomics: metaResult.stats.ergonomics,
+    verticalRecoil: metaResult.stats.recoilVertical,
+    horizontalRecoil: metaResult.stats.recoilHorizontal,
+    weight: Math.ceil(Number(metaResult.stats.weight) * 20) / 20,
+    price: 0,
+  };
+  const customResult = calculateBestBuild(
+    weapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    modMap,
+    defaultOptions,
+    profile,
+  );
+
+  assert.equal(customResult.error, undefined);
+  assert.deepEqual(getInstalledItemIds(customResult), getInstalledItemIds(metaResult));
+  assert.deepEqual(customResult.stats, metaResult.stats);
+});
+
+test('Custom with every Exact flag disabled keeps the established result unchanged', () => {
+  const profile = {
+    ergonomics: 50,
+    verticalRecoil: 80,
+    horizontalRecoil: 240,
+    weight: 5,
+    price: 0,
+  };
+  const previousResult = calculateBestBuild(
+    weapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    modMap,
+    defaultOptions,
+    profile,
+  );
+  const exactOffResult = calculateBestBuild(
+    weapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    modMap,
+    defaultOptions,
+    profile,
+    {
+      ergonomics: false,
+      verticalRecoil: false,
+      horizontalRecoil: false,
+      weight: false,
+      price: false,
+    },
+  );
+
+  assert.deepEqual(exactOffResult, previousResult);
+});
+
+test('Exact ergonomics replaces the directional minimum with a tolerance window', () => {
+  const closePart = createTestMod({
+    id: 'exact-ergo-close',
+    ergonomicsModifier: 10,
+    recoilModifier: -10,
+  });
+  const highPart = createTestMod({
+    id: 'exact-ergo-high',
+    ergonomicsModifier: 30,
+  });
+  const testWeapon = createTestWeapon({
+    ergonomics: 50,
+    recoilVertical: 100,
+    recoilHorizontal: 200,
+    slots: [createSlot('Stock', [closePart.id, highPart.id], 'mod_stock', true)],
+  });
+  const profile = {
+    ergonomics: 60,
+    verticalRecoil: 100,
+    horizontalRecoil: 200,
+    weight: 0,
+    price: 0,
+  };
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(closePart, highPart),
+    defaultOptions,
+    profile,
+    { ergonomics: true },
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.stats.ergonomics, 60);
+  assertInstalled(result, closePart.id);
+});
+
+test('Exact vertical and horizontal recoil can be enabled together', () => {
+  const recoilPart = createTestMod({
+    id: 'exact-recoil-part',
+    recoilModifier: -20,
+  });
+  const ergoPart = createTestMod({
+    id: 'exact-recoil-ergo-part',
+    ergonomicsModifier: 30,
+  });
+  const testWeapon = createTestWeapon({
+    recoilVertical: 100,
+    recoilHorizontal: 200,
+    slots: [createSlot('Stock', [recoilPart.id, ergoPart.id], 'mod_stock', true)],
+  });
+  const profile = {
+    ergonomics: 0,
+    verticalRecoil: 80,
+    horizontalRecoil: 160,
+    weight: 0,
+    price: 0,
+  };
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(recoilPart, ergoPart),
+    defaultOptions,
+    profile,
+    { verticalRecoil: true, horizontalRecoil: true },
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.stats.recoilVertical, 80);
+  assert.equal(result.stats.recoilHorizontal, 160);
+  assertInstalled(result, recoilPart.id);
+});
+
+test('Exact ranking minimizes total normalized error before the existing Custom score', () => {
+  const lowerScorePart = createTestMod({
+    id: 'exact-total-error-a',
+    ergonomicsModifier: 9,
+    recoilModifier: -6,
+  });
+  const lowerErrorPart = createTestMod({
+    id: 'exact-total-error-b',
+    ergonomicsModifier: 11,
+    recoilModifier: -5,
+  });
+  const testWeapon = createTestWeapon({
+    ergonomics: 50,
+    recoilVertical: 100,
+    recoilHorizontal: 100,
+    slots: [createSlot('Stock', [lowerScorePart.id, lowerErrorPart.id], 'mod_stock', true)],
+  });
+  const profile = {
+    ergonomics: 60,
+    verticalRecoil: 95,
+    horizontalRecoil: 100,
+    weight: 0,
+    price: 0,
+  };
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(lowerScorePart, lowerErrorPart),
+    defaultOptions,
+    profile,
+    { ergonomics: true, verticalRecoil: true },
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, lowerErrorPart.id);
+  assert.equal(result.stats.ergonomics, 61);
+  assert.equal(result.stats.recoilVertical, 95);
+});
+
+test('Exact ranking uses the existing Custom score when normalized errors tie', () => {
+  const betterCustomScorePart = createTestMod({
+    id: 'exact-score-a',
+    ergonomicsModifier: 9,
+    recoilModifier: -6,
+  });
+  const otherPart = createTestMod({
+    id: 'exact-score-b',
+    ergonomicsModifier: 11,
+    recoilModifier: -5,
+  });
+  const testWeapon = createTestWeapon({
+    ergonomics: 50,
+    recoilVertical: 100,
+    recoilHorizontal: 200,
+    slots: [createSlot('Stock', [betterCustomScorePart.id, otherPart.id], 'mod_stock', true)],
+  });
+  const profile = {
+    ergonomics: 60,
+    verticalRecoil: 100,
+    horizontalRecoil: 200,
+    weight: 0,
+    price: 0,
+  };
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(betterCustomScorePart, otherPart),
+    defaultOptions,
+    profile,
+    { ergonomics: true },
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, betterCustomScorePart.id);
+  assert.equal(result.stats.ergonomics, 59);
+});
+
+test('Exact weight and price allow their tolerance above the entered targets', () => {
+  const exactPart = createTestMod({
+    id: 'exact-weight-price',
+    weight: 0.55,
+    avg24hPrice: 5_000,
+    ergonomicsModifier: 20,
+  });
+  const cheapPart = createTestMod({
+    id: 'exact-weight-price-cheap',
+    weight: 0.2,
+    avg24hPrice: 1_000,
+    recoilModifier: -10,
+  });
+  const testWeapon = createTestWeapon({
+    weight: 1,
+    avg24hPrice: 1_000,
+    slots: [createSlot('Stock', [exactPart.id, cheapPart.id], 'mod_stock', true)],
+  });
+  const profile = {
+    ergonomics: 0,
+    verticalRecoil: 100,
+    horizontalRecoil: 100,
+    weight: 1.5,
+    price: 5_000,
+  };
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(exactPart, cheapPart),
+    defaultOptions,
+    profile,
+    { weight: true, price: true },
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.stats.weight, '1.55');
+  assert.equal(result.stats.price, 6_000);
+});
+
+test('Exact price uses the active trader policy', () => {
+  const pricedPart = createTestMod({
+    id: 'exact-trader-price',
+    avg24hPrice: 10_000,
+    buyFor: [
+      { priceRUB: 10_000, vendor: { __typename: 'FleaMarket', name: 'Flea Market' } },
+      { priceRUB: 4_000, vendor: { name: 'Mechanic', minTraderLevel: 2 } },
+    ],
+  });
+  const testWeapon = createTestWeapon({
+    avg24hPrice: 1_000,
+    slots: [createSlot('Stock', [pricedPart.id], 'mod_stock', true)],
+  });
+  const profile = {
+    ergonomics: 0,
+    verticalRecoil: 100,
+    horizontalRecoil: 100,
+    weight: 0,
+    price: 5_000,
+  };
+  const withTrader = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(pricedPart),
+    { ...defaultOptions, includeTraderPrices: true },
+    profile,
+    { price: true },
+  );
+  const fleaOnly = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(pricedPart),
+    { ...defaultOptions, includeTraderPrices: false },
+    profile,
+    { price: true },
+  );
+
+  assert.equal(withTrader.error, undefined);
+  assert.equal(withTrader.stats.price, 5_000);
+  assert.equal(fleaOnly.errorCode, 'CUSTOM_EXACT_TARGETS_UNMET');
+});
+
+test('impossible Exact targets return structured failures without a violating build', () => {
+  const part = createTestMod({ id: 'exact-impossible', ergonomicsModifier: 10 });
+  const testWeapon = createTestWeapon({
+    ergonomics: 50,
+    slots: [createSlot('Stock', [part.id], 'mod_stock', true)],
+  });
+  const profile = {
+    ergonomics: 80,
+    verticalRecoil: 100,
+    horizontalRecoil: 100,
+    weight: 0,
+    price: 0,
+  };
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(part),
+    defaultOptions,
+    profile,
+    { ergonomics: true },
+  );
+
+  assert.deepEqual(result.build, []);
+  assert.equal(result.errorCode, 'CUSTOM_EXACT_TARGETS_UNMET');
+  assert.deepEqual(result.exactTargetFailures.map(failure => failure.key), ['ergonomics']);
+  assert.equal(result.exactTargetFailures[0].actual, 60);
+  assert.match(result.error, /Disable Exact/);
+});
+
+test('Meta ignores Custom Exact flags', () => {
+  const normal = calculateBestBuild(weapon, 'meta', 0, 0, modMap, defaultOptions);
+  const withCustomFlags = calculateBestBuild(
+    weapon,
+    'meta',
+    100,
+    0,
+    modMap,
+    defaultOptions,
+    null,
+    { ergonomics: true, price: true },
+  );
+
+  assert.deepEqual(withCustomFlags, normal);
+});
+
+test('Custom retries another weighting when an early recoil route starves a required charging handle', () => {
+  const heavyRecoilStock = createTestMod({
+    id: 'heavy-recoil-stock',
+    weight: 3,
+    recoilModifier: -30,
+  });
+  const lightErgoStock = createTestMod({
+    id: 'light-ergo-stock',
+    weight: 0.5,
+    ergonomicsModifier: 20,
+  });
+  const requiredChargingHandle = createTestMod({
+    id: 'required-charging-handle',
+    weight: 0.2,
+  });
+  const testWeapon = createTestWeapon({
+    weight: 1,
+    slots: [
+      createSlot(
+        'Stock',
+        [heavyRecoilStock.id, lightErgoStock.id],
+        'mod_stock',
+        true,
+      ),
+      createSlot(
+        'Ch. Handle',
+        [requiredChargingHandle.id],
+        'mod_charge',
+        true,
+      ),
+    ],
+  });
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    50,
+    100,
+    createModMap(heavyRecoilStock, lightErgoStock, requiredChargingHandle),
+    defaultOptions,
+    {
+      ergonomics: 50,
+      verticalRecoil: 100,
+      horizontalRecoil: 100,
+      weight: 4,
+      price: 0,
+    },
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, lightErgoStock.id);
+  assertInstalled(result, requiredChargingHandle.id);
+  assertNotInstalled(result, heavyRecoilStock.id);
+  assert.equal(Number(result.stats.weight) <= 4, true);
 });
 
 test('budget build reserves enough money for every required nested weapon slot', () => {
@@ -1129,6 +1539,56 @@ test('required sight replaces optional sight assemblies instead of stacking with
   assertNoDuplicateParts(result);
   assertNoInstalledConflicts(result);
   assertStatsMatchParts(result);
+});
+
+test('any sight installs only one optional sight assembly across separate mount slots', () => {
+  const firstSight = createTestMod({
+    id: 'first-optional-sight',
+    recoilModifier: -2,
+    categories: createCategories(['Sights', 'Reflex sight']),
+  });
+  const secondSight = createTestMod({
+    id: 'second-optional-sight',
+    recoilModifier: -3,
+    categories: createCategories(['Sights', 'Reflex sight']),
+  });
+  const firstMount = createTestMod({
+    id: 'first-optional-mount',
+    ergonomicsModifier: 5,
+    categories: createCategories(['Mount']),
+    slots: [createSlot('Scope', [firstSight.id], 'mod_scope', true)],
+  });
+  const secondMount = createTestMod({
+    id: 'second-optional-mount',
+    ergonomicsModifier: 5,
+    categories: createCategories(['Mount']),
+    slots: [createSlot('Scope', [secondSight.id], 'mod_scope', true)],
+  });
+  const receiver = createTestMod({
+    id: 'receiver-with-two-scope-slots',
+    categories: createCategories(['Receiver']),
+    slots: [
+      createSlot('Scope', [firstMount.id], 'mod_scope_000'),
+      createSlot('Scope', [secondMount.id], 'mod_scope_001'),
+    ],
+  });
+  const testWeapon = createTestWeapon({
+    slots: [createSlot('Receiver', [receiver.id], 'mod_reciever', true)],
+  });
+  const result = calculateBestBuild(
+    testWeapon,
+    'meta',
+    50,
+    100,
+    createModMap(receiver, firstSight, secondSight, firstMount, secondMount),
+    { ...defaultOptions, requireSight: true, sightMode: 'any' },
+  );
+  const installedSights = result.build.filter(part => hasCategory(part.item, 'Sights'));
+  const installedMounts = result.build.filter(part => hasCategory(part.item, 'Mount'));
+
+  assert.equal(result.error, undefined);
+  assert.equal(installedSights.length, 1);
+  assert.equal(installedMounts.length, 1);
 });
 
 test('required nested flashlight keeps tactical mount slots available', () => {

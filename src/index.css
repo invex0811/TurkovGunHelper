@@ -465,6 +465,11 @@ a {
   text-align: center;
 }
 
+.custom-radar__help span {
+  display: block;
+  margin-top: 2px;
+}
+
 .custom-radar__svg {
   display: block;
   width: 100%;
@@ -474,6 +479,86 @@ a {
   overflow: visible;
   touch-action: none;
   user-select: none;
+}
+
+.custom-radar__inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+  padding: 0 8px 8px;
+}
+
+.custom-radar__input-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+
+.custom-radar__input-label {
+  grid-column: 1 / -1;
+}
+
+.custom-radar__input-control {
+  position: relative;
+  display: block;
+}
+
+.custom-radar__exact-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 58px;
+  padding: 0 7px;
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: .62rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  transition: border-color 150ms ease, color 150ms ease, background-color 150ms ease;
+}
+
+.custom-radar__exact-toggle input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--color-gold);
+}
+
+.custom-radar__input-field.is-exact .custom-radar__exact-toggle {
+  border-color: var(--color-gold);
+  background: rgba(216, 205, 143, .1);
+  color: var(--color-gold);
+}
+
+.custom-radar__input-control input {
+  padding-right: 38px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.custom-radar__input-field:nth-child(4) .custom-radar__input-control input {
+  padding-right: 48px;
+}
+
+.custom-radar__input-unit {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: .65rem;
+  pointer-events: none;
+  transform: translateY(-50%);
 }
 
 .custom-radar__grid polygon,
@@ -533,6 +618,13 @@ a {
 .custom-radar__handle:is(:focus, .is-active) .custom-radar__handle-dot {
   filter: drop-shadow(0 0 5px rgba(230, 218, 145, .9));
   r: 6px;
+}
+
+.custom-radar__handle.is-exact .custom-radar__handle-dot {
+  fill: var(--bg-darker);
+  stroke: var(--color-gold);
+  stroke-width: 4;
+  filter: drop-shadow(0 0 5px rgba(230, 218, 145, .8));
 }
 
 .custom-radar__label {
@@ -1370,6 +1462,10 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   .custom-radar__svg {
     min-height: 250px;
     max-height: 288px;
+  }
+
+  .custom-radar__inputs {
+    padding-inline: 12px;
   }
 
   .price-box {

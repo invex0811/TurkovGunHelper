@@ -28,6 +28,10 @@ import {
   saveBuildSnapshot,
 } from '../data/savedBuilds.js';
 import { recalculateBuildStats } from '../domain/calculator.js';
+import {
+  DEFAULT_CUSTOM_EXACT_TARGETS,
+  normalizeCustomExactTargets,
+} from '../domain/customExactTargets.js';
 import CustomBuildRadar from '../ui/CustomBuildRadar.jsx';
 import {
   CUSTOM_BUILD_DEFAULT_PROFILE,
@@ -1277,6 +1281,7 @@ function Configurator() {
   const [loading, setLoading] = useState(true);
   const [targetType, setTargetType] = useState(loadTargetTypePreference);
   const [customProfile, setCustomProfile] = useState(CUSTOM_BUILD_DEFAULT_PROFILE);
+  const [customExactTargets, setCustomExactTargets] = useState(DEFAULT_CUSTOM_EXACT_TARGETS);
   const [suppressorMode, setSuppressorMode] = useState('allow');
   const [priceMode, setPriceMode] = useState(
     () => requestedSavedBuild?.settings.priceMode || loadPriceModePreference(),
@@ -1410,6 +1415,7 @@ function Configurator() {
       weapon: calculationInput.weapon,
       targetType: calculationInput.targetType,
       customProfile: calculationInput.customProfile,
+      customExactTargets: calculationInput.customExactTargets,
       options: calculationInput.options,
     });
 
@@ -1474,6 +1480,7 @@ function Configurator() {
         });
         setTargetType(normalizeTargetType(settings.targetType));
         setCustomProfile(createCustomBuildProfileFromSettings(settings, weaponData));
+        setCustomExactTargets(normalizeCustomExactTargets(settings.customExactTargets));
         setSuppressorMode(settings.suppressorMode || 'allow');
         setIncludeTraderPrices(restoredIncludeTraderPrices);
         setMagazineCapacity(Number(settings.magazineCapacity) || capacities[0] || 30);
@@ -1487,6 +1494,7 @@ function Configurator() {
         setSaveName(requestedSavedBuild.name);
       } else {
         setBuildResult(null);
+        setCustomExactTargets(DEFAULT_CUSTOM_EXACT_TARGETS);
         setRequiredModuleIds([]);
         setActiveSavedBuildId(null);
         setSaveName(`${weaponData.shortName || weaponData.name} build`);
@@ -1694,6 +1702,7 @@ function Configurator() {
         weapon,
         targetType,
         customProfile,
+        customExactTargets,
         allMods,
         options,
       });
@@ -1711,7 +1720,7 @@ function Configurator() {
         setGenerating(false);
       }
     }
-  }, [allMods, suppressorMode, magazineCapacity, priceMode, includeTraderPrices, includeLaser, includeFlashlight, sightMode, requiredModuleIds, weapon, targetType, customProfile, runBuildCalculation]);
+  }, [allMods, suppressorMode, magazineCapacity, priceMode, includeTraderPrices, includeLaser, includeFlashlight, sightMode, requiredModuleIds, weapon, targetType, customProfile, customExactTargets, runBuildCalculation]);
 
   const handleSaveBuild = () => {
     if (!weapon || !buildResult || buildResult.error || !Array.isArray(buildResult.build) || buildResult.build.length === 0) {
@@ -1728,6 +1737,7 @@ function Configurator() {
         settings: {
           targetType,
           customProfile,
+          customExactTargets,
           customErgonomics: customProfile.ergonomics,
           customVerticalRecoil: customProfile.verticalRecoil,
           customHorizontalRecoil: customProfile.horizontalRecoil,
@@ -2020,6 +2030,11 @@ function Configurator() {
               profile={customProfile}
               weapon={weapon}
               onChange={setCustomProfile}
+              exactTargets={customExactTargets}
+              onExactChange={(axisKey, enabled) => setCustomExactTargets(current => ({
+                ...current,
+                [axisKey]: enabled,
+              }))}
             />
           </div>
         </div>

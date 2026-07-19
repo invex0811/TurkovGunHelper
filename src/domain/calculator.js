@@ -1,4 +1,10 @@
 import { getPurchasePriceValue } from '../data/price/priceMapper.js';
+import {
+  evaluateCustomExactTargets,
+  getCustomExactTolerance,
+  hasEnabledCustomExactTargets,
+  normalizeCustomExactTargets,
+} from './customExactTargets.js';
 
 const PRICE_AWARE_TARGET = Symbol('priceAware');
 
@@ -11,6 +17,8 @@ function createCalculationCache() {
     filteredAllowedItemsBySource: new WeakMap(),
     minimumRequiredPricesByItem: new WeakMap(),
     minimumRequiredPricesBySlot: new WeakMap(),
+    minimumRequiredWeightsByItem: new WeakMap(),
+    minimumRequiredWeightsBySlot: new WeakMap(),
     slotPrioritiesByName: new Map(),
   };
 }
@@ -363,6 +371,73 @@ function _calculateWeighted(
     return totalPrice;
   }
 
+  function getMinimumRequiredSlotWeight(slot, pathIds = new Set()) {
+    if (!slot?.required) return 0;
+
+    const cachedWeight = calculationCache.minimumRequiredWeightsBySlot.get(slot);
+    if (cachedWeight !== undefined) return cachedWeight;
+
+    let allowed = slot.filters?.allowedItems || [];
+    const slotName = (slot.name || '').toLowerCase();
+    const isMagSlot = slotName === 'mag'
+      || slotName === 'magazine'
+      || slot.nameId === 'mod_magazine';
+
+    if (isMagSlot) {
+      allowed = filterAllowedItems(allowed, targetCapacity);
+    }
+
+    let minimumWeight = Number.POSITIVE_INFINITY;
+
+    allowed.forEach(allowedItem => {
+      const item = modMap[allowedItem.id];
+      if (!item || pathIds.has(item.id)) return;
+
+      const nestedWeight = getMinimumRequiredItemWeight(item, new Set([...pathIds, item.id]));
+      if (!Number.isFinite(nestedWeight)) return;
+
+      minimumWeight = Math.min(minimumWeight, (item.weight || 0) + nestedWeight);
+    });
+
+    calculationCache.minimumRequiredWeightsBySlot.set(slot, minimumWeight);
+    return minimumWeight;
+  }
+
+  function getMinimumRequiredItemWeight(item, pathIds = new Set()) {
+    const cachedWeight = calculationCache.minimumRequiredWeightsByItem.get(item);
+    if (cachedWeight !== undefined) return cachedWeight;
+
+    const requiredSlots = (item.properties?.slots || []).filter(slot => slot.required === true);
+    let totalRequiredWeight = 0;
+
+    for (const slot of requiredSlots) {
+      const slotWeight = getMinimumRequiredSlotWeight(slot, pathIds);
+      if (!Number.isFinite(slotWeight)) {
+        totalRequiredWeight = Number.POSITIVE_INFINITY;
+        break;
+      }
+      totalRequiredWeight += slotWeight;
+    }
+
+    calculationCache.minimumRequiredWeightsByItem.set(item, totalRequiredWeight);
+    return totalRequiredWeight;
+  }
+
+  function getRemainingRequiredSlotWeight(slots, currentIndex, pathIds = new Set()) {
+    let totalRequiredWeight = 0;
+
+    for (let index = currentIndex + 1; index < slots.length; index += 1) {
+      const slot = slots[index];
+      if (slot.required !== true) continue;
+
+      const slotWeight = getMinimumRequiredSlotWeight(slot, pathIds);
+      if (!Number.isFinite(slotWeight)) return Number.POSITIVE_INFINITY;
+      totalRequiredWeight += slotWeight;
+    }
+
+    return totalRequiredWeight;
+  }
+
   function isTacticalSlot(slotName) {
     const name = (slotName || '').toLowerCase();
     return name.includes('tactical') || name.includes('flashlight');
@@ -613,6 +688,7 @@ function _calculateWeighted(
     parentBranchConflicts = new Set(),
     currentPrice = totalPrice,
     reservedPrice = 0,
+    reservedWeight = 0,
   ) {
     const item = modMap[itemId];
     if (!item) return invalidBranchEvaluation();
@@ -670,7 +746,10 @@ function _calculateWeighted(
     }
 
     const itemWeight = item.weight || 0;
-    if (maxWeight > 0 && currentWeight + itemWeight > maxWeight + weightEpsilon) {
+    if (
+      maxWeight > 0
+      && currentWeight + itemWeight + reservedWeight > maxWeight + weightEpsilon
+    ) {
       return invalidBranchEvaluation();
     }
 
@@ -772,6 +851,13 @@ function _calculateWeighted(
         );
         if (!Number.isFinite(remainingRequiredPrice)) return invalidBranchEvaluation();
         const childReservedPrice = reservedPrice + remainingRequiredPrice;
+        const remainingRequiredWeight = getRemainingRequiredSlotWeight(
+          sortedSlots,
+          slotIndex,
+          nextPathIds,
+        );
+        if (!Number.isFinite(remainingRequiredWeight)) return invalidBranchEvaluation();
+        const childReservedWeight = reservedWeight + remainingRequiredWeight;
 
         const mustFindSuppressor = options.requireSuppressor && !branchEval.hasSuppressor;
         const mustFindSight = requireSight && !(hasSight || branchEval.hasSight);
@@ -798,9 +884,15 @@ function _calculateWeighted(
             branchConflicts,
             branchTotalPrice,
             childReservedPrice,
+            childReservedWeight,
           );
 
           if (childEval.isValid && childEval.score !== -Infinity) {
+            if (
+              (hasSight || branchEval.hasSight)
+              && childEval.hasSight
+              && !branchHasRequiredSight(childEval)
+            ) return;
             if (branchHasOnlyOptionalSight(childEval)) return;
             if (childEval.hasSuppressor) slotCanProvideSuppressor = true;
             if (childEval.hasSight) slotCanProvideSight = true;
@@ -897,6 +989,12 @@ function _calculateWeighted(
         new Set([weapon.id]),
       );
       const reservedPrice = Number.isFinite(remainingRequiredPrice) ? remainingRequiredPrice : 0;
+      const remainingRequiredWeight = getRemainingRequiredSlotWeight(
+        sortedSlots,
+        slotIndex,
+        new Set([weapon.id]),
+      );
+      const reservedWeight = Number.isFinite(remainingRequiredWeight) ? remainingRequiredWeight : 0;
 
       let slotCanProvideSuppressor = false;
       let slotCanProvideSight = false;
@@ -920,12 +1018,14 @@ function _calculateWeighted(
           new Set(),
           totalPrice,
           reservedPrice,
+          reservedWeight,
         );
         if (!branchEval.isValid) return;
+        if (hasSight && branchEval.hasSight && !branchHasRequiredSight(branchEval)) return;
         if (branchHasOnlyOptionalSight(branchEval)) return;
 
         if (maxWeight > 0) {
-          const hypotheticalWeight = totalWeight + branchEval.statsDelta.weight;
+          const hypotheticalWeight = totalWeight + branchEval.statsDelta.weight + reservedWeight;
           if (hypotheticalWeight > maxWeight + weightEpsilon) return;
         }
 
@@ -1361,6 +1461,7 @@ export function calculateBestBuild(
   modMap = {},
   options = {},
   customProfile = null,
+  customExactTargets = null,
 ) {
   const calculationCache = createCalculationCache();
   const effectiveTargetType = targetType === 'custom'
@@ -1493,40 +1594,224 @@ export function calculateBestBuild(
 
   let bestBuild = null;
   let bestBuildScore = -Infinity;
+  let bestExactError = Number.POSITIVE_INFINITY;
+  let bestBuildTieKey = '';
+  let closestExactBuild = null;
+  let closestExactEvaluation = null;
+  let closestExactScore = -Infinity;
+  let closestExactTieKey = '';
+  let firstCalculationError = null;
+  let successfulCalculationCount = 0;
   const hasCustomProfile = Boolean(customProfile && typeof customProfile === 'object');
+  const normalizedExactTargets = normalizeCustomExactTargets(customExactTargets);
+  const hasExactTargets = hasCustomProfile
+    && hasEnabledCustomExactTargets(normalizedExactTargets);
   const maxHorizontalRecoil = hasCustomProfile
     ? Number(customProfile.horizontalRecoil)
     : Number.POSITIVE_INFINITY;
+  const customTargetValues = {
+    ergonomics: Number(minErgo),
+    verticalRecoil: Number(maxRecoil),
+    horizontalRecoil: maxHorizontalRecoil,
+    weight: Number(customProfile?.weight),
+    price: Number(customProfile?.price),
+  };
+  const exactMaxWeight = normalizedExactTargets.weight
+    ? customTargetValues.weight + getCustomExactTolerance('weight', customTargetValues.weight)
+    : Number(customProfile?.weight) || 0;
+  const exactMaxPrice = normalizedExactTargets.price
+    ? customTargetValues.price + getCustomExactTolerance('price', customTargetValues.price)
+    : Number(customProfile?.price) || 0;
   const customOptions = hasCustomProfile
     ? {
         ...options,
-        maxWeight: Number(customProfile.weight) || 0,
-        maxPrice: Number(customProfile.price) || 0,
+        maxWeight: Number.isFinite(exactMaxWeight) ? exactMaxWeight : 0,
+        maxPrice: Number.isFinite(exactMaxPrice) ? exactMaxPrice : 0,
       }
     : options;
+
+  function getCustomRequirementMatches(result) {
+    const ergonomics = result.stats.ergonomics;
+    const verticalRecoil = result.stats.recoilVertical;
+    const horizontalRecoil = result.stats.recoilHorizontal;
+    const weight = parseFloat(result.stats.weight);
+    const price = result.stats.price;
+
+    return {
+      ergonomics,
+      verticalRecoil,
+      horizontalRecoil,
+      weight,
+      price,
+      ergoMet: ergonomics >= minErgo,
+      recoilMet: verticalRecoil <= maxRecoil,
+      horizontalRecoilMet: horizontalRecoil <= maxHorizontalRecoil,
+      weightMet: !(customOptions.maxWeight > 0) || weight <= customOptions.maxWeight,
+      priceMet: !(customOptions.maxPrice > 0)
+        || (price != null && price <= customOptions.maxPrice),
+    };
+  }
+
+  function getExactEvaluation(matches) {
+    return evaluateCustomExactTargets(
+      {
+        ergonomics: matches.ergonomics,
+        verticalRecoil: matches.verticalRecoil,
+        horizontalRecoil: matches.horizontalRecoil,
+        weight: matches.weight,
+        price: matches.price,
+      },
+      customTargetValues,
+      normalizedExactTargets,
+    );
+  }
+
+  function getCustomScore(matches) {
+    return 10000
+      + matches.ergonomics
+      - matches.verticalRecoil
+      - matches.horizontalRecoil;
+  }
+
+  function getBuildTieKey(result) {
+    return result.build
+      .map(part => String(part.item?.id ?? ''))
+      .sort()
+      .join('|');
+  }
+
+  function meetsNonExactRequirements(matches) {
+    return (
+      (normalizedExactTargets.ergonomics || matches.ergoMet)
+      && (normalizedExactTargets.verticalRecoil || matches.recoilMet)
+      && (normalizedExactTargets.horizontalRecoil || matches.horizontalRecoilMet)
+      && (normalizedExactTargets.weight || matches.weightMet)
+      && (normalizedExactTargets.price || matches.priceMet)
+    );
+  }
+
+  function considerExactCandidate(result, matches) {
+    if (!meetsNonExactRequirements(matches)) return;
+
+    const evaluation = getExactEvaluation(matches);
+    const score = getCustomScore(matches);
+    const tieKey = getBuildTieKey(result);
+    const closer = !closestExactEvaluation
+      || evaluation.totalError < closestExactEvaluation.totalError
+      || (
+        evaluation.totalError === closestExactEvaluation.totalError
+        && (
+          score > closestExactScore
+          || (score === closestExactScore && (
+            (result.stats.price ?? Number.POSITIVE_INFINITY)
+              < (closestExactBuild?.stats.price ?? Number.POSITIVE_INFINITY)
+            || (
+              result.stats.price === closestExactBuild?.stats.price
+              && tieKey.localeCompare(closestExactTieKey) < 0
+            )
+          ))
+        )
+      );
+
+    if (closer) {
+      closestExactBuild = result;
+      closestExactEvaluation = evaluation;
+      closestExactScore = score;
+      closestExactTieKey = tieKey;
+    }
+
+    if (!evaluation.matches) return;
+
+    const better = !bestBuild
+      || evaluation.totalError < bestExactError
+      || (
+        evaluation.totalError === bestExactError
+        && (
+          score > bestBuildScore
+          || (score === bestBuildScore && (
+            (result.stats.price ?? Number.POSITIVE_INFINITY)
+              < (bestBuild.stats.price ?? Number.POSITIVE_INFINITY)
+            || (
+              result.stats.price === bestBuild.stats.price
+              && tieKey.localeCompare(bestBuildTieKey) < 0
+            )
+          ))
+        )
+      );
+
+    if (better) {
+      bestBuild = result;
+      bestBuildScore = score;
+      bestExactError = evaluation.totalError;
+      bestBuildTieKey = tieKey;
+    }
+  }
+
+  if (hasCustomProfile) {
+    const metaCandidate = _calculateWeighted(
+      weapon,
+      1,
+      3,
+      0,
+      modMap,
+      customOptions,
+      50,
+      'meta',
+      15,
+      0.15,
+      70,
+      calculationCache,
+    );
+
+    if (!metaCandidate.error) {
+      const matches = getCustomRequirementMatches(metaCandidate);
+      if (hasExactTargets) {
+        considerExactCandidate(metaCandidate, matches);
+      }
+      if (
+        !hasExactTargets
+        &&
+        matches.ergoMet
+        && matches.recoilMet
+        && matches.horizontalRecoilMet
+        && matches.weightMet
+        && matches.priceMet
+      ) {
+        return metaCandidate;
+      }
+    }
+  }
 
   for (let i = 0; i <= 20; i++) {
     const ergoWeight = i / 20;
     const recoilWeight = 1 - ergoWeight;
     const priceWeight = 0; 
     const result = _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMap, customOptions, 100, 'custom', 0.001, 0, 100, calculationCache);
-    if (result.error) return result;
+    if (result.error) {
+      firstCalculationError ||= result;
+      continue;
+    }
+    successfulCalculationCount += 1;
     
-    const e = result.stats.ergonomics;
-    const r = result.stats.recoilVertical;
-    const h = result.stats.recoilHorizontal;
-    const w = parseFloat(result.stats.weight);
-    const p = result.stats.price;
-    
+    const matches = getCustomRequirementMatches(result);
+    const {
+      ergonomics: e,
+      verticalRecoil: r,
+      horizontalRecoil: h,
+      weight: w,
+      ergoMet,
+      recoilMet,
+      horizontalRecoilMet,
+      weightMet,
+      priceMet,
+    } = matches;
     let score;
-    const ergoMet = e >= minErgo;
-    const recoilMet = r <= maxRecoil;
-    const horizontalRecoilMet = h <= maxHorizontalRecoil;
-    const weightMet = !(customOptions.maxWeight > 0) || w <= customOptions.maxWeight;
-    const priceMet = !(customOptions.maxPrice > 0)
-      || (p != null && p <= customOptions.maxPrice);
 
     if (hasCustomProfile) {
+      if (hasExactTargets) {
+        considerExactCandidate(result, matches);
+        continue;
+      }
       if (!ergoMet || !recoilMet || !horizontalRecoilMet || !weightMet || !priceMet) continue;
       score = 10000 + e - r - h;
     } else if (ergoMet && recoilMet) {
@@ -1549,7 +1834,50 @@ export function calculateBestBuild(
     }
   }
 
+  if (!bestBuild && successfulCalculationCount === 0 && firstCalculationError && !hasExactTargets) {
+    return firstCalculationError;
+  }
+
   if (hasCustomProfile && !bestBuild) {
+    if (hasExactTargets) {
+      const labelByKey = {
+        ergonomics: 'ergonomics',
+        verticalRecoil: 'vertical recoil',
+        horizontalRecoil: 'horizontal recoil',
+        weight: 'weight',
+        price: 'price',
+      };
+      const failures = closestExactEvaluation?.failures ?? Object.entries(normalizedExactTargets)
+        .filter(([, enabled]) => enabled)
+        .map(([key]) => ({
+          key,
+          target: customTargetValues[key],
+          actual: null,
+          tolerance: getCustomExactTolerance(key, customTargetValues[key]),
+          normalizedDeviation: Number.POSITIVE_INFINITY,
+        }));
+      const closestValues = failures
+        .map(failure => {
+          const actual = failure.actual == null ? 'unavailable' : failure.actual;
+          return `${labelByKey[failure.key]} ${actual} (target ${failure.target} +/-${failure.tolerance})`;
+        })
+        .join(', ');
+
+      return {
+        build: [],
+        stats: {
+          ergonomics: weapon.properties?.ergonomics ?? 0,
+          recoilVertical: weapon.properties?.recoilVertical ?? 0,
+          recoilHorizontal: weapon.properties?.recoilHorizontal ?? 0,
+          weight: Number(weapon.weight || 0).toFixed(2),
+          price: null,
+        },
+        errorCode: 'CUSTOM_EXACT_TARGETS_UNMET',
+        exactTargetFailures: failures,
+        error: `No available build matches all enabled Exact targets within tolerance. Closest values: ${closestValues}. Disable Exact for one or more axes and try again.`,
+      };
+    }
+
     const constraints = [
       `ergonomics >= ${minErgo}`,
       `vertical recoil <= ${maxRecoil}`,

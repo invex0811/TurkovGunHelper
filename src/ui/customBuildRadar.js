@@ -1,7 +1,5 @@
 import { WEAPON_STAT_UI_RANGES, withBaseStatMaximum } from './weaponStatMeters.js';
 
-export const CUSTOM_RADAR_DEAD_ZONE = 0.04;
-
 export const CUSTOM_BUILD_DEFAULT_PROFILE = Object.freeze({
   ergonomics: 50,
   verticalRecoil: 50,
@@ -92,32 +90,19 @@ export function getCustomBuildRadarAxes(weapon) {
 
 export function requirementToValue(requirement, axis) {
   const t = clamp(toFiniteNumber(requirement, 0), 0, 1);
-  const { min, max, direction } = axis.range;
-
-  if (axis.allowNoLimit && t <= CUSTOM_RADAR_DEAD_ZONE) return 0;
-
-  const strictMinimum = axis.allowNoLimit ? Math.max(min, axis.step) : min;
-  const rawValue = direction === 'higher-is-better'
-    ? min + (t * (max - min))
-    : max - (t * (max - strictMinimum));
-  return clamp(snap(rawValue, axis.step), strictMinimum, max);
+  const { min, max } = axis.range;
+  const rawValue = min + (t * (max - min));
+  return clamp(snap(rawValue, axis.step), min, max);
 }
 
 export function valueToRequirement(value, axis) {
-  const numericValue = toFiniteNumber(value, axis.allowNoLimit ? 0 : axis.range.max);
-  if (axis.allowNoLimit && numericValue <= 0) return 0;
-
-  const { min, max, direction } = axis.range;
-  const strictMinimum = axis.allowNoLimit ? Math.max(min, axis.step) : min;
-  const clampedValue = clamp(numericValue, strictMinimum, max);
-  const span = direction === 'higher-is-better'
-    ? max - min
-    : max - strictMinimum;
+  const { min, max } = axis.range;
+  const numericValue = toFiniteNumber(value, min);
+  const clampedValue = clamp(numericValue, min, max);
+  const span = max - min;
   if (!Number.isFinite(span) || span <= 0) return 0;
 
-  return direction === 'higher-is-better'
-    ? clamp((clampedValue - min) / span, 0, 1)
-    : clamp((max - clampedValue) / span, 0, 1);
+  return clamp((clampedValue - min) / span, 0, 1);
 }
 
 export function normalizeCustomBuildProfile(profile = {}, weapon) {
@@ -158,8 +143,25 @@ export function updateCustomBuildProfile(profile, axis, requirement, weapon) {
   };
 }
 
+export function updateCustomBuildProfileValue(profile, axis, value, weapon) {
+  const resolvedAxis = axis?.range
+    ? axis
+    : getCustomBuildRadarAxes(weapon).find(candidate => candidate.key === axis);
+  const normalizedProfile = normalizeCustomBuildProfile(profile, weapon);
+  if (!resolvedAxis) return normalizedProfile;
+
+  const numericValue = toFiniteNumber(value, normalizedProfile[resolvedAxis.key]);
+
+  return {
+    ...normalizedProfile,
+    [resolvedAxis.key]: requirementToValue(
+      valueToRequirement(numericValue, resolvedAxis),
+      resolvedAxis,
+    ),
+  };
+}
+
 export function formatCustomBuildRadarValue(value, axis) {
-  if (axis.allowNoLimit && (!Number.isFinite(value) || value <= 0)) return 'No limit';
   if (!Number.isFinite(value)) return 'N/A';
 
   if (axis.key === 'weight') return `${value.toFixed(2)} kg`;

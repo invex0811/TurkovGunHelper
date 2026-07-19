@@ -49,6 +49,7 @@ self.onmessage = ({ data }) => {
       modMap,
       data.options,
       customProfile,
+      data.customExactTargets,
     );
 
     if (!cancelledRequestIds.has(requestId)) {

@@ -5,17 +5,98 @@ import {
   getRadarPoint,
   projectPointerToAxis,
   updateCustomBuildProfile,
+  updateCustomBuildProfileValue,
   valueToRequirement,
 } from './customBuildRadar.js';
 
-const VIEW_BOX = Object.freeze({ width: 360, height: 288, centerX: 180, centerY: 142, radius: 82 });
+const VIEW_BOX = Object.freeze({ width: 360, height: 288, centerX: 180, centerY: 142, radius: 94 });
 const GRID_LEVELS = Object.freeze([0.2, 0.4, 0.6, 0.8, 1]);
 
 function toPoints(points) {
   return points.map(point => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ');
 }
 
-export default function CustomBuildRadar({ profile, weapon, onChange }) {
+function getExactTooltip(axis) {
+  if (axis.key === 'price') {
+    return 'Exact price allows a tolerance of 1% of the target, with a minimum of 1,000 RUB. The result may be slightly above the target.';
+  }
+
+  return 'Match this target within the small tolerance used for discrete module stats.';
+}
+
+function RadarValueInput({
+  axis,
+  value,
+  profile,
+  weapon,
+  onChange,
+  exact,
+  onExactChange,
+}) {
+  const [draft, setDraft] = useState(null);
+  const cancelEditRef = useRef(false);
+
+  const commitValue = () => {
+    if (cancelEditRef.current) {
+      cancelEditRef.current = false;
+      setDraft(null);
+      return;
+    }
+
+    const nextProfile = updateCustomBuildProfileValue(
+      profile,
+      axis,
+      draft ?? value,
+      weapon,
+    );
+    setDraft(null);
+    onChange(nextProfile);
+  };
+
+  return (
+    <div className={`custom-radar__input-field ${exact ? 'is-exact' : ''}`}>
+      <span className="custom-radar__input-label">{axis.label}</span>
+      <span className="custom-radar__input-control">
+        <input
+          type="number"
+          min={axis.range.min}
+          max={axis.range.max}
+          step={axis.step}
+          value={draft ?? (Number.isFinite(value) ? String(value) : '')}
+          aria-label={`${axis.label} value`}
+          onFocus={() => setDraft(Number.isFinite(value) ? String(value) : '')}
+          onChange={event => setDraft(event.target.value)}
+          onBlur={commitValue}
+          onKeyDown={event => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+            if (event.key === 'Escape') {
+              cancelEditRef.current = true;
+              event.currentTarget.blur();
+            }
+          }}
+        />
+        {axis.unit && <span className="custom-radar__input-unit">{axis.unit}</span>}
+      </span>
+      <label className="custom-radar__exact-toggle" title={getExactTooltip(axis)}>
+        <input
+          type="checkbox"
+          checked={exact}
+          aria-label={`Use exact target for ${axis.label}`}
+          onChange={event => onExactChange(axis.key, event.target.checked)}
+        />
+        <span>Exact</span>
+      </label>
+    </div>
+  );
+}
+
+export default function CustomBuildRadar({
+  profile,
+  weapon,
+  onChange,
+  exactTargets = {},
+  onExactChange = () => {},
+}) {
   const svgRef = useRef(null);
   const animationFrameRef = useRef(null);
   const pendingPointerRef = useRef(null);
@@ -125,7 +206,10 @@ export default function CustomBuildRadar({ profile, weapon, onChange }) {
 
   return (
     <div className="custom-radar">
-      <p className="custom-radar__help">Drag outward for a stricter requirement.</p>
+      <p className="custom-radar__help">
+        Drag points or enter values below. Enable Exact for values the build should match closely.
+        <span>Exact targets use a small tolerance because module stats are discrete.</span>
+      </p>
       <svg
         ref={svgRef}
         className="custom-radar__svg"
@@ -191,7 +275,7 @@ export default function CustomBuildRadar({ profile, weapon, onChange }) {
             <g
               key={axis.key}
               data-axis={axis.key}
-              className={`custom-radar__handle ${activeAxisKey === axis.key ? 'is-active' : ''}`}
+              className={`custom-radar__handle ${activeAxisKey === axis.key ? 'is-active' : ''} ${exactTargets?.[axis.key] ? 'is-exact' : ''}`}
               role="slider"
               tabIndex="0"
               aria-label={axis.label}
@@ -243,6 +327,20 @@ export default function CustomBuildRadar({ profile, weapon, onChange }) {
           );
         })}
       </svg>
+      <div className="custom-radar__inputs">
+        {axes.map(axis => (
+          <RadarValueInput
+            key={axis.key}
+            axis={axis}
+            value={profile[axis.key]}
+            profile={profile}
+            weapon={weapon}
+            onChange={onChange}
+            exact={exactTargets?.[axis.key] === true}
+            onExactChange={onExactChange}
+          />
+        ))}
+      </div>
     </div>
   );
 }

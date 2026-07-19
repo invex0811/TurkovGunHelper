@@ -1,3 +1,5 @@
+import { normalizeCustomExactTargets } from '../domain/customExactTargets.js';
+
 export const SAVED_BUILDS_STORAGE_KEY = 'tarkov-gun-helper:saved-builds';
 export const SAVED_BUILD_SCHEMA_VERSION = 1;
 export const MAX_SAVED_BUILDS = 100;
@@ -70,6 +72,7 @@ export function readSavedBuilds(storage = getDefaultStorage()) {
         settings: {
           ...build.settings,
           includeTraderPrices: build.settings.includeTraderPrices !== false,
+          customExactTargets: normalizeCustomExactTargets(build.settings.customExactTargets),
         },
       }))
       .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));

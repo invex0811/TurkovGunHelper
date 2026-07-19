@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 
 import {
   CUSTOM_BUILD_DEFAULT_PROFILE,
-  CUSTOM_RADAR_DEAD_ZONE,
   createCustomBuildProfileFromSettings,
   getCustomBuildRadarAxes,
   getRadarAxisVectors,
@@ -11,6 +10,7 @@ import {
   normalizeCustomBuildProfile,
   projectPointerToAxis,
   requirementToValue,
+  updateCustomBuildProfileValue,
   valueToRequirement,
 } from '../../src/ui/customBuildRadar.js';
 
@@ -67,26 +67,36 @@ test('projects the pointer only onto its selected axis and clamps the result', (
   }), 0);
 });
 
-test('uses direct ergonomics and inverse recoil mappings', () => {
+test('uses a direct zero-to-maximum mapping for every axis', () => {
   assert.equal(requirementToValue(0.75, getAxis('ergonomics')), 75);
-  assert.equal(requirementToValue(0.75, getAxis('verticalRecoil')), 30);
-  assert.equal(requirementToValue(0.75, getAxis('horizontalRecoil')), 90);
+  assert.equal(requirementToValue(0.75, getAxis('verticalRecoil')), 90);
+  assert.equal(requirementToValue(0.75, getAxis('horizontalRecoil')), 270);
   assert.equal(valueToRequirement(75, getAxis('ergonomics')), 0.75);
-  assert.equal(valueToRequirement(30, getAxis('verticalRecoil')), 0.75);
+  assert.equal(valueToRequirement(90, getAxis('verticalRecoil')), 0.75);
+  assert.equal(valueToRequirement(270, getAxis('horizontalRecoil')), 0.75);
 });
 
-test('weight and price use a no-limit dead zone and snap to practical steps', () => {
+test('weight and price start at zero and snap to practical steps', () => {
   const weightAxis = getAxis('weight');
   const priceAxis = getAxis('price');
 
-  assert.equal(requirementToValue(CUSTOM_RADAR_DEAD_ZONE, weightAxis), 0);
-  assert.equal(requirementToValue(CUSTOM_RADAR_DEAD_ZONE, priceAxis), 0);
+  assert.equal(requirementToValue(0, weightAxis), 0);
+  assert.equal(requirementToValue(0, priceAxis), 0);
   assert.equal(Number((requirementToValue(0.5, weightAxis) / 0.05).toFixed(8)) % 1, 0);
   assert.equal(requirementToValue(0.5, priceAxis) % 1_000, 0);
-  assert.ok(requirementToValue(0.8, weightAxis) < requirementToValue(0.5, weightAxis));
-  assert.ok(requirementToValue(0.8, priceAxis) < requirementToValue(0.5, priceAxis));
-  assert.equal(requirementToValue(1, weightAxis), 0.05);
-  assert.equal(requirementToValue(1, priceAxis), 1_000);
+  assert.ok(requirementToValue(0.8, weightAxis) > requirementToValue(0.5, weightAxis));
+  assert.ok(requirementToValue(0.8, priceAxis) > requirementToValue(0.5, priceAxis));
+  assert.equal(requirementToValue(1, weightAxis), 15);
+  assert.equal(requirementToValue(1, priceAxis), 2_000_000);
+});
+
+test('manual values snap and clamp to the same axis limits as the radar', () => {
+  const profile = { ...CUSTOM_BUILD_DEFAULT_PROFILE };
+
+  assert.equal(updateCustomBuildProfileValue(profile, 'weight', 4.037, weapon).weight, 4.05);
+  assert.equal(updateCustomBuildProfileValue(profile, 'price', 1_750_400, weapon).price, 1_750_000);
+  assert.equal(updateCustomBuildProfileValue(profile, 'price', 3_000_000, weapon).price, 2_000_000);
+  assert.equal(updateCustomBuildProfileValue(profile, 'ergonomics', -10, weapon).ergonomics, 0);
 });
 
 test('recoil axes use the same dynamic maxima as weapon stat meters', () => {
