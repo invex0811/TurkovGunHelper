@@ -59,6 +59,7 @@ export const GET_ALL_MODS_QUERY = `
           slots {
             name
             nameId
+            required
             filters {
               allowedItems { id }
             }
@@ -68,6 +69,7 @@ export const GET_ALL_MODS_QUERY = `
           slots {
             name
             nameId
+            required
             filters {
               allowedItems { id }
             }
@@ -81,6 +83,7 @@ export const GET_ALL_MODS_QUERY = `
           slots {
             name
             nameId
+            required
             filters {
               allowedItems { id }
             }
@@ -91,6 +94,7 @@ export const GET_ALL_MODS_QUERY = `
           slots {
             name
             nameId
+            required
             filters {
               allowedItems { id }
             }
@@ -143,6 +147,7 @@ export const GET_WEAPON_DETAILS_QUERY = `
           slots {
             name
             nameId
+            required
             filters {
               allowedItems {
                 id

@@ -76,10 +76,10 @@ function createWeapon(allowedIds) {
   }, PRICE_MODES.PVP);
 }
 
-function calculate(weapon, mods, includeTraderPrices, maxPrice = 0) {
+function calculate(weapon, mods, includeTraderPrices, maxPrice = 1_000_000) {
   return calculateBestBuild(
     weapon,
-    'budget',
+    'meta',
     0,
     0,
     Object.fromEntries(mods.map(mod => [mod.id, mod])),
@@ -110,7 +110,7 @@ test('same assembly total changes when trader prices are toggled', () => {
   assert.deepEqual(withTraders.build, fleaOnly.build);
 });
 
-test('budget optimizer and Max Budget use the active purchase price policy', () => {
+test('price-constrained Meta and Max Budget use the active purchase price policy', () => {
   const traderMod = createMod('trader-mod', 50_000, 10_000);
   const fleaMod = createMod('flea-mod', 20_000, null);
   const weapon = createWeapon([traderMod.id, fleaMod.id]);

@@ -425,16 +425,130 @@ a {
 }
 
 .segmented--goals {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
 }
 
-.segmented--goals .segmented__btn:nth-child(-n + 3) {
-  grid-column: span 2;
+.custom-radar-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-6px) scale(.985);
+  transform-origin: top center;
+  transition:
+    grid-template-rows 220ms ease,
+    opacity 180ms ease,
+    transform 220ms ease;
 }
 
-.segmented--goals .segmented__btn:nth-child(n + 4) {
-  grid-column: span 3;
+.custom-radar-collapse.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: none;
+}
+
+.custom-radar-collapse__inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.custom-radar {
+  padding: 4px 8px 8px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.custom-radar__help {
+  margin: 8px 8px 0;
+  color: var(--text-muted);
+  font-size: .7rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.custom-radar__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 250px;
+  max-height: 316px;
+  overflow: visible;
+  touch-action: none;
+  user-select: none;
+}
+
+.custom-radar__grid polygon,
+.custom-radar__grid line {
+  fill: none;
+  stroke: rgba(199, 192, 154, .2);
+  stroke-width: .8;
+  vector-effect: non-scaling-stroke;
+}
+
+.custom-radar__grid polygon:last-of-type {
+  stroke: rgba(199, 192, 154, .48);
+  stroke-width: 1.25;
+}
+
+.custom-radar__value {
+  fill: rgba(163, 153, 97, .2);
+  stroke: rgba(216, 205, 143, .88);
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.custom-radar__axis-controls line {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 40;
+  cursor: grab;
+  pointer-events: stroke;
+}
+
+.custom-radar__axis-controls line:active {
+  cursor: grabbing;
+}
+
+.custom-radar__hit-target {
+  fill: transparent;
+  cursor: grab;
+}
+
+.custom-radar__handle:active .custom-radar__hit-target {
+  cursor: grabbing;
+}
+
+.custom-radar__handle-dot {
+  fill: var(--color-gold);
+  stroke: var(--bg-darker);
+  stroke-width: 2;
+  transition: filter 150ms ease, r 150ms ease;
+  vector-effect: non-scaling-stroke;
+}
+
+.custom-radar__handle:focus {
+  outline: none;
+}
+
+.custom-radar__handle:is(:focus, .is-active) .custom-radar__handle-dot {
+  filter: drop-shadow(0 0 5px rgba(230, 218, 145, .9));
+  r: 6px;
+}
+
+.custom-radar__label {
+  fill: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+
+.custom-radar__label-value {
+  fill: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .segmented--three {
@@ -1249,6 +1363,15 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
 }
 
 @media (max-width: 520px) {
+  .custom-radar {
+    padding-inline: 2px;
+  }
+
+  .custom-radar__svg {
+    min-height: 250px;
+    max-height: 288px;
+  }
+
   .price-box {
     align-items: flex-start;
     flex-direction: column;
@@ -1256,6 +1379,13 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
 
   .parts-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .custom-radar-collapse,
+  .custom-radar__handle-dot {
+    transition-duration: 0.01ms;
   }
 }
 

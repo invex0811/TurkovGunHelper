@@ -104,3 +104,32 @@ test('saved builds preserve includeTraderPrices and default old snapshots to tru
   saveBuildSnapshot(createSnapshot(), oldStorage, { id: 'legacy' });
   assert.equal(getSavedBuild('legacy', oldStorage).settings.includeTraderPrices, true);
 });
+
+test('saved builds preserve the new Custom radar profile without a schema bump', () => {
+  const storage = createStorage();
+  const customProfile = {
+    ergonomics: 62,
+    verticalRecoil: 74,
+    horizontalRecoil: 188,
+    weight: 4.25,
+    price: 70_000,
+  };
+
+  saveBuildSnapshot(createSnapshot({
+    settings: {
+      targetType: 'custom',
+      priceMode: 'pvp',
+      customProfile,
+      customErgo: customProfile.ergonomics,
+      customRecoil: customProfile.verticalRecoil,
+      maxWeight: customProfile.weight,
+      maxPrice: customProfile.price,
+    },
+  }), storage, { id: 'custom-radar' });
+
+  const restored = getSavedBuild('custom-radar', storage);
+  assert.equal(restored.version, 1);
+  assert.deepEqual(restored.settings.customProfile, customProfile);
+  assert.equal(restored.settings.customErgo, 62);
+  assert.equal(restored.settings.customRecoil, 74);
+});

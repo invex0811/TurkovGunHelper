@@ -17,6 +17,7 @@ import {
   saveIncludeTraderPricesPreference,
   savePriceModePreference,
   loadTargetTypePreference,
+  normalizeTargetType,
   saveTargetTypePreference,
 } from '../data/settings/buildPreferences.js';
 import { getWeaponDetails, getAllMods, isAbortError } from '../data/tarkovApi';
@@ -27,6 +28,12 @@ import {
   saveBuildSnapshot,
 } from '../data/savedBuilds.js';
 import { recalculateBuildStats } from '../domain/calculator.js';
+import CustomBuildRadar from '../ui/CustomBuildRadar.jsx';
+import {
+  CUSTOM_BUILD_DEFAULT_PROFILE,
+  createCustomBuildProfileFromSettings,
+  normalizeCustomBuildProfile,
+} from '../ui/customBuildRadar.js';
 import {
   WEAPON_STAT_UI_RANGES,
   normalizeStatPercent,
@@ -1269,8 +1276,7 @@ function Configurator() {
   const [weapon, setWeapon] = useState(null);
   const [loading, setLoading] = useState(true);
   const [targetType, setTargetType] = useState(loadTargetTypePreference);
-  const [customErgo, setCustomErgo] = useState(50);
-  const [customRecoil, setCustomRecoil] = useState(50);
+  const [customProfile, setCustomProfile] = useState(CUSTOM_BUILD_DEFAULT_PROFILE);
   const [suppressorMode, setSuppressorMode] = useState('allow');
   const [priceMode, setPriceMode] = useState(
     () => requestedSavedBuild?.settings.priceMode || loadPriceModePreference(),
@@ -1279,8 +1285,6 @@ function Configurator() {
     () => requestedSavedBuild?.settings.includeTraderPrices
       ?? loadIncludeTraderPricesPreference(),
   );
-  const [maxWeight, setMaxWeight] = useState('');
-  const [maxPrice, setMaxPrice] = useState('');
   const [activeReplacePartId, setActiveReplacePartId] = useState(null);
   const [replaceMode, setReplaceMode] = useState('EXACT_ITEM');
   const [magazineCapacity, setMagazineCapacity] = useState(30);
@@ -1302,6 +1306,8 @@ function Configurator() {
   const [activeSavedBuildId, setActiveSavedBuildId] = useState(requestedSavedBuildId);
   const [saveName, setSaveName] = useState(requestedSavedBuild?.name || '');
   const [saveFeedback, setSaveFeedback] = useState(null);
+  const maxWeight = customProfile.weight > 0 ? String(customProfile.weight) : '';
+  const maxPrice = customProfile.price > 0 ? String(customProfile.price) : '';
   const calculatorWorkerRef = useRef(null);
   const calculatorDataRef = useRef({ modMap: null, version: 0 });
   const nextCalculationRequestIdRef = useRef(0);
@@ -1403,8 +1409,7 @@ function Configurator() {
       modMapVersion: calculatorDataRef.current.version,
       weapon: calculationInput.weapon,
       targetType: calculationInput.targetType,
-      customErgo: calculationInput.customErgo,
-      customRecoil: calculationInput.customRecoil,
+      customProfile: calculationInput.customProfile,
       options: calculationInput.options,
     });
 
@@ -1455,25 +1460,22 @@ function Configurator() {
         const restored = restoreBuildParts(requestedSavedBuild, modsData);
         const settings = requestedSavedBuild.settings;
         const restoredIncludeTraderPrices = settings.includeTraderPrices !== false;
-        const restoredStats = recalculateBuildStats(weaponData, restored.build, {
+        const restoredResult = recalculateBuildStats(weaponData, restored.build, {
           priceMode,
           includeTraderPrices: restoredIncludeTraderPrices,
         });
 
         setBuildResult({
           build: restored.build,
-          stats: restoredStats,
+          stats: restoredResult.stats,
           warning: restored.missingItemIds.length > 0
             ? `${restored.missingItemIds.length} saved module(s) are no longer available and were skipped.`
             : undefined,
         });
-        setTargetType(settings.targetType || 'meta');
-        setCustomErgo(Number(settings.customErgo) || 50);
-        setCustomRecoil(Number(settings.customRecoil) || 50);
+        setTargetType(normalizeTargetType(settings.targetType));
+        setCustomProfile(createCustomBuildProfileFromSettings(settings, weaponData));
         setSuppressorMode(settings.suppressorMode || 'allow');
         setIncludeTraderPrices(restoredIncludeTraderPrices);
-        setMaxWeight(settings.maxWeight ? String(settings.maxWeight) : '');
-        setMaxPrice(settings.maxPrice ? String(settings.maxPrice) : '');
         setMagazineCapacity(Number(settings.magazineCapacity) || capacities[0] || 30);
         setIncludeLaser(settings.includeLaser === true);
         setIncludeFlashlight(settings.includeFlashlight === true);
@@ -1676,8 +1678,8 @@ function Configurator() {
     try {
       const options = {
         ...getSuppressorOptions(suppressorMode),
-        maxWeight: parseFloat(maxWeight) || 0,
-        maxPrice: parseFloat(maxPrice) || 0,
+        maxWeight: customProfile.weight,
+        maxPrice: customProfile.price,
         magazineCapacity: Number(magazineCapacity) || 30,
         priceMode,
         includeTraderPrices,
@@ -1691,8 +1693,7 @@ function Configurator() {
       const calculation = runBuildCalculation({
         weapon,
         targetType,
-        customErgo,
-        customRecoil,
+        customProfile,
         allMods,
         options,
       });
@@ -1710,7 +1711,7 @@ function Configurator() {
         setGenerating(false);
       }
     }
-  }, [allMods, suppressorMode, maxWeight, maxPrice, magazineCapacity, priceMode, includeTraderPrices, includeLaser, includeFlashlight, sightMode, requiredModuleIds, weapon, targetType, customErgo, customRecoil, runBuildCalculation]);
+  }, [allMods, suppressorMode, magazineCapacity, priceMode, includeTraderPrices, includeLaser, includeFlashlight, sightMode, requiredModuleIds, weapon, targetType, customProfile, runBuildCalculation]);
 
   const handleSaveBuild = () => {
     if (!weapon || !buildResult || buildResult.error || !Array.isArray(buildResult.build) || buildResult.build.length === 0) {
@@ -1726,13 +1727,19 @@ function Configurator() {
         buildResult,
         settings: {
           targetType,
-          customErgo,
-          customRecoil,
+          customProfile,
+          customErgonomics: customProfile.ergonomics,
+          customVerticalRecoil: customProfile.verticalRecoil,
+          customHorizontalRecoil: customProfile.horizontalRecoil,
+          customMaxWeight: customProfile.weight,
+          customMaxPrice: customProfile.price,
+          customErgo: customProfile.ergonomics,
+          customRecoil: customProfile.verticalRecoil,
           suppressorMode,
           priceMode,
           includeTraderPrices,
-          maxWeight: Number(maxWeight) || 0,
-          maxPrice: Number(maxPrice) || 0,
+          maxWeight: customProfile.weight,
+          maxPrice: customProfile.price,
           magazineCapacity,
           includeLaser,
           includeFlashlight,
@@ -1989,9 +1996,6 @@ function Configurator() {
           <div className="segmented segmented--goals">
             {[
               { value: 'meta', label: 'Meta (Top)' },
-              { value: 'max_ergo', label: 'Max Ergo' },
-              { value: 'min_recoil', label: 'Min Recoil' },
-              { value: 'budget', label: 'Budget' },
               { value: 'custom', label: 'Custom' }
             ].map(option => (
               <button
@@ -2006,28 +2010,19 @@ function Configurator() {
           </div>
         </section>
 
-        {targetType === 'custom' && (
-          <section className="config__section" style={{ paddingBottom: '8px' }}>
-            <div className="input-grid">
-              <div>
-                <label className="field-label">Min Ergonomics</label>
-                <input 
-                  type="number" 
-                  value={customErgo} 
-                  onChange={e => setCustomErgo(e.target.value)} 
-                />
-              </div>
-              <div>
-                <label className="field-label">Max Recoil</label>
-                <input 
-                  type="number" 
-                  value={customRecoil} 
-                  onChange={e => setCustomRecoil(e.target.value)} 
-                />
-              </div>
-            </div>
-          </section>
-        )}
+        <div
+          className={`custom-radar-collapse ${targetType === 'custom' ? 'is-open' : ''}`}
+          aria-hidden={targetType !== 'custom'}
+          inert={targetType !== 'custom'}
+        >
+          <div className="custom-radar-collapse__inner">
+            <CustomBuildRadar
+              profile={customProfile}
+              weapon={weapon}
+              onChange={setCustomProfile}
+            />
+          </div>
+        </div>
 
         <section className="config__section">
           <label className="field-label">Suppressor Mode</label>
@@ -2076,7 +2071,7 @@ function Configurator() {
           </div>
         </section>
 
-        <section className="config__section">
+        {targetType !== 'custom' && <section className="config__section">
           <div className="input-grid">
             <div>
               <label className="field-label" htmlFor="maxWeight">Max Weight (kg)</label>
@@ -2085,9 +2080,13 @@ function Configurator() {
                 type="number" 
                 placeholder="No limit" 
                 min="0" 
-                step="0.01"
+                max={WEAPON_STAT_UI_RANGES.weight.max}
+                step="0.05"
                 value={maxWeight}
-                onChange={e => setMaxWeight(e.target.value)}
+                onChange={e => setCustomProfile(current => normalizeCustomBuildProfile({
+                  ...current,
+                  weight: e.target.value === '' ? 0 : Number(e.target.value),
+                }, weapon))}
               />
             </div>
             <div>
@@ -2097,13 +2096,17 @@ function Configurator() {
                 type="number" 
                 placeholder="No limit" 
                 min="0" 
+                max={WEAPON_STAT_UI_RANGES.price.max}
                 step="1000"
                 value={maxPrice}
-                onChange={e => setMaxPrice(e.target.value)}
+                onChange={e => setCustomProfile(current => normalizeCustomBuildProfile({
+                  ...current,
+                  price: e.target.value === '' ? 0 : Number(e.target.value),
+                }, weapon))}
               />
             </div>
           </div>
-        </section>
+        </section>}
 
         <section className="config__section">
           <label className="field-label">Magazine Capacity (rounds)</label>

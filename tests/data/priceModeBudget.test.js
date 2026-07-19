@@ -13,6 +13,7 @@ const defaultOptions = {
   forbidSuppressor: false,
   requireSuppressor: false,
   maxWeight: 0,
+  maxPrice: 1_000_000,
 };
 
 function createSlot(name, allowedItemIds) {
@@ -33,6 +34,10 @@ function createWeapon(scenario) {
     weight: 1,
     avg24hPrice: 0,
     basePrice: 0,
+    price: {
+      value: 1_000,
+      mode: scenario.priceMode,
+    },
     categories: [{ name: 'Weapon' }],
     conflictingItems: [],
     properties: {
@@ -56,7 +61,7 @@ function createMod(fixture) {
     basePrice: fixture.basePrice ?? fixture.rawPrice,
     categories: [{ name: 'Test Mod' }],
     accuracyModifier: 0,
-    recoilModifier: 0,
+    recoilModifier: -1,
     ergonomicsModifier: 0,
     conflictingItems: [],
     properties: { slots: [] },
@@ -100,7 +105,7 @@ function calculateBudgetScenario(scenario) {
 
   const result = calculateBestBuild(
     weapon,
-    'budget',
+    'meta',
     70,
     50,
     createModMap(mods),
@@ -113,7 +118,7 @@ function calculateBudgetScenario(scenario) {
   return { weapon, result };
 }
 
-test('budget scoring uses PvP normalized prices for selected price mode', () => {
+test('price-constrained Meta uses PvP normalized prices for selected price mode', () => {
   const scenario = budgetScenarios.pvp;
   const { weapon, result } = calculateBudgetScenario(scenario);
 
@@ -123,7 +128,7 @@ test('budget scoring uses PvP normalized prices for selected price mode', () => 
   assertStatsPriceMatchesParts(weapon, result, scenario.priceMode);
 });
 
-test('budget scoring uses PvE normalized prices for selected price mode', () => {
+test('price-constrained Meta uses PvE normalized prices for selected price mode', () => {
   const scenario = budgetScenarios.pve;
   const { weapon, result } = calculateBudgetScenario(scenario);
 
@@ -133,7 +138,7 @@ test('budget scoring uses PvE normalized prices for selected price mode', () => 
   assertStatsPriceMatchesParts(weapon, result, scenario.priceMode);
 });
 
-test('budget scoring ignores normalized price from a different price mode', () => {
+test('price-constrained Meta ignores normalized price from a different price mode', () => {
   const scenario = budgetScenarios.wrongMode;
   const { weapon, result } = calculateBudgetScenario(scenario);
 
@@ -143,7 +148,7 @@ test('budget scoring ignores normalized price from a different price mode', () =
   assertStatsPriceMatchesParts(weapon, result, scenario.priceMode);
 });
 
-test('missing selected price does not break budget build generation', () => {
+test('missing selected price safely falls back in price-constrained Meta', () => {
   const scenario = budgetScenarios.missingPrice;
   const { weapon, result } = calculateBudgetScenario(scenario);
 
@@ -158,9 +163,9 @@ test('mixed high-confidence fallback and missing prices remain valid calculator 
 
   assert.equal(result.error, undefined);
 
-  for (const itemId of scenario.expectedItemIds) {
-    assertInstalled(result, itemId);
-  }
+  assertInstalled(result, scenario.expectedItemIds[0]);
+  assertInstalled(result, scenario.expectedItemIds[1]);
+  assertNotInstalled(result, scenario.expectedItemIds[2]);
 
   assertStatsPriceMatchesParts(weapon, result, scenario.priceMode);
 });

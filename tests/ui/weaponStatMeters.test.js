@@ -81,4 +81,9 @@ test('uses explicit stable visualization ranges for every weapon stat', () => {
     max: 600,
     direction: 'lower-is-better',
   });
+  assert.deepEqual(WEAPON_STAT_UI_RANGES.price, {
+    min: 0,
+    max: 1_000_000,
+    direction: 'lower-is-better',
+  });
 });
