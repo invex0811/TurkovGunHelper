@@ -54,6 +54,26 @@ function itemWithOffers(...buyFor) {
   }, PRICE_MODES.PVP);
 }
 
+function barter({
+  traderName = 'Mechanic',
+  traderLevel = 4,
+  taskUnlock = null,
+  rewardCount = 1,
+  requiredItems = [],
+} = {}) {
+  return {
+    id: `barter-${traderName}`,
+    level: traderLevel,
+    taskUnlock,
+    trader: {
+      name: traderName,
+      normalizedName: traderName.toLowerCase(),
+    },
+    requiredItems,
+    rewardItems: [{ count: rewardCount, item: { id: 'item-1' } }],
+  };
+}
+
 test('selects a cheaper trader and preserves trader name and loyalty level', () => {
   const item = itemWithOffers(flea(50_000), trader(32_000));
   const price = selectPurchasePrice(item, {
@@ -158,6 +178,82 @@ test('uses trader-only price when enabled and returns missing when disabled', ()
   assert.equal(fleaOnly.value, null);
   assert.equal(fleaOnly.sourceType, PRICE_SOURCE_TYPE.MISSING);
   assert.equal(fleaOnly.confidence, PRICE_CONFIDENCE.MISSING);
+});
+
+test('prices a trader-only barter from its required items', () => {
+  const item = normalizeItemPriceFields({
+    id: 'item-1',
+    name: 'Barter-only scope',
+    buyFor: [],
+    bartersFor: [barter({
+      requiredItems: [
+        { count: 4, item: { id: 'a', buyFor: [flea(50_000)] } },
+        { count: 2, item: { id: 'b', buyFor: [flea(40_000), trader(30_000)] } },
+      ],
+    })],
+  }, PRICE_MODES.PVP);
+
+  const price = selectPurchasePrice(item, {
+    includeTraderPrices: true,
+    priceMode: PRICE_MODES.PVP,
+  });
+
+  assert.equal(price.value, 260_000);
+  assert.equal(price.sourceType, PRICE_SOURCE_TYPE.TRADER);
+  assert.equal(price.vendorName, 'Mechanic');
+  assert.equal(price.traderLevel, 4);
+  assert.equal(price.field, 'bartersFor');
+  assert.equal(price.isBarter, true);
+  assert.equal(price.barterOnly, true);
+  assert.equal(price.requiredItems.length, 2);
+
+  const fleaOnly = selectPurchasePrice(item, {
+    includeTraderPrices: false,
+    priceMode: PRICE_MODES.PVP,
+  });
+  assert.equal(fleaOnly.value, null);
+  assert.equal(fleaOnly.barterOnly, false);
+});
+
+test('selects the cheapest valid barter and accounts for reward quantity', () => {
+  const item = normalizeItemPriceFields({
+    id: 'item-1',
+    buyFor: [],
+    bartersFor: [
+      barter({ traderName: 'Skier', requiredItems: [
+        { count: 5, item: { id: 'clock', buyFor: [flea(100_000)] } },
+      ] }),
+      barter({ rewardCount: 2, requiredItems: [
+        { count: 3, item: { id: 'filter', buyFor: [flea(120_000)] } },
+      ] }),
+    ],
+  }, PRICE_MODES.PVP);
+
+  const price = selectPurchasePrice(item, {
+    includeTraderPrices: true,
+    priceMode: PRICE_MODES.PVP,
+  });
+
+  assert.equal(price.value, 180_000);
+  assert.equal(price.vendorName, 'Mechanic');
+});
+
+test('ignores a barter when any required item has no purchase price', () => {
+  const item = normalizeItemPriceFields({
+    id: 'item-1',
+    buyFor: [],
+    bartersFor: [barter({
+      requiredItems: [{ count: 1, item: { id: 'missing', buyFor: [] } }],
+    })],
+  }, PRICE_MODES.PVP);
+
+  const price = selectPurchasePrice(item, {
+    includeTraderPrices: true,
+    priceMode: PRICE_MODES.PVP,
+  });
+
+  assert.equal(price.value, null);
+  assert.equal(price.sourceType, PRICE_SOURCE_TYPE.MISSING);
 });
 
 test('ignores invalid trader offers', () => {

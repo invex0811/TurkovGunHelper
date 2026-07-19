@@ -49,6 +49,47 @@ export const GET_ALL_MODS_QUERY = `
           }
         }
       }
+      bartersFor {
+        id
+        level
+        buyLimit
+        taskUnlock { id }
+        trader {
+          name
+          normalizedName
+        }
+        requiredItems {
+          count
+          item {
+            id
+            name
+            shortName
+            updated
+            avg24hPrice
+            lastLowPrice
+            low24hPrice
+            buyFor {
+              price
+              priceRUB
+              currency
+              vendor {
+                __typename
+                name
+                normalizedName
+                ... on TraderOffer {
+                  minTraderLevel
+                  buyLimit
+                  taskUnlock { id }
+                }
+              }
+            }
+          }
+        }
+        rewardItems {
+          count
+          item { id }
+        }
+      }
       categories { name }
       accuracyModifier
       recoilModifier
@@ -133,6 +174,47 @@ export const GET_WEAPON_DETAILS_QUERY = `
             buyLimit
             taskUnlock { id }
           }
+        }
+      }
+      bartersFor {
+        id
+        level
+        buyLimit
+        taskUnlock { id }
+        trader {
+          name
+          normalizedName
+        }
+        requiredItems {
+          count
+          item {
+            id
+            name
+            shortName
+            updated
+            avg24hPrice
+            lastLowPrice
+            low24hPrice
+            buyFor {
+              price
+              priceRUB
+              currency
+              vendor {
+                __typename
+                name
+                normalizedName
+                ... on TraderOffer {
+                  minTraderLevel
+                  buyLimit
+                  taskUnlock { id }
+                }
+              }
+            }
+          }
+        }
+        rewardItems {
+          count
+          item { id }
         }
       }
       categories { name }

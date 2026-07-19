@@ -102,7 +102,7 @@ function createLegacyFleaOffer(item) {
   };
 }
 
-export function normalizePurchaseOffers(item, mode = DEFAULT_PRICE_MODE) {
+function getDirectPurchaseOffers(item) {
   const normalizedOffers = (item?.buyFor || [])
     .map(normalizeBuyOffer)
     .filter(Boolean);
@@ -116,9 +116,87 @@ export function normalizePurchaseOffers(item, mode = DEFAULT_PRICE_MODE) {
   ));
 
   return {
-    mode,
     fleaMarket,
     traderOffers,
+  };
+}
+
+function selectCheapestOffer(offers) {
+  return offers
+    .filter(offer => isPositiveNumber(offer?.value))
+    .reduce((selected, offer) => (
+      !selected || offer.value < selected.value ? offer : selected
+    ), null);
+}
+
+function normalizeBarterOffer(item, barter) {
+  if (!barter?.trader || !Array.isArray(barter.requiredItems) || barter.requiredItems.length === 0) {
+    return null;
+  }
+
+  let totalValue = 0;
+  const requiredItems = [];
+
+  for (const requirement of barter.requiredItems) {
+    const count = Number(requirement?.count);
+    if (!isPositiveNumber(count) || !requirement?.item) return null;
+
+    const directOffers = getDirectPurchaseOffers(requirement.item);
+    const selectedPrice = selectCheapestOffer([
+      directOffers.fleaMarket,
+      ...directOffers.traderOffers,
+    ]);
+    if (!selectedPrice) return null;
+
+    totalValue += selectedPrice.value * count;
+    requiredItems.push({
+      count,
+      item: requirement.item,
+      priceInfo: selectedPrice,
+    });
+  }
+
+  const rewardCount = Number(
+    (barter.rewardItems || []).find(reward => reward?.item?.id === item?.id)?.count ?? 1,
+  );
+  const normalizedRewardCount = isPositiveNumber(rewardCount) ? rewardCount : 1;
+
+  return {
+    value: totalValue / normalizedRewardCount,
+    currency: PRICE_CURRENCY.RUB,
+    sourceType: PRICE_SOURCE_TYPE.TRADER,
+    vendorName: barter.trader.name ?? null,
+    vendorNormalizedName: barter.trader.normalizedName ?? null,
+    traderLevel: isPositiveNumber(barter.level) ? barter.level : null,
+    questRequired: Boolean(barter.taskUnlock),
+    originalCurrency: null,
+    originalPrice: null,
+    field: 'bartersFor',
+    fallbackUsed: false,
+    confidence: PRICE_CONFIDENCE.HIGH,
+    isBarter: true,
+    requiredItems,
+    offer: barter,
+  };
+}
+
+export function normalizePurchaseOffers(item, mode = DEFAULT_PRICE_MODE) {
+  const directOffers = getDirectPurchaseOffers(item);
+  const hasDirectOffer = Boolean(
+    directOffers.fleaMarket || directOffers.traderOffers.length > 0,
+  );
+  const barterOffers = (item?.bartersFor || [])
+    .map(barter => normalizeBarterOffer(item, barter))
+    .filter(Boolean)
+    .map(offer => ({
+      ...offer,
+      barterOnly: !hasDirectOffer,
+    }));
+
+  return {
+    mode,
+    fleaMarket: directOffers.fleaMarket,
+    traderOffers: [...directOffers.traderOffers, ...barterOffers],
   };
 }
 
@@ -138,6 +216,8 @@ function createMissingPrice(mode, item, offers = null) {
     fallbackUsed: false,
     updatedAt: item?.updated ?? null,
     confidence: PRICE_CONFIDENCE.MISSING,
+    isBarter: false,
+    barterOnly: false,
     offers,
   };
 }
@@ -168,6 +248,8 @@ export function selectPurchasePrice(item, options = {}) {
         field: item.price.field ?? null,
         fallbackUsed: Boolean(item.price.fallbackUsed),
         confidence: item.price.confidence ?? PRICE_CONFIDENCE.HIGH,
+        isBarter: Boolean(item.price.isBarter),
+        barterOnly: Boolean(item.price.barterOnly),
         offer: item.price.offer ?? null,
       };
 
@@ -189,11 +271,7 @@ export function selectPurchasePrice(item, options = {}) {
   const candidates = [offers.fleaMarket];
   if (includeTraderPrices) candidates.push(...offers.traderOffers);
 
-  const selectedOffer = candidates
-    .filter(offer => isPositiveNumber(offer?.value))
-    .reduce((selected, offer) => (
-      !selected || offer.value < selected.value ? offer : selected
-    ), null);
+  const selectedOffer = selectCheapestOffer(candidates);
 
   if (!selectedOffer) return createMissingPrice(mode, item, offers);
 
@@ -212,6 +290,9 @@ export function selectPurchasePrice(item, options = {}) {
     fallbackUsed: Boolean(selectedOffer.fallbackUsed),
     updatedAt: item?.updated ?? null,
     confidence: selectedOffer.confidence ?? PRICE_CONFIDENCE.HIGH,
+    isBarter: Boolean(selectedOffer.isBarter),
+    barterOnly: Boolean(selectedOffer.barterOnly),
+    requiredItems: selectedOffer.requiredItems ?? null,
     offers,
   };
 }

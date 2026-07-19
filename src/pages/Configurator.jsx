@@ -799,6 +799,7 @@ function formatPriceSource(priceInfo) {
   return [
     priceInfo.vendorName || 'Trader',
     level,
+    priceInfo.barterOnly ? 'Barter only' : priceInfo.isBarter ? 'Barter' : null,
     priceInfo.questRequired ? 'Quest required' : null,
   ].filter(Boolean).join(' · ');
 }
@@ -877,6 +878,7 @@ function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode, in
   ));
   const missingEntries = entries.filter(entry => entry.priceInfo.isMissing);
   const modeMismatchEntries = entries.filter(entry => entry.priceInfo.modeMismatch);
+  const barterOnlyEntries = entries.filter(entry => entry.priceInfo.barterOnly);
   const sourceLabels = Array.from(new Set(
     entries
       .filter(entry => !entry.priceInfo.isMissing)
@@ -904,6 +906,12 @@ function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode, in
     );
   }
 
+  if (barterOnlyEntries.length > 0) {
+    warningMessages.push(
+      `Trader-only barter prices: ${formatDiagnosticsList(barterOnlyEntries)}.`,
+    );
+  }
+
   if (sourceLabels.length > 1) {
     warningMessages.push(`Mixed price sources: ${sourceLabels.join(', ')}.`);
   }
@@ -916,6 +924,7 @@ function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode, in
     fallbackEntries,
     missingEntries,
     modeMismatchEntries,
+    barterOnlyEntries,
     sourceLabels,
     warningMessages,
     summaryLabel: `${modeLabel} · ${sourceLabel} · ${getPriceSummaryStatus({
@@ -2248,8 +2257,10 @@ function Configurator() {
               {selectedRequiredModules.length === 0 ? (
                 <div className="required-modules__empty">No required modules selected.</div>
               ) : (
-                selectedRequiredModules.map(item => (
-                  <div key={item.id} className="required-module">
+                selectedRequiredModules.map(item => {
+                  const priceInfo = getSelectedPriceInfo(item, priceMode, includeTraderPrices);
+
+                  return <div key={item.id} className="required-module">
                     <div className="required-module__media">
                       <ImageWithLoader
                         src={item.image512pxLink || item.iconLink || 'https://via.placeholder.com/48'}
@@ -2260,7 +2271,8 @@ function Configurator() {
                     </div>
                     <div className="required-module__body">
                       <strong>{formatPartName(item.shortName || item.name)}</strong>
-                      <span>{getModuleCategoryLabel(item)}</span>
+                      <span>{getModuleCategoryLabel(item)} · {formatCurrency(priceInfo.value, priceInfo.currency)}</span>
+                      <PriceSource priceInfo={priceInfo} />
                     </div>
                     <button
                       className="required-module__remove"
@@ -2270,8 +2282,8 @@ function Configurator() {
                     >
                       Remove
                     </button>
-                  </div>
-                ))
+                  </div>;
+                })
               )}
             </div>
           </section>

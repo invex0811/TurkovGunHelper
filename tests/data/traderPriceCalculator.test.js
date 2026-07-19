@@ -149,3 +149,48 @@ test('missing prices are not treated as zero or basePrice by the optimizer or to
   });
   assert.equal(missingTotal.stats.price, null);
 });
+
+test('required barter-only modules remain installable when trader prices are enabled', () => {
+  const barterMod = normalizeItemPriceFields({
+    id: 'barter-mod',
+    name: 'Barter module',
+    shortName: 'Barter',
+    weight: 0.1,
+    ergonomicsModifier: 10,
+    recoilModifier: 0,
+    conflictingItems: [],
+    categories: [{ name: 'Test Mod' }],
+    properties: { slots: [] },
+    buyFor: [],
+    bartersFor: [{
+      id: 'barter-1',
+      level: 4,
+      trader: { name: 'Mechanic', normalizedName: 'mechanic' },
+      taskUnlock: { id: 'task-1' },
+      requiredItems: [{
+        count: 2,
+        item: { id: 'ingredient', buyFor: [flea(12_000)] },
+      }],
+      rewardItems: [{ count: 1, item: { id: 'barter-mod' } }],
+    }],
+  }, PRICE_MODES.PVP);
+  const weapon = createWeapon([barterMod.id]);
+
+  const result = calculateBestBuild(
+    weapon,
+    'meta',
+    0,
+    0,
+    { [barterMod.id]: barterMod },
+    {
+      priceMode: PRICE_MODES.PVP,
+      includeTraderPrices: true,
+      maxPrice: 30_000,
+      requiredItemIds: [barterMod.id],
+    },
+  );
+
+  assert.equal(result.error, undefined);
+  assert.deepEqual(result.build.map(part => part.item.id), ['barter-mod']);
+  assert.equal(result.stats.price, 29_000);
+});
