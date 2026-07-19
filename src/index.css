@@ -1017,6 +1017,272 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   padding: 18px;
 }
 
+.weapon-diagram-trigger {
+  padding: 0 18px 18px;
+}
+
+.weapon-diagram-trigger .btn {
+  width: 100%;
+}
+
+.weapon-diagram-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(3, 5, 4, .86);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+}
+
+.weapon-diagram-modal__dialog {
+  display: flex;
+  width: min(94vw, 1600px);
+  height: min(92vh, 960px);
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--panel-border-active);
+  border-radius: var(--radius-md);
+  background: rgba(15, 19, 17, .99);
+  box-shadow: 0 32px 90px rgba(0, 0, 0, .68);
+}
+
+.weapon-diagram-modal__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 18px;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--panel-border);
+  background: rgba(20, 25, 22, .98);
+}
+
+.weapon-diagram-modal__head > div:first-child {
+  min-width: 0;
+}
+
+.weapon-diagram-modal__head span {
+  color: var(--muted);
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.weapon-diagram-modal__head h2 {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.weapon-diagram-modal__summary {
+  display: grid;
+  text-align: right;
+}
+
+.weapon-diagram-modal__summary strong {
+  color: var(--gold);
+  font-family: var(--font-mono);
+  font-size: .82rem;
+}
+
+.weapon-diagram-modal__close {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  color: var(--text);
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.weapon-diagram {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.weapon-diagram__toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(199, 192, 154, .1);
+  background: rgba(10, 13, 11, .78);
+}
+
+.weapon-diagram__toolbar .btn {
+  min-width: 34px;
+  padding: 7px 10px;
+}
+
+.weapon-diagram__toolbar .weapon-diagram__text-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.weapon-diagram__text-control svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.weapon-diagram__toolbar > span {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: .68rem;
+  text-transform: none;
+}
+
+.weapon-diagram__viewport {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  background-color: #0a0d0b;
+  background-image:
+    linear-gradient(rgba(199, 192, 154, .035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(199, 192, 154, .035) 1px, transparent 1px);
+  background-size: 28px 28px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.weapon-diagram__viewport:active,
+.weapon-diagram__viewport.is-panning {
+  cursor: grabbing;
+}
+
+.weapon-diagram__canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.weapon-diagram__edges {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.weapon-diagram__edges path {
+  fill: none;
+  stroke: rgba(199, 192, 154, .46);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.weapon-diagram__edges path.is-unresolved {
+  stroke: rgba(216, 113, 61, .7);
+  stroke-dasharray: 5 5;
+}
+
+.weapon-diagram-node {
+  position: absolute;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(199, 192, 154, .24);
+  border-radius: 7px;
+  background: rgba(20, 25, 22, .98);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .34);
+  padding: 9px;
+  box-sizing: border-box;
+}
+
+.weapon-diagram-node--weapon {
+  border: 2px solid rgba(216, 205, 143, .82);
+  background: rgba(40, 41, 30, .98);
+  box-shadow: 0 0 0 3px rgba(216, 205, 143, .08), 0 14px 34px rgba(0, 0, 0, .46);
+}
+
+.weapon-diagram-node.is-critical {
+  border: 2px solid #c96a39;
+  box-shadow: 0 0 0 2px rgba(201, 106, 57, .1), 0 12px 28px rgba(0, 0, 0, .4);
+}
+
+.weapon-diagram-node.is-unresolved {
+  border-style: dashed;
+  border-color: rgba(216, 113, 61, .78);
+}
+
+.weapon-diagram-node__media {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(199, 192, 154, .13);
+  border-radius: 5px;
+  background: #0d100e;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: .7rem;
+  font-weight: 800;
+}
+
+.weapon-diagram-node__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.weapon-diagram-node__body {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.weapon-diagram-node__body strong,
+.weapon-diagram-node__body span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weapon-diagram-node__body strong {
+  color: var(--text);
+  font-size: .78rem;
+}
+
+.weapon-diagram-node__body span {
+  color: var(--muted);
+  font-size: .62rem;
+}
+
+.weapon-diagram-node__body em {
+  width: fit-content;
+  border: 1px solid rgba(213, 116, 67, .46);
+  border-radius: 999px;
+  background: rgba(201, 105, 57, .1);
+  color: #dd9366;
+  padding: 1px 5px;
+  font-size: .52rem;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
 .price-box {
   display: flex;
   justify-content: space-between;
@@ -1557,6 +1823,30 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
 
   .stat-row {
     grid-template-columns: 96px 1fr 52px;
+  }
+
+  .weapon-diagram-modal {
+    padding: 6px;
+  }
+
+  .weapon-diagram-modal__dialog {
+    width: calc(100vw - 12px);
+    height: calc(100vh - 12px);
+  }
+
+  .weapon-diagram-modal__head {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .weapon-diagram-modal__summary {
+    display: none;
+  }
+
+  .weapon-diagram__toolbar > span {
+    flex-basis: 100%;
+    margin-left: 0;
   }
 }
 

@@ -28,11 +28,13 @@ import {
   saveBuildSnapshot,
 } from '../data/savedBuilds.js';
 import { recalculateBuildStats } from '../domain/calculator.js';
+import { buildWeaponAssemblyTree as buildAssemblyTree } from '../domain/weaponAssembly.js';
 import {
   DEFAULT_CUSTOM_EXACT_TARGETS,
   normalizeCustomExactTargets,
 } from '../domain/customExactTargets.js';
 import CustomBuildRadar from '../ui/CustomBuildRadar.jsx';
+import WeaponBuildDiagramModal from '../ui/WeaponBuildDiagramModal.jsx';
 import {
   CUSTOM_BUILD_DEFAULT_PROFILE,
   createCustomBuildProfileFromSettings,
@@ -134,63 +136,6 @@ function ImageWithLoaderContent({ src, alt, style, containerStyle }) {
       )}
     </div>
   );
-}
-
-function buildAssemblyTree(weapon, buildParts) {
-  const root = {
-    item: weapon,
-    buildPart: null,
-    sourceSlot: null,
-    slotName: 'Root',
-    children: [],
-    parent: null
-  };
-
-  const queue = [root];
-  let queueIndex = 0;
-  const remainingParts = [...buildParts];
-
-  while (queueIndex < queue.length) {
-    const currentNode = queue[queueIndex];
-    queueIndex += 1;
-    const slots = currentNode.item.properties?.slots || [];
-
-    slots.forEach(slot => {
-      const allowedIds = new Set((slot.filters?.allowedItems || []).map(a => a.id));
-      
-      const partIdx = remainingParts.findIndex(part => {
-        if (part.slotName !== slot.name || !allowedIds.has(part.item.id)) {
-          return false;
-        }
-        // Prefer attaching to a more specific parent if one is present in remainingParts
-        const hasAlternativeParent = remainingParts.some(otherPart => {
-          if (otherPart === part) return false;
-          const otherSlots = otherPart.item.properties?.slots || [];
-          return otherSlots.some(s => 
-            s.name === part.slotName && 
-            (s.filters?.allowedItems || []).some(a => a.id === part.item.id)
-          );
-        });
-        return !hasAlternativeParent;
-      });
-
-      if (partIdx !== -1) {
-        const [part] = remainingParts.splice(partIdx, 1);
-        const childNode = {
-          item: part.item,
-          buildPart: part,
-          sourceSlot: slot,
-          slotName: slot.name,
-          children: [],
-          parent: currentNode
-        };
-        currentNode.children.push(childNode);
-        queue.push(childNode);
-      }
-    });
-  }
-
-  return root;
 }
 
 function getBuildModuleDisplayItems(weapon, buildParts) {
@@ -1395,6 +1340,7 @@ function Configurator() {
   const [generating, setGenerating] = useState(false);
   const [includeLaser, setIncludeLaser] = useState(false);
   const [includeFlashlight, setIncludeFlashlight] = useState(false);
+  const [isBuildDiagramOpen, setIsBuildDiagramOpen] = useState(false);
   const [sightMode, setSightMode] = useState('any');
   const [isSightSelectOpen, setIsSightSelectOpen] = useState(false);
   const [partsFilter, setPartsFilter] = useState('');
@@ -2432,6 +2378,16 @@ function Configurator() {
               ))}
             </div>
 
+            <div className="weapon-diagram-trigger">
+              <button
+                className="btn btn--ghost"
+                type="button"
+                onClick={() => setIsBuildDiagramOpen(true)}
+              >
+                Схема сборки
+              </button>
+            </div>
+
             <div className="weapon__actions">
               <div className="price-box">
                 <span className="price-title">Est. Build Price</span>
@@ -2621,6 +2577,14 @@ function Configurator() {
           </section>
         </div>
       </main>
+
+      {isBuildDiagramOpen && (
+        <WeaponBuildDiagramModal
+          weapon={weapon}
+          buildParts={canShowBuildDetails ? buildResult.build : []}
+          onClose={() => setIsBuildDiagramOpen(false)}
+        />
+      )}
 
       {/* Оверлей бокового слайдера (Drawer) для замены деталей */}
       {replacementContext && (() => {
