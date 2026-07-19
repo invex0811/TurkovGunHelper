@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildWeaponDiagramGraph,
+  classifyWeaponDiagramNode,
   getOrthogonalEdgePath,
   layoutWeaponDiagramGraph,
 } from '../../src/ui/weaponBuildDiagram.js';
@@ -172,23 +173,138 @@ test('removes a module from the graph after it is removed from the build', () =>
   assert.equal(withoutModule.nodes.some(node => node.itemId === 'removable'), false);
 });
 
-test('lays out nodes without overlap and creates orthogonal edge paths', () => {
-  const childA = createItem('child-a');
-  const childB = createItem('child-b');
-  const weapon = createWeapon([
-    createSlot('A', ['child-a']),
-    createSlot('B', ['child-b']),
-  ]);
-  const graph = buildWeaponDiagramGraph(weapon, [
-    install('A', childA),
-    install('B', childB),
-  ]);
-  const layout = layoutWeaponDiagramGraph(graph);
-  const [firstChild, secondChild] = layout.nodes.slice(1);
-  const path = getOrthogonalEdgePath(layout.nodes[0], firstChild);
+function semanticNode(id, category, parentId = 'weapon', slotName = category) {
+  return {
+    id,
+    itemId: id,
+    parentId,
+    nodeType: id === 'weapon' ? 'weapon' : 'module',
+    category,
+    slotName,
+    slotId: slotName,
+  };
+}
 
-  assert.ok(firstChild.position.y + firstChild.height <= secondChild.position.y);
-  assert.match(path, /^M .* H .* V .* H /);
+function semanticGraph() {
+  const nodes = [
+    semanticNode('weapon', 'Assault rifle', null),
+    semanticNode('receiver', 'Receiver'),
+    semanticNode('barrel', 'Barrel', 'receiver'),
+    semanticNode('muzzle', 'Muzzle device', 'barrel'),
+    semanticNode('gas', 'Gas block', 'barrel'),
+    semanticNode('handguard', 'Handguard', 'receiver'),
+    semanticNode('buffer', 'Buffer tube'),
+    semanticNode('stock', 'Stock', 'buffer'),
+    semanticNode('optic', 'Scope', 'receiver'),
+    semanticNode('magazine', 'Magazine', 'receiver'),
+    semanticNode('foregrip', 'Foregrip', 'handguard'),
+    semanticNode('flashlight', 'Tactical device', 'handguard'),
+  ];
+  return {
+    nodes,
+    edges: nodes.slice(1).map(node => ({
+      id: `${node.parentId}-${node.id}`,
+      source: node.parentId,
+      target: node.id,
+    })),
+  };
+}
+
+function assertNoNodeOverlaps(nodes) {
+  nodes.forEach((first, firstIndex) => {
+    nodes.slice(firstIndex + 1).forEach(second => {
+      const separated = first.position.x + first.width <= second.position.x
+        || second.position.x + second.width <= first.position.x
+        || first.position.y + first.height <= second.position.y
+        || second.position.y + second.height <= first.position.y;
+      assert.equal(separated, true, `${first.id} overlaps ${second.id}`);
+    });
+  });
+}
+
+test('classifies structural, upper, and lower modules from slot/category semantics', () => {
+  assert.equal(classifyWeaponDiagramNode(semanticNode('barrel', 'Barrel')).backbone, 'front');
+  assert.equal(classifyWeaponDiagramNode(semanticNode('receiver', 'Receiver')).backbone, 'center');
+  assert.equal(classifyWeaponDiagramNode(semanticNode('stock', 'Stock')).backbone, 'rear');
+  assert.equal(classifyWeaponDiagramNode(semanticNode('optic', 'Scope')).direction, 'top');
+  assert.equal(classifyWeaponDiagramNode(semanticNode('magazine', 'Magazine')).direction, 'bottom');
+});
+
+test('lays the weapon backbone horizontally from muzzle to stock around the centered weapon', () => {
+  const layout = layoutWeaponDiagramGraph(semanticGraph());
+  const byId = new Map(layout.nodes.map(node => [node.id, node]));
+  const backboneIds = ['muzzle', 'barrel', 'gas', 'handguard', 'receiver', 'weapon', 'buffer', 'stock'];
+  const backbone = backboneIds.map(id => byId.get(id));
+
+  assert.equal(new Set(backbone.map(node => node.position.y)).size, 1);
+  backbone.slice(1).forEach((node, index) => {
+    assert.ok(backbone[index].position.x < node.position.x);
+  });
+  assert.equal(byId.get('receiver').layoutZone, 'backbone-center');
+  assert.equal(byId.get('muzzle').layoutZone, 'backbone-front');
+  assert.equal(byId.get('stock').layoutZone, 'backbone-rear');
+  assert.equal(byId.get('weapon').position.x + byId.get('weapon').width / 2, layout.width / 2);
+});
+
+test('keeps parent-to-child order for consecutive rear modules with the same category', () => {
+  const graph = {
+    nodes: [
+      semanticNode('weapon', 'Submachine gun', null),
+      semanticNode('rear-adapter', 'Stock'),
+      semanticNode('buttstock', 'Stock', 'rear-adapter'),
+    ],
+    edges: [
+      { id: 'weapon-rear-adapter', source: 'weapon', target: 'rear-adapter' },
+      { id: 'rear-adapter-buttstock', source: 'rear-adapter', target: 'buttstock' },
+    ],
+  };
+  const layout = layoutWeaponDiagramGraph(graph);
+  const byId = new Map(layout.nodes.map(node => [node.id, node]));
+
+  assert.ok(byId.get('weapon').position.x < byId.get('rear-adapter').position.x);
+  assert.ok(byId.get('rear-adapter').position.x < byId.get('buttstock').position.x);
+});
+
+test('places optics above and magazines, grips, and tactical branches below their anchors', () => {
+  const layout = layoutWeaponDiagramGraph(semanticGraph());
+  const byId = new Map(layout.nodes.map(node => [node.id, node]));
+
+  assert.ok(byId.get('optic').position.y < byId.get('receiver').position.y);
+  assert.ok(byId.get('magazine').position.y > byId.get('receiver').position.y);
+  assert.ok(byId.get('foregrip').position.y > byId.get('handguard').position.y);
+  assert.ok(byId.get('flashlight').position.y > byId.get('handguard').position.y);
+  assert.equal(byId.get('optic').layoutZone, 'top');
+  assert.equal(byId.get('foregrip').layoutZone, 'front-bottom');
+  assertNoNodeOverlaps(layout.nodes);
+});
+
+test('uses a mounted subtree to choose whether an ambiguous rail belongs above or below', () => {
+  const graph = semanticGraph();
+  graph.nodes.push(
+    semanticNode('lower-mount', 'Mount', 'handguard'),
+    semanticNode('mounted-grip', 'Foregrip', 'lower-mount'),
+  );
+  graph.edges.push(
+    { id: 'handguard-lower-mount', source: 'handguard', target: 'lower-mount' },
+    { id: 'lower-mount-mounted-grip', source: 'lower-mount', target: 'mounted-grip' },
+  );
+  const layout = layoutWeaponDiagramGraph(graph);
+  const byId = new Map(layout.nodes.map(node => [node.id, node]));
+
+  assert.ok(byId.get('lower-mount').position.y > byId.get('handguard').position.y);
+  assert.ok(byId.get('mounted-grip').position.y > byId.get('lower-mount').position.y);
+  assert.equal(byId.get('lower-mount').layoutZone, 'front-bottom');
+  assertNoNodeOverlaps(layout.nodes);
+});
+
+test('creates short orthogonal routes for vertical branches and the horizontal backbone', () => {
+  const layout = layoutWeaponDiagramGraph(semanticGraph());
+  const byId = new Map(layout.nodes.map(node => [node.id, node]));
+  const verticalPath = getOrthogonalEdgePath(byId.get('receiver'), byId.get('optic'));
+  const horizontalPath = getOrthogonalEdgePath(byId.get('buffer'), byId.get('stock'));
+
+  assert.match(verticalPath, /^M .* V .* H .* V /);
+  assert.match(horizontalPath, /^M .* H /);
   assert.ok(layout.width > 0);
   assert.ok(layout.height > 0);
 });
