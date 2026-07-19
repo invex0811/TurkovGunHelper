@@ -24,6 +24,24 @@ function getExactTooltip(axis) {
   return 'Match this target within the small tolerance used for discrete module stats.';
 }
 
+function ExactLockIcon({ locked }) {
+  return (
+    <svg
+      className="custom-radar__exact-icon"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <rect x="5" y="10" width="14" height="10" rx="2" />
+      {locked ? (
+        <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+      ) : (
+        <path d="M8 10V8a4 4 0 0 1 7.5-2" />
+      )}
+      <circle cx="12" cy="15" r="1" />
+    </svg>
+  );
+}
+
 function RadarValueInput({
   axis,
   value,
@@ -84,7 +102,7 @@ function RadarValueInput({
           aria-label={`Use exact target for ${axis.label}`}
           onChange={event => onExactChange(axis.key, event.target.checked)}
         />
-        <span>Exact</span>
+        <ExactLockIcon locked={exact} />
       </label>
     </div>
   );
