@@ -495,7 +495,7 @@ a {
   min-width: 0;
   color: var(--text-muted);
   font-family: var(--font-sans);
-  font-size: .65rem;
+  font-size: .7rem;
   font-weight: 700;
   letter-spacing: .02em;
   text-transform: uppercase;
@@ -557,23 +557,25 @@ a {
   color: var(--color-gold);
 }
 
-.custom-radar__input-control input {
+.config .custom-radar__input-control input {
   padding-right: 38px;
   font-family: var(--font-mono);
+  font-size: .875rem;
   font-weight: 700;
+  line-height: 1.2;
 }
 
-.custom-radar__input-field:nth-child(4) .custom-radar__input-control input {
-  padding-right: 48px;
+.config .custom-radar__input-control.has-unit input {
+  padding-right: 64px;
 }
 
 .custom-radar__input-unit {
   position: absolute;
   top: 50%;
-  right: 10px;
+  right: 30px;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: .65rem;
+  font-size: .7rem;
   pointer-events: none;
   transform: translateY(-50%);
 }
