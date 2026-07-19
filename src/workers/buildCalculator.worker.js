@@ -38,13 +38,18 @@ self.onmessage = ({ data }) => {
   }
 
   try {
+    const customProfile = data.customProfile && typeof data.customProfile === 'object'
+      ? data.customProfile
+      : null;
     const result = calculateBestBuild(
       data.weapon,
       data.targetType,
-      data.customErgo,
-      data.customRecoil,
+      customProfile?.ergonomics ?? data.customErgo,
+      customProfile?.verticalRecoil ?? data.customRecoil,
       modMap,
       data.options,
+      customProfile,
+      data.customExactTargets,
     );
 
     if (!cancelledRequestIds.has(requestId)) {

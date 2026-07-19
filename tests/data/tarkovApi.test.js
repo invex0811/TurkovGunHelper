@@ -250,7 +250,7 @@ test('getAllMods caches independently by effective price mode', async () => {
   });
 });
 
-test('mod and weapon detail queries request monetary buyFor metadata', () => {
+test('mod and weapon detail queries request direct, barter, and required-slot metadata', () => {
   for (const query of [GET_ALL_MODS_QUERY, GET_WEAPON_DETAILS_QUERY]) {
     assert.match(query, /buyFor\s*\{/);
     assert.match(query, /priceRUB/);
@@ -259,6 +259,9 @@ test('mod and weapon detail queries request monetary buyFor metadata', () => {
     assert.match(query, /\.\.\. on TraderOffer/);
     assert.match(query, /minTraderLevel/);
     assert.match(query, /taskUnlock\s*\{\s*id\s*\}/);
-    assert.doesNotMatch(query, /bartersFor/);
+    assert.match(query, /bartersFor\s*\{/);
+    assert.match(query, /requiredItems\s*\{[\s\S]*?count[\s\S]*?buyFor\s*\{/);
+    assert.match(query, /rewardItems\s*\{[\s\S]*?count[\s\S]*?item\s*\{\s*id\s*\}/);
+    assert.match(query, /slots\s*\{[\s\S]*?nameId\s+required\s+filters/);
   }
 });

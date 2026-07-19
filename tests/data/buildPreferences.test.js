@@ -4,7 +4,10 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_INCLUDE_TRADER_PRICES,
   loadIncludeTraderPricesPreference,
+  loadTargetTypePreference,
+  normalizeTargetType,
   saveIncludeTraderPricesPreference,
+  saveTargetTypePreference,
 } from '../../src/data/settings/buildPreferences.js';
 
 function withWindow(localStorage, run) {
@@ -57,5 +60,25 @@ test('includeTraderPrices preference safely handles unavailable storage', () => 
   withWindow(localStorage, () => {
     assert.equal(loadIncludeTraderPricesPreference(), true);
     assert.doesNotThrow(() => saveIncludeTraderPricesPreference(false));
+  });
+});
+
+test('only Meta and Custom build goals remain supported', () => {
+  assert.equal(normalizeTargetType('meta'), 'meta');
+  assert.equal(normalizeTargetType('custom'), 'custom');
+  assert.equal(normalizeTargetType('max_ergo'), 'meta');
+  assert.equal(normalizeTargetType('min_recoil'), 'meta');
+  assert.equal(normalizeTargetType('budget'), 'meta');
+});
+
+test('removed stored build goals migrate to Meta', () => {
+  const storage = createStorage();
+
+  withWindow(storage, () => {
+    saveTargetTypePreference('budget');
+    assert.equal(loadTargetTypePreference(), 'meta');
+
+    saveTargetTypePreference('custom');
+    assert.equal(loadTargetTypePreference(), 'custom');
   });
 });

@@ -27,9 +27,6 @@ function formatSavedDate(value) {
 }
 
 function getGoalLabel(targetType) {
-  if (targetType === 'max_ergo') return 'Max ergonomics';
-  if (targetType === 'min_recoil') return 'Min recoil';
-  if (targetType === 'budget') return 'Budget';
   if (targetType === 'custom') return 'Custom';
   return 'Meta';
 }

@@ -5,6 +5,9 @@ export const WEAPON_STAT_UI_RANGES = Object.freeze({
   ergonomics: Object.freeze({ min: 0, max: 100, direction: 'higher-is-better' }),
   verticalRecoil: Object.freeze({ min: 0, max: 350, direction: 'lower-is-better' }),
   horizontalRecoil: Object.freeze({ min: 0, max: 600, direction: 'lower-is-better' }),
+  // Shared fixed ceiling for the radar and the numeric Max Budget fallback.
+  // It keeps the full control range useful for both budget and end-game builds.
+  price: Object.freeze({ min: 0, max: 2_000_000, direction: 'lower-is-better' }),
 });
 
 export function withBaseStatMaximum(range, baseValue) {

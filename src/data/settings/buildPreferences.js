@@ -35,7 +35,11 @@ export function savePriceModePreference(priceMode) {
 }
 
 const TARGET_TYPE_STORAGE_KEY = 'tarkovGunHelper.targetType';
-const SUPPORTED_TARGET_TYPES = ['meta', 'max_ergo', 'min_recoil', 'budget', 'custom'];
+const SUPPORTED_TARGET_TYPES = ['meta', 'custom'];
+
+export function normalizeTargetType(targetType) {
+  return SUPPORTED_TARGET_TYPES.includes(targetType) ? targetType : 'meta';
+}
 
 export function loadTargetTypePreference() {
   if (typeof window === 'undefined') {
@@ -44,7 +48,7 @@ export function loadTargetTypePreference() {
 
   try {
     const storedValue = window.localStorage.getItem(TARGET_TYPE_STORAGE_KEY);
-    return SUPPORTED_TARGET_TYPES.includes(storedValue) ? storedValue : 'meta';
+    return normalizeTargetType(storedValue);
   } catch {
     return 'meta';
   }
@@ -56,8 +60,7 @@ export function saveTargetTypePreference(targetType) {
   }
 
   try {
-    if (!SUPPORTED_TARGET_TYPES.includes(targetType)) return;
-    window.localStorage.setItem(TARGET_TYPE_STORAGE_KEY, targetType);
+    window.localStorage.setItem(TARGET_TYPE_STORAGE_KEY, normalizeTargetType(targetType));
   } catch {
     // Ignore storage errors.
   }
