@@ -23,7 +23,12 @@ function MainLayout() {
     <div className="app">
       <header className="topbar">
         <Link to="/" className="brand" aria-label="Open weapon list">
-          <img className="brand__mark" src="/tgh-logo.png" alt="" aria-hidden="true" />
+          <img
+            className="brand__mark"
+            src={`${import.meta.env.BASE_URL}tgh-logo.png`}
+            alt=""
+            aria-hidden="true"
+          />
           <div>
             <h1>Tarkov Gun Helper</h1>
             <p>Optimal Weapon Builds</p>
