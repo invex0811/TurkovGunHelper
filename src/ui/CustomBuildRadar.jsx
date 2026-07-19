@@ -74,7 +74,7 @@ function RadarValueInput({
   return (
     <div className={`custom-radar__input-field ${exact ? 'is-exact' : ''}`}>
       <span className="custom-radar__input-label">{axis.label}</span>
-      <span className={`custom-radar__input-control ${axis.unit ? 'has-unit' : ''}`}>
+      <span className={`custom-radar__input-control custom-radar__input-control--${axis.key} ${axis.unit ? 'has-unit' : ''}`}>
         <input
           type="number"
           min={axis.range.min}

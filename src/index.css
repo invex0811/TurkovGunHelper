@@ -566,13 +566,19 @@ a {
 }
 
 .config .custom-radar__input-control.has-unit input {
-  padding-right: 64px;
+  padding-right: 56px;
+}
+
+.config .custom-radar__input-control--price input {
+  padding-right: 52px;
+  padding-left: 8px;
+  font-size: .82rem;
 }
 
 .custom-radar__input-unit {
   position: absolute;
   top: 50%;
-  right: 30px;
+  right: 24px;
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: .7rem;
@@ -1162,6 +1168,27 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   margin-top: 16px;
 }
 
+.parts-list__section + .parts-list__section {
+  margin-top: 22px;
+}
+
+.parts-list__section-label {
+  margin: 18px 0 2px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(199, 192, 154, .16);
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: .7rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.parts-list__section-label--critical {
+  border-color: rgba(201, 105, 57, .3);
+  color: #d68a5b;
+}
+
 .parts-group__head {
   display: flex;
   justify-content: space-between;
@@ -1202,6 +1229,17 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   background: rgba(199, 192, 154, 0.06);
 }
 
+.part-card--critical {
+  border-left: 3px solid #c96a39;
+  padding-left: 8px;
+}
+
+.part-card--empty-critical {
+  border-color: rgba(201, 105, 57, .42);
+  border-left-color: #d8713d;
+  background: rgba(201, 105, 57, .035);
+}
+
 .part-card.is-hidden {
   display: none;
 }
@@ -1232,14 +1270,21 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  height: 70px;
+  min-height: 70px;
 }
 
 .part-card__topline {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+}
+
+.part-card__title-wrap {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  flex: 1;
 }
 
 .part-card__topline strong {
@@ -1256,6 +1301,75 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
+}
+
+.part-card__badges {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.critical-module-badge,
+.module-state-badge {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(213, 116, 67, .46);
+  border-radius: 999px;
+  background: rgba(201, 105, 57, .1);
+  color: #dd9366;
+  padding: 2px 6px;
+  font-family: var(--font-sans);
+  font-size: .61rem;
+  font-weight: 800;
+  letter-spacing: .035em;
+  line-height: 1.15;
+  text-transform: uppercase;
+  white-space: normal;
+}
+
+.critical-module-badge__icon {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+}
+
+.module-state-badge--installed {
+  border-color: rgba(92, 214, 138, .35);
+  background: rgba(92, 214, 138, .08);
+  color: #76d59a;
+}
+
+.part-card__media--warning {
+  border-color: rgba(201, 105, 57, .28);
+  background: rgba(201, 105, 57, .055);
+  color: #dc8758;
+}
+
+.part-card__warning-icon {
+  width: 30px;
+  height: 30px;
+}
+
+.part-card h4.part-card__empty-warning {
+  overflow: visible;
+  color: #e3a17c;
+  font-size: .82rem;
+  line-height: 1.25;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.part-card__slot-context {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: .68rem;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .replace-btn {
@@ -1494,6 +1608,34 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
 
   .parts-grid {
     grid-template-columns: 1fr;
+  }
+
+  .part-card {
+    grid-template-columns: 60px minmax(0, 1fr);
+    min-height: 82px;
+    padding: 8px;
+  }
+
+  .part-card--critical {
+    padding-left: 7px;
+  }
+
+  .part-card__media {
+    width: 60px;
+    height: 60px;
+  }
+
+  .part-card__body {
+    min-height: 60px;
+  }
+
+  .part-card__topline {
+    gap: 5px;
+  }
+
+  .critical-module-badge,
+  .module-state-badge {
+    padding-inline: 5px;
   }
 }
 

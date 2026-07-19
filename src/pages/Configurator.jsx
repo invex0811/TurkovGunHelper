@@ -44,6 +44,41 @@ import {
   toFiniteStatNumber,
   withBaseStatMaximum,
 } from '../ui/weaponStatMeters.js';
+import {
+  CRITICAL_MODULE_TOOLTIP,
+  getModuleDisplayRank,
+  getModuleDisplayState,
+  isCriticalSlot,
+  sortModuleDisplayItems,
+} from '../ui/criticalModules.js';
+
+function WarningIcon({ className = '' }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.8"
+      aria-hidden="true"
+    >
+      <path d="M10.3 3.7 2.4 17.4A1.8 1.8 0 0 0 4 20h16a1.8 1.8 0 0 0 1.6-2.6L13.7 3.7a2 2 0 0 0-3.4 0Z" />
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+    </svg>
+  );
+}
+
+function CriticalModuleBadge() {
+  return (
+    <span className="critical-module-badge" title={CRITICAL_MODULE_TOOLTIP}>
+      <WarningIcon className="critical-module-badge__icon" />
+      Критический
+    </span>
+  );
+}
 
 function createCancelledCalculationError() {
   const error = new Error('A newer build calculation replaced this request.');
@@ -104,6 +139,8 @@ function ImageWithLoaderContent({ src, alt, style, containerStyle }) {
 function buildAssemblyTree(weapon, buildParts) {
   const root = {
     item: weapon,
+    buildPart: null,
+    sourceSlot: null,
     slotName: 'Root',
     children: [],
     parent: null
@@ -113,7 +150,7 @@ function buildAssemblyTree(weapon, buildParts) {
   let queueIndex = 0;
   const remainingParts = [...buildParts];
 
-  while (queueIndex < queue.length && remainingParts.length > 0) {
+  while (queueIndex < queue.length) {
     const currentNode = queue[queueIndex];
     queueIndex += 1;
     const slots = currentNode.item.properties?.slots || [];
@@ -141,6 +178,8 @@ function buildAssemblyTree(weapon, buildParts) {
         const [part] = remainingParts.splice(partIdx, 1);
         const childNode = {
           item: part.item,
+          buildPart: part,
+          sourceSlot: slot,
           slotName: slot.name,
           children: [],
           parent: currentNode
@@ -152,6 +191,53 @@ function buildAssemblyTree(weapon, buildParts) {
   }
 
   return root;
+}
+
+function getBuildModuleDisplayItems(weapon, buildParts) {
+  const assemblyTree = buildAssemblyTree(weapon, buildParts);
+  const nodeByBuildPart = new Map();
+  const emptyCriticalItems = [];
+
+  function visit(parentNode) {
+    parentNode.children.forEach(childNode => {
+      if (childNode.buildPart) nodeByBuildPart.set(childNode.buildPart, childNode);
+      visit(childNode);
+    });
+
+    const slots = parentNode.item.properties?.slots || [];
+    slots.forEach((slot, slotIndex) => {
+      if (!isCriticalSlot(slot)) return;
+
+      const hasInstalledItem = parentNode.children.some(child => child.sourceSlot === slot);
+      if (hasInstalledItem) return;
+
+      emptyCriticalItems.push({
+        ...getModuleDisplayState(slot, null),
+        key: `empty:${parentNode.item.id}:${slot.id || slot.name}:${slotIndex}`,
+        item: null,
+        parentItem: parentNode.item,
+        slot,
+        slotName: slot.name,
+      });
+    });
+  }
+
+  visit(assemblyTree);
+
+  const installedItems = buildParts.map((part, originalIndex) => {
+    const node = nodeByBuildPart.get(part);
+    const slot = node?.sourceSlot || null;
+
+    return {
+      ...part,
+      ...getModuleDisplayState(slot, part.item),
+      key: `installed:${part.item.id}:${part.slotName}:${originalIndex}`,
+      parentItem: node?.parent?.item || weapon,
+      slot,
+    };
+  });
+
+  return [...installedItems, ...emptyCriticalItems];
 }
 
 function findTreeNodeByItemId(root, itemId) {
@@ -1939,21 +2025,28 @@ function Configurator() {
   const partsGroups = [];
   if (canShowBuildDetails) {
     const groupMap = new Map();
-    buildResult.build.forEach(part => {
+    getBuildModuleDisplayItems(weapon, buildResult.build).forEach(part => {
       const slotGroup = getReadableSlotGroupName(part.slotName);
-      let group = groupMap.get(slotGroup);
+      const displayRank = getModuleDisplayRank(part);
+      const groupKey = `${displayRank}:${slotGroup}`;
+      let group = groupMap.get(groupKey);
       if (!group) {
         group = {
+          displayRank,
           rootSlotName: slotGroup,
           parts: []
         };
-        groupMap.set(slotGroup, group);
+        groupMap.set(groupKey, group);
         partsGroups.push(group);
       }
       group.parts.push(part);
     });
 
     partsGroups.sort((a, b) => {
+      if (a.displayRank !== b.displayRank) {
+        return a.displayRank - b.displayRank;
+      }
+
       let indexA = GROUP_ORDER.indexOf(a.rootSlotName);
       let indexB = GROUP_ORDER.indexOf(b.rootSlotName);
       if (indexA === -1) indexA = 999;
@@ -1967,20 +2060,41 @@ function Configurator() {
 
   // Фильтрация групп деталей для рендеринга
   const renderedGroups = partsGroups.map(group => {
-    const filteredParts = group.parts.filter(part => {
+    const filteredParts = sortModuleDisplayItems(group.parts).filter(part => {
       if (!partsFilter.trim()) return true;
       const q = partsFilter.trim().toLowerCase();
-      const name = (part.item.name || '').toLowerCase();
-      const shortName = (part.item.shortName || '').toLowerCase();
+      const name = (part.item?.name || '').toLowerCase();
+      const shortName = (part.item?.shortName || '').toLowerCase();
       const slot = (part.slotName || '').toLowerCase();
+      const parentName = (part.parentItem?.name || part.parentItem?.shortName || '').toLowerCase();
       const groupName = group.rootSlotName.toLowerCase();
-      return name.includes(q) || shortName.includes(q) || slot.includes(q) || groupName.includes(q);
+      return name.includes(q)
+        || shortName.includes(q)
+        || slot.includes(q)
+        || parentName.includes(q)
+        || groupName.includes(q);
     });
     return {
       ...group,
       parts: filteredParts
     };
   }).filter(group => group.parts.length > 0);
+  const hasCriticalGroups = renderedGroups.some(group => group.displayRank < 2);
+  const hasStandardGroups = renderedGroups.some(group => group.displayRank === 2);
+  const renderedSections = hasCriticalGroups && hasStandardGroups
+    ? [
+      {
+        key: 'critical',
+        label: 'Критические модули',
+        groups: renderedGroups.filter(group => group.displayRank < 2),
+      },
+      {
+        key: 'standard',
+        label: 'Остальные модули',
+        groups: renderedGroups.filter(group => group.displayRank === 2),
+      },
+    ]
+    : [{ key: 'all', label: null, groups: renderedGroups }];
 
   return (
     <div className="layout">
@@ -2437,50 +2551,91 @@ function Configurator() {
             )}
 
             {/* Рендеринг сгруппированных деталей */}
-            {!generating && canShowBuildDetails && renderedGroups.map((group, groupIdx) => (
-              <div key={groupIdx} className="parts-group">
-                <div className="parts-group__head">
-                  <h3>{group.rootSlotName}</h3>
-                  <span>{group.parts.length} parts</span>
-                </div>
-                <div className="parts-grid">
-                  {group.parts.map(part => {
-                    const partPriceInfo = getSelectedPriceInfo(
-                      part.item,
-                      priceMode,
-                      includeTraderPrices,
-                    );
-                    
-                    return (
-                      <article key={part.item.id} className="part-card">
-                        <div className="part-card__media">
-                          <ImageWithLoader 
-                            src={part.item.image512pxLink || part.item.iconLink || 'https://via.placeholder.com/70'} 
-                            alt="" 
-                            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                            containerStyle={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0 }}
-                          />
-                        </div>
-                        <div className="part-card__body">
-                          <div className="part-card__topline">
-                            <h4>{formatPartName(part.item.shortName)}</h4>
-                            <ItemPrice priceInfo={partPriceInfo} />
-                          </div>
-                          <button 
-                            className={`replace-btn ${activeReplacePartId === part.item.id ? 'active' : ''}`}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenReplaceDrawer(part);
-                            }}
+            {!generating && canShowBuildDetails && renderedSections.map(section => (
+              <div key={section.key} className="parts-list__section">
+                {section.label && (
+                  <div className={`parts-list__section-label parts-list__section-label--${section.key}`}>
+                    {section.label}
+                  </div>
+                )}
+                {section.groups.map(group => (
+                  <div key={`${group.displayRank}:${group.rootSlotName}`} className="parts-group">
+                    <div className="parts-group__head">
+                      <h3>{group.rootSlotName}</h3>
+                      <span>{group.parts.length} parts</span>
+                    </div>
+                    <div className="parts-grid">
+                      {group.parts.map(part => {
+                        if (part.isEmpty) {
+                          return (
+                            <article key={part.key} className="part-card part-card--critical part-card--empty-critical">
+                              <div className="part-card__media part-card__media--warning">
+                                <WarningIcon className="part-card__warning-icon" />
+                              </div>
+                              <div className="part-card__body">
+                                <div className="part-card__title-wrap">
+                                  <h4 className="part-card__empty-warning">{part.emptyWarning}</h4>
+                                  <span className="part-card__slot-context">
+                                    {part.slotName} · {formatPartName(part.parentItem?.shortName || part.parentItem?.name)}
+                                  </span>
+                                </div>
+                                <div className="part-card__badges">
+                                  <CriticalModuleBadge />
+                                </div>
+                              </div>
+                            </article>
+                          );
+                        }
+
+                        const partPriceInfo = getSelectedPriceInfo(
+                          part.item,
+                          priceMode,
+                          includeTraderPrices,
+                        );
+
+                        return (
+                          <article
+                            key={part.key}
+                            className={`part-card ${part.isCritical ? 'part-card--critical' : ''}`}
                           >
-                            Replace
-                          </button>
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
+                            <div className="part-card__media">
+                              <ImageWithLoader
+                                src={part.item.image512pxLink || part.item.iconLink || 'https://via.placeholder.com/70'}
+                                alt=""
+                                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                                containerStyle={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0 }}
+                              />
+                            </div>
+                            <div className="part-card__body">
+                              <div className="part-card__topline">
+                                <div className="part-card__title-wrap">
+                                  <h4>{formatPartName(part.item.shortName)}</h4>
+                                  {part.isCritical && (
+                                    <div className="part-card__badges">
+                                      <CriticalModuleBadge />
+                                      <span className="module-state-badge module-state-badge--installed">Установлен</span>
+                                    </div>
+                                  )}
+                                </div>
+                                <ItemPrice priceInfo={partPriceInfo} />
+                              </div>
+                              <button
+                                className={`replace-btn ${activeReplacePartId === part.item.id ? 'active' : ''}`}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenReplaceDrawer(part);
+                                }}
+                              >
+                                Replace
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             ))}
 
