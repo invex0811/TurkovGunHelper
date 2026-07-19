@@ -1018,7 +1018,7 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
 }
 
 .weapon-diagram-trigger {
-  padding: 0 18px 18px;
+  padding: 18px 18px 0;
 }
 
 .weapon-diagram-trigger .btn {
