@@ -164,7 +164,7 @@ function Builds() {
 
                 <div className="build-card__body">
                   <span className="build-card__weapon">{build.weapon.shortName || build.weapon.name}</span>
-                  <h3>{build.name}</h3>
+                  <h3 title={build.name}>{build.name}</h3>
                   <div className="build-card__meta">
                     <span>{getGoalLabel(build.settings.targetType)}</span>
                     <span>{build.parts.length} parts</span>

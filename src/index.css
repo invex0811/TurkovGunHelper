@@ -2169,13 +2169,35 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
 }
 
 .build-card__compare span {
+  position: relative;
   display: grid;
+  flex: 0 0 14px;
   width: 14px;
   height: 14px;
   place-items: center;
   border: 1px solid currentColor;
   border-radius: 50%;
   line-height: 1;
+}
+
+.build-card__compare[aria-pressed="false"] span {
+  font-size: 0;
+}
+
+.build-card__compare[aria-pressed="false"] span::before,
+.build-card__compare[aria-pressed="false"] span::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 1px;
+  background: currentColor;
+  content: '';
+  transform: translate(-50%, -50%);
+}
+
+.build-card__compare[aria-pressed="false"] span::after {
+  transform: translate(-50%, -50%) rotate(90deg);
 }
 
 .build-card__image {
