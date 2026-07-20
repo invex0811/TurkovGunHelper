@@ -53,6 +53,7 @@ import {
   isCriticalSlot,
   sortModuleDisplayItems,
 } from '../ui/criticalModules.js';
+import { TarkovDevItemLink } from '../ui/TarkovDevItemLink.js';
 
 function WarningIcon({ className = '' }) {
   return (
@@ -949,6 +950,10 @@ function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode, in
 
   const modeLabel = PRICE_MODE_LABELS[selectedPriceMode] ?? selectedPriceMode;
   const sourceLabel = sourceLabels.length > 0 ? sourceLabels.join(' + ') : 'No source';
+  const summaryStatus = getPriceSummaryStatus({
+    fallbackEntries,
+    missingEntries,
+  }, includeTraderPrices);
 
   return {
     entries,
@@ -958,10 +963,8 @@ function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode, in
     barterOnlyEntries,
     sourceLabels,
     warningMessages,
-    summaryLabel: `${modeLabel} · ${sourceLabel} · ${getPriceSummaryStatus({
-      fallbackEntries,
-      missingEntries,
-    }, includeTraderPrices)}`,
+    summaryStatus,
+    summaryLabel: `${modeLabel} · ${sourceLabel} · ${summaryStatus}`,
   };
 }
 
@@ -1341,7 +1344,7 @@ function Configurator() {
   const [includeLaser, setIncludeLaser] = useState(false);
   const [includeFlashlight, setIncludeFlashlight] = useState(false);
   const [isBuildDiagramOpen, setIsBuildDiagramOpen] = useState(false);
-  const [sightMode, setSightMode] = useState('any');
+  const [sightMode, setSightMode] = useState('none');
   const [isSightSelectOpen, setIsSightSelectOpen] = useState(false);
   const [partsFilter, setPartsFilter] = useState('');
   const [configTab, setConfigTab] = useState('basic');
@@ -1527,7 +1530,7 @@ function Configurator() {
         setMagazineCapacity(Number(settings.magazineCapacity) || capacities[0] || 30);
         setIncludeLaser(settings.includeLaser === true);
         setIncludeFlashlight(settings.includeFlashlight === true);
-        setSightMode(settings.sightMode || 'any');
+        setSightMode(settings.sightMode || 'none');
         setRequiredModuleIds(
           (settings.requiredModuleIds || []).filter(itemId => Boolean(modsData[itemId])),
         );
@@ -1916,6 +1919,7 @@ function Configurator() {
     ? collectBuildPriceDiagnostics(weapon, buildResult, priceMode, includeTraderPrices)
     : {
       summaryLabel: `${PRICE_MODE_LABELS[priceMode]} · tarkov.dev · ${includeTraderPrices ? 'cheapest Flea/Trader prices' : 'Flea Market only'}`,
+      summaryStatus: includeTraderPrices ? 'cheapest Flea/Trader prices' : 'Flea Market only',
       warningMessages: [],
     };
 
@@ -2358,7 +2362,11 @@ function Configurator() {
                 <p>{weapon.name}</p>
               </div>
               <div className="source">
-                {priceDiagnostics.summaryLabel}
+                <span>{PRICE_MODE_LABELS[priceMode]}</span>
+                <span className="source__separator" aria-hidden="true">·</span>
+                <TarkovDevItemLink weapon={weapon} />
+                <span className="source__separator" aria-hidden="true">·</span>
+                <span>{priceDiagnostics.summaryStatus}</span>
               </div>
             </div>
 

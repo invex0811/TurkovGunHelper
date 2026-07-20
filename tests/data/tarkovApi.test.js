@@ -264,4 +264,7 @@ test('mod and weapon detail queries request direct, barter, and required-slot me
     assert.match(query, /rewardItems\s*\{[\s\S]*?count[\s\S]*?item\s*\{\s*id\s*\}/);
     assert.match(query, /slots\s*\{[\s\S]*?nameId\s+required\s+filters/);
   }
+
+  assert.match(GET_WEAPON_DETAILS_QUERY, /normalizedName/);
+  assert.match(GET_WEAPON_DETAILS_QUERY, /\blink\b/);
 });
