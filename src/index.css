@@ -1351,6 +1351,43 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   color: var(--muted);
   font-size: .8rem;
   text-align: right;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+}
+
+.source__separator {
+  color: color-mix(in srgb, var(--muted) 72%, transparent);
+}
+
+.tarkov-dev-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18rem;
+  color: var(--color-accent-gold);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-accent-gold) 46%, transparent);
+  text-underline-offset: 0.18em;
+  transition: color 0.16s ease, text-decoration-color 0.16s ease;
+}
+
+.tarkov-dev-link:hover {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
+
+.tarkov-dev-link:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--color-accent-gold);
+  outline-offset: 3px;
+}
+
+.tarkov-dev-link__icon {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex: 0 0 auto;
 }
 
 .weapon__image {
@@ -1810,6 +1847,11 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   .topbar__actions, .parts-toolbar, .weapon__head {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .source {
+    justify-content: flex-start;
+    text-align: left;
   }
 
   .topbar__actions {

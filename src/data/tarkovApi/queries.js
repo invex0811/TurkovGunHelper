@@ -152,6 +152,8 @@ export const GET_WEAPON_DETAILS_QUERY = `
       id
       name
       shortName
+      normalizedName
+      link
       image512pxLink
       weight
       basePrice
