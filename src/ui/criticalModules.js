@@ -1,5 +1,5 @@
-export const CRITICAL_MODULE_TOOLTIP = 'Этот модуль необходим для корректной работы оружия.';
-export const EMPTY_CRITICAL_MODULE_WARNING = 'Не установлен критический модуль';
+export const CRITICAL_MODULE_TOOLTIP = 'This module is required for the weapon to function correctly.';
+export const EMPTY_CRITICAL_MODULE_WARNING = 'Required module is not installed';
 
 export function isCriticalSlot(slot) {
   return slot?.required === true;

@@ -1,4 +1,5 @@
 import { buildWeaponAssemblyTree } from '../domain/weaponAssembly.js';
+import { getCompatibleItemsForSlot } from '../domain/weaponBuildEditor.js';
 
 export const WEAPON_DIAGRAM_NODE_SIZE = Object.freeze({ width: 190, height: 76 });
 
@@ -77,13 +78,13 @@ function getImageUrl(item) {
 function getNodeStats(item) {
   const stats = [];
   if (Number.isFinite(Number(item?.weight)) && Number(item.weight) > 0) {
-    stats.push(`Вес: ${Number(item.weight).toFixed(3)} кг`);
+    stats.push(`Weight: ${Number(item.weight).toFixed(3)} kg`);
   }
   if (Number.isFinite(Number(item?.ergonomicsModifier)) && Number(item.ergonomicsModifier) !== 0) {
-    stats.push(`Эргономика: ${Number(item.ergonomicsModifier) > 0 ? '+' : ''}${item.ergonomicsModifier}`);
+    stats.push(`Ergonomics: ${Number(item.ergonomicsModifier) > 0 ? '+' : ''}${item.ergonomicsModifier}`);
   }
   if (Number.isFinite(Number(item?.recoilModifier)) && Number(item.recoilModifier) !== 0) {
-    stats.push(`Отдача: ${Number(item.recoilModifier) > 0 ? '+' : ''}${item.recoilModifier}%`);
+    stats.push(`Recoil: ${Number(item.recoilModifier) > 0 ? '+' : ''}${item.recoilModifier}%`);
   }
   return stats;
 }
@@ -95,18 +96,27 @@ function createDiagramNode({
   slot,
   slotName,
   nodeType,
+  parentItem = null,
+  buildPart = null,
+  slotInstanceId,
   critical = false,
   unresolved = false,
 }) {
+  const isFreeSlot = nodeType === 'slot';
   return {
     id,
     itemId: item?.id || '',
+    item: item || null,
+    parentItem,
+    buildPart,
+    slot: slot || null,
     parentId,
-    slotId: slot?.nameId || slot?.name || slotName || undefined,
+    slotId: slotInstanceId || slot?.nameId || slot?.name || slotName || undefined,
+    slotInstanceId,
     slotName: slot?.name || slotName || undefined,
-    name: item?.shortName || item?.name || 'Unknown module',
-    fullName: item?.name || item?.shortName || 'Unknown module',
-    category: getItemCategory(item, nodeType === 'weapon' ? 'Weapon' : 'Module'),
+    name: isFreeSlot ? (slot?.name || slotName || 'Empty slot') : (item?.shortName || item?.name || 'Unknown module'),
+    fullName: isFreeSlot ? `Empty slot: ${slot?.name || slotName || 'unnamed'}` : (item?.name || item?.shortName || 'Unknown module'),
+    category: isFreeSlot ? 'Empty slot' : getItemCategory(item, nodeType === 'weapon' ? 'Weapon' : 'Module'),
     imageUrl: getImageUrl(item),
     critical,
     nodeType,
@@ -115,7 +125,7 @@ function createDiagramNode({
   };
 }
 
-export function buildWeaponDiagramGraph(weapon, buildParts = []) {
+export function buildWeaponDiagramGraph(weapon, buildParts = [], options = {}) {
   if (!weapon) {
     return { nodes: [], edges: [], diagnostics: [] };
   }
@@ -145,7 +155,7 @@ export function buildWeaponDiagramGraph(weapon, buildParts = []) {
 
     const siblingOccurrences = new Map();
     sortTreeChildren(treeNode.children).forEach(child => {
-      const slotId = child.sourceSlot?.nameId || child.sourceSlot?.name || child.slotName || 'slot';
+      const slotId = child.sourceSlotId || child.sourceSlot?.nameId || child.sourceSlot?.name || child.slotName || 'slot';
       const occurrenceKey = `${slotId}:${child.item?.id || 'unknown'}`;
       const occurrence = siblingOccurrences.get(occurrenceKey) || 0;
       siblingOccurrences.set(occurrenceKey, occurrence + 1);
@@ -158,6 +168,9 @@ export function buildWeaponDiagramGraph(weapon, buildParts = []) {
         parentId,
         slot: child.sourceSlot,
         slotName: child.slotName,
+        slotInstanceId: child.sourceSlotInstanceId,
+        parentItem: treeNode.item,
+        buildPart: child.buildPart,
         nodeType: 'module',
         critical: child.sourceSlot?.required === true,
       }));
@@ -177,6 +190,41 @@ export function buildWeaponDiagramGraph(weapon, buildParts = []) {
       nextAncestry.add(child);
       visit(child, childId, nextAncestry);
     });
+
+    if (options.includeFreeSlots && options.allMods) {
+      (treeNode.slots || []).forEach(slotContext => {
+        if (slotContext.installedNode) return;
+        const compatibleItems = getCompatibleItemsForSlot({
+          weapon,
+          buildParts,
+          allMods: options.allMods,
+          slotContext,
+          priceMode: options.priceMode,
+          includeTraderPrices: options.includeTraderPrices,
+        });
+        if (compatibleItems.length === 0) return;
+
+        const nodeId = `${parentId}/free:${toIdSegment(slotContext.id)}`;
+        nodes.push(createDiagramNode({
+          id: nodeId,
+          item: null,
+          parentItem: treeNode.item,
+          parentId,
+          slot: slotContext.slot,
+          slotName: slotContext.slot.name,
+          slotInstanceId: slotContext.id,
+          nodeType: 'slot',
+          critical: slotContext.slot.required === true,
+        }));
+        edges.push({
+          id: `edge:${parentId}->${nodeId}`,
+          source: parentId,
+          target: nodeId,
+          slotId: slotContext.slotId,
+          free: true,
+        });
+      });
+    }
   }
 
   visit(assemblyTree, rootId, new Set([assemblyTree]));
@@ -517,4 +565,8 @@ export function getOrthogonalEdgePath(sourceNode, targetNode) {
   const targetY = goesUp ? targetNode.position.y + targetNode.height : targetNode.position.y;
   const middleY = sourceY + (targetY - sourceY) / 2;
   return `M ${sourceCenterX} ${sourceY} V ${middleY} H ${targetCenterX} V ${targetY}`;
+}
+
+export function isDiagramEdgeHighlighted(edge, highlightedNodeId) {
+  return Boolean(highlightedNodeId) && edge?.target === highlightedNodeId;
 }

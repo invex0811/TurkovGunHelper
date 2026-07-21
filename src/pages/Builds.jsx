@@ -6,6 +6,9 @@ import {
   deleteSavedBuild,
   readSavedBuilds,
 } from '../data/savedBuilds.js';
+import { loadItemsCatalog } from '../data/tarkovApi/index.js';
+import { downloadAllBuilds, downloadBuildFile } from '../features/buildTransfer/index.js';
+import BuildImportModal from '../ui/BuildImportModal.jsx';
 
 const METRICS = [
   { key: 'ergonomics', label: 'Ergonomics', direction: 'high', format: value => value },
@@ -38,6 +41,7 @@ function Builds() {
   const [notice, setNotice] = useState('');
   const [isComparisonOpen, setIsComparisonOpen] = useState(false);
   const [buildPendingDeletion, setBuildPendingDeletion] = useState(null);
+  const [isImportOpen, setIsImportOpen] = useState(false);
 
   useEffect(() => {
     const handleStorage = () => setBuilds(readSavedBuilds());
@@ -102,6 +106,39 @@ function Builds() {
     setNotice('');
   };
 
+  const handleExport = async (event, build) => {
+    event.stopPropagation();
+    try {
+      setNotice(`Preparing “${build.name}” for export…`);
+      const gameMode = build.settings.priceMode === 'pve' ? 'pve' : 'regular';
+      const catalog = await loadItemsCatalog(gameMode, {
+        priceMode: gameMode === 'pve' ? 'pve' : 'pvp',
+      });
+      downloadBuildFile(build, { catalog });
+      setNotice(`Exported “${build.name}”.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'The build could not be exported.');
+    }
+  };
+
+  const handleExportAll = async () => {
+    if (builds.length === 0) return;
+    try {
+      setNotice('Preparing builds for export…');
+      const modes = [...new Set(builds.map(build => (
+        build.settings.priceMode === 'pve' ? 'pve' : 'regular'
+      )))];
+      const catalogs = new Map(await Promise.all(modes.map(async gameMode => [
+        gameMode,
+        await loadItemsCatalog(gameMode, { priceMode: gameMode === 'pve' ? 'pve' : 'pvp' }),
+      ])));
+      downloadAllBuilds(builds, { catalogs });
+      setNotice(`Exported ${builds.length} build${builds.length === 1 ? '' : 's'}.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'The builds could not be exported.');
+    }
+  };
+
   return (
     <div className={`builds-page${selectedBuilds.length > 0 ? ' has-comparison-tray' : ''}`}>
       <section className="builds-hero">
@@ -110,9 +147,15 @@ function Builds() {
           <h2>Saved builds</h2>
           <p>Open a card to continue working on it, or use the hover control to add it to comparison.</p>
         </div>
-        <div className="builds-hero__count">
-          <strong>{builds.length}</strong>
-          <span>of 100 saved</span>
+        <div className="builds-hero__tools">
+          <div className="builds-hero__count">
+            <strong>{builds.length}</strong>
+            <span>of 100 saved</span>
+          </div>
+          <div className="builds-hero__actions">
+            <button className="btn btn--primary" type="button" onClick={() => setIsImportOpen(true)}>Import</button>
+            <button className="btn btn--ghost" type="button" onClick={handleExportAll} disabled={builds.length === 0}>Export all</button>
+          </div>
         </div>
       </section>
 
@@ -178,7 +221,10 @@ function Builds() {
 
                 <div className="build-card__footer">
                   <span>{formatSavedDate(build.updatedAt)}</span>
-                  <button type="button" onClick={event => handleDelete(event, build)}>Delete</button>
+                  <div className="build-card__actions">
+                    <button type="button" onClick={event => handleExport(event, build)}>Export</button>
+                    <button className="is-danger" type="button" onClick={event => handleDelete(event, build)}>Delete</button>
+                  </div>
                 </div>
               </article>
             );
@@ -301,6 +347,17 @@ function Builds() {
             </div>
           </section>
         </div>
+      )}
+
+      {isImportOpen && (
+        <BuildImportModal
+          existingBuilds={builds}
+          onClose={() => setIsImportOpen(false)}
+          onImported={nextBuilds => {
+            setBuilds(nextBuilds);
+            setSelectedIds([]);
+          }}
+        />
       )}
     </div>
   );

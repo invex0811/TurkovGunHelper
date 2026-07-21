@@ -2,11 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  CRITICAL_MODULE_TOOLTIP,
   EMPTY_CRITICAL_MODULE_WARNING,
   getModuleDisplayState,
   isCriticalSlot,
   sortModuleDisplayItems,
 } from '../../src/ui/criticalModules.js';
+
+test('uses English copy for critical module states', () => {
+  assert.equal(
+    CRITICAL_MODULE_TOOLTIP,
+    'This module is required for the weapon to function correctly.',
+  );
+  assert.equal(EMPTY_CRITICAL_MODULE_WARNING, 'Required module is not installed');
+});
 
 test('places critical modules before ordinary modules', () => {
   const ordinary = { id: 'ordinary', isCritical: false, isEmpty: false };

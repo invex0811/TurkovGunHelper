@@ -45,7 +45,7 @@ RoadMap фиксирует текущее состояние проекта ка
 - Главную страницу со списком оружия.
 - Страницу конфигуратора оружия.
 - API/data layer в `src/data/tarkovApi`.
-- GraphQL client, query definitions и repository functions, разделённые по файлам.
+- JSON GET client, item adapter и repository functions, разделённые по файлам.
 - Price layer в `src/data/price`.
 - Settings helper для сохранения выбранного price mode.
 - Domain calculator layer для подбора модов оружия.
@@ -82,8 +82,8 @@ RoadMap фиксирует текущее состояние проекта ка
 - Configurator показывает inline warnings/errors вместо `alert`.
 - Price source research выполнен и зафиксирован.
 - API перенесён в data layer.
-- GraphQL queries вынесены отдельно.
-- Repository layer введён поверх GraphQL client.
+- JSON API adapter вынесен в data layer.
+- Repository layer введён поверх JSON GET client.
 - Mod price model нормализована.
 - Добавлен price mode selector:
   - PvP;
@@ -117,7 +117,7 @@ RoadMap фиксирует текущее состояние проекта ка
 - Persisted preferences пока покрывают не все build settings.
 - API cache существует на runtime memory уровне.
 - Persistent cache, cache metadata, manual refresh и stale-data diagnostics ещё не реализованы.
-- API/data layer требует mocked GraphQL response tests.
+- API/data layer требует mocked JSON API response tests.
 - CI workflow ещё не добавлен.
 - Development/release workflow documentation требует отдельного оформления.
 
@@ -255,7 +255,7 @@ tests/
 11. Расширить persisted build preferences.
 12. Добавить persistent item cache с metadata.
 13. Добавить manual data refresh.
-14. Покрыть API/data layer mocked GraphQL tests.
+14. Покрыть API/data layer mocked JSON API tests.
 15. Добавить CI для test/lint/build.
 
 ---
@@ -816,11 +816,11 @@ tests/
 
 ---
 
-### 3. `test(api): add mocked graphql response tests`
+### 3. `test(api): add mocked JSON API response tests`
 
 Сделать:
 
-- Добавить tests для GraphQL/data mappers.
+- Добавить tests для JSON API/data mappers.
 - Использовать локальные fixtures.
 - Проверить:
   - successful weapons response;
@@ -886,7 +886,7 @@ tests/
 17. `feat(ui): persist all build preferences`
 18. `feat(api): add persistent item cache with metadata`
 19. `feat(api): add manual data refresh action`
-20. `test(api): add mocked graphql response tests`
+20. `test(api): add mocked JSON API response tests`
 
 ---
 

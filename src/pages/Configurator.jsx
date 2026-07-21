@@ -78,7 +78,7 @@ function CriticalModuleBadge() {
   return (
     <span className="critical-module-badge" title={CRITICAL_MODULE_TOOLTIP}>
       <WarningIcon className="critical-module-badge__icon" />
-      Критический
+      Critical
     </span>
   );
 }
@@ -1682,6 +1682,47 @@ function Configurator() {
     }
   };
 
+  const handleCloseBuildDiagram = useCallback(() => {
+    setIsBuildDiagramOpen(false);
+  }, []);
+
+  const handleDiagramBuildChange = useCallback((nextBuildParts) => {
+    if (!weapon || !buildResult) return ['The current build is unavailable for editing.'];
+
+    const attachmentError = getUnattachedBuildPartError(weapon, nextBuildParts);
+    const { errors, stats: recalculatedResult } = getReplacementConstraintErrors({
+      weapon,
+      buildParts: nextBuildParts,
+      priceMode,
+      includeTraderPrices,
+      maxWeight,
+      maxPrice,
+      requiredItemIds: requiredModuleIds,
+      suppressorMode,
+      sightMode,
+    });
+    if (attachmentError) errors.unshift(attachmentError);
+    if (errors.length > 0) return errors;
+
+    setReplacementError(null);
+    setBuildResult(current => current ? {
+      ...current,
+      ...recalculatedResult,
+      error: null,
+    } : current);
+    return [];
+  }, [
+    buildResult,
+    includeTraderPrices,
+    maxPrice,
+    maxWeight,
+    priceMode,
+    requiredModuleIds,
+    sightMode,
+    suppressorMode,
+    weapon,
+  ]);
+
   const handleAddRequiredModule = (item) => {
     setRequiredModuleIds(prev => {
       if (prev.includes(item.id)) return prev;
@@ -2392,7 +2433,7 @@ function Configurator() {
                 type="button"
                 onClick={() => setIsBuildDiagramOpen(true)}
               >
-                Схема сборки
+                Build Diagram
               </button>
             </div>
 
@@ -2590,7 +2631,12 @@ function Configurator() {
         <WeaponBuildDiagramModal
           weapon={weapon}
           buildParts={canShowBuildDetails ? buildResult.build : []}
-          onClose={() => setIsBuildDiagramOpen(false)}
+          allMods={allMods}
+          stats={statMeters}
+          priceMode={priceMode}
+          includeTraderPrices={includeTraderPrices}
+          onBuildChange={handleDiagramBuildChange}
+          onClose={handleCloseBuildDiagram}
         />
       )}
 

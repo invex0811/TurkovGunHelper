@@ -1,4 +1,5 @@
 import { normalizeCustomExactTargets } from '../domain/customExactTargets.js';
+import { buildWeaponAssemblyTree } from '../domain/weaponAssembly.js';
 
 export const SAVED_BUILDS_STORAGE_KEY = 'tarkov-gun-helper:saved-builds';
 export const SAVED_BUILD_SCHEMA_VERSION = 1;
@@ -53,6 +54,40 @@ function writeSavedBuilds(builds, storage) {
       error,
     );
   }
+}
+
+function getStableSlotId(slot, slotIndex) {
+  return slot?.nameId || slot?.id || `slot:${slotIndex}`;
+}
+
+function contextualizeBuildParts(weapon, buildParts) {
+  const assembly = buildWeaponAssemblyTree(weapon, buildParts);
+  if (assembly.unattachedParts.length > 0) return buildParts;
+  const contextualParts = [];
+  const queue = [...assembly.children];
+  for (let index = 0; index < queue.length; index += 1) {
+    const node = queue[index];
+    contextualParts.push({
+      slotName: node.sourceSlot.name,
+      slotId: getStableSlotId(node.sourceSlot, node.sourceSlotIndex),
+      slotIndex: node.sourceSlotIndex,
+      slotInstanceId: node.sourceSlotInstanceId,
+      parentItemId: node.parent.item.id,
+      parentInstanceId: node.parent.instanceId,
+      item: node.item,
+    });
+    queue.push(...node.children);
+  }
+  return contextualParts;
+}
+
+function createUniqueBuildName(name, builds) {
+  const existingNames = new Set(builds.map(build => build.name));
+  if (!existingNames.has(name)) return name;
+  if (!existingNames.has(`${name} Copy`)) return `${name} Copy`;
+  let suffix = 2;
+  while (existingNames.has(`${name} Copy ${suffix}`)) suffix += 1;
+  return `${name} Copy ${suffix}`;
 }
 
 export function readSavedBuilds(storage = getDefaultStorage()) {
@@ -128,6 +163,61 @@ export function deleteSavedBuild(buildId, storage = getDefaultStorage()) {
   return true;
 }
 
+export function importSavedBuildSnapshots(entries, storage = getDefaultStorage(), options = {}) {
+  if (!Array.isArray(entries)) {
+    throw new SavedBuildStorageError('Imported builds must be an array.', 'INVALID_IMPORT');
+  }
+
+  const currentBuilds = readSavedBuilds(storage);
+  const nextBuilds = [...currentBuilds];
+  const imported = [];
+  let skipped = 0;
+  const now = options.now || new Date().toISOString();
+
+  entries.forEach(entry => {
+    if (!entry?.snapshot || entry.status === 'error' || entry.strategy === 'skip') {
+      skipped += 1;
+      return;
+    }
+
+    if (entry.strategy === 'replace' && !entry.duplicateOf?.id) {
+      skipped += 1;
+      return;
+    }
+
+    const replacementIndex = entry.strategy === 'replace' && entry.duplicateOf?.id
+      ? nextBuilds.findIndex(build => build.id === entry.duplicateOf.id)
+      : -1;
+    const isReplacement = replacementIndex >= 0;
+    const name = entry.strategy === 'copy'
+      ? createUniqueBuildName(entry.snapshot.name, [...nextBuilds, ...imported])
+      : entry.snapshot.name;
+    const savedBuild = {
+      ...entry.snapshot,
+      id: isReplacement ? nextBuilds[replacementIndex].id : createId(),
+      version: SAVED_BUILD_SCHEMA_VERSION,
+      name: String(name || entry.snapshot.weapon?.shortName || 'Weapon build').trim().slice(0, 80),
+      createdAt: isReplacement ? nextBuilds[replacementIndex].createdAt : now,
+      updatedAt: now,
+    };
+    if (!isValidSavedBuild(savedBuild)) {
+      throw new SavedBuildStorageError('An imported build is incomplete and cannot be saved.', 'INVALID_IMPORT');
+    }
+    if (isReplacement) nextBuilds.splice(replacementIndex, 1);
+    imported.push(savedBuild);
+  });
+
+  if (nextBuilds.length + imported.length > MAX_SAVED_BUILDS) {
+    throw new SavedBuildStorageError(
+      `Importing these builds would exceed the ${MAX_SAVED_BUILDS} build limit.`,
+      'LIMIT_REACHED',
+    );
+  }
+
+  if (imported.length > 0) writeSavedBuilds([...imported, ...nextBuilds], storage);
+  return { imported, skipped, builds: imported.length > 0 ? readSavedBuilds(storage) : currentBuilds };
+}
+
 export function createBuildSnapshot({
   id,
   name,
@@ -135,6 +225,7 @@ export function createBuildSnapshot({
   buildResult,
   settings,
 }) {
+  const contextualParts = contextualizeBuildParts(weapon, buildResult.build);
   return {
     id,
     version: SAVED_BUILD_SCHEMA_VERSION,
@@ -148,10 +239,15 @@ export function createBuildSnapshot({
         || weapon.iconLink
         || '',
     },
-    parts: buildResult.build.map(part => ({
+    parts: contextualParts.map(part => ({
       itemId: part.item.id,
       itemName: part.item.shortName || part.item.name || part.item.id,
       slotName: part.slotName,
+      slotId: part.slotId,
+      slotIndex: part.slotIndex,
+      slotInstanceId: part.slotInstanceId,
+      parentItemId: part.parentItemId,
+      parentInstanceId: part.parentInstanceId,
     })),
     stats: {
       ergonomics: buildResult.stats.ergonomics,
@@ -173,7 +269,15 @@ export function restoreBuildParts(savedBuild, allMods) {
       return [];
     }
 
-    return [{ slotName: part.slotName, item }];
+    return [{
+      slotName: part.slotName,
+      ...(part.slotId ? { slotId: part.slotId } : {}),
+      ...(Number.isInteger(part.slotIndex) ? { slotIndex: part.slotIndex } : {}),
+      ...(part.slotInstanceId ? { slotInstanceId: part.slotInstanceId } : {}),
+      ...(part.parentItemId ? { parentItemId: part.parentItemId } : {}),
+      ...(part.parentInstanceId ? { parentInstanceId: part.parentInstanceId } : {}),
+      item,
+    }];
   });
 
   return { build, missingItemIds };
