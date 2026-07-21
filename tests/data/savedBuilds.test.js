@@ -7,6 +7,7 @@ import {
   SavedBuildStorageError,
   deleteSavedBuild,
   getSavedBuild,
+  importSavedBuildSnapshots,
   readSavedBuilds,
   restoreBuildParts,
   saveBuildSnapshot,
@@ -88,6 +89,32 @@ test('restoreBuildParts reports modules that are no longer available', () => {
   });
 });
 
+test('restoreBuildParts preserves optional slot instance metadata', () => {
+  const part = { id: 'part-1', shortName: 'Rail' };
+  const savedBuild = createSnapshot({
+    parts: [{
+      itemId: part.id,
+      itemName: part.shortName,
+      slotName: 'Mount',
+      slotId: 'mod_mount:1',
+      slotIndex: 1,
+      slotInstanceId: 'weapon:one/slot:mod_mount_3A1',
+      parentItemId: 'weapon-1',
+      parentInstanceId: 'weapon:one',
+    }],
+  });
+
+  assert.deepEqual(restoreBuildParts(savedBuild, { [part.id]: part }).build[0], {
+    slotName: 'Mount',
+    slotId: 'mod_mount:1',
+    slotIndex: 1,
+    slotInstanceId: 'weapon:one/slot:mod_mount_3A1',
+    parentItemId: 'weapon-1',
+    parentInstanceId: 'weapon:one',
+    item: part,
+  });
+});
+
 test('saved builds preserve includeTraderPrices and default old snapshots to true', () => {
   const storage = createStorage();
   saveBuildSnapshot(createSnapshot({
@@ -154,4 +181,59 @@ test('old saved builds default every Custom Exact target to disabled', () => {
     weight: false,
     price: false,
   });
+});
+
+test('batch import skip does not add a duplicate', () => {
+  const storage = createStorage();
+  const existing = saveBuildSnapshot(createSnapshot(), storage, { id: 'existing' });
+  const result = importSavedBuildSnapshots([{
+    snapshot: createSnapshot(),
+    status: 'duplicate',
+    strategy: 'skip',
+    duplicateOf: existing,
+  }], storage);
+  assert.equal(result.imported.length, 0);
+  assert.equal(readSavedBuilds(storage).length, 1);
+});
+
+test('batch import copy creates a fresh ID and unique name', () => {
+  const storage = createStorage();
+  saveBuildSnapshot(createSnapshot(), storage, { id: 'existing' });
+  const result = importSavedBuildSnapshots([{
+    snapshot: createSnapshot(),
+    status: 'duplicate',
+    strategy: 'copy',
+  }], storage, { now: '2026-07-21T10:00:00.000Z' });
+  assert.notEqual(result.imported[0].id, 'existing');
+  assert.equal(result.imported[0].name, 'M4A1 Meta Copy');
+});
+
+test('batch import replace changes only the selected duplicate', () => {
+  const storage = createStorage();
+  const first = saveBuildSnapshot(createSnapshot(), storage, { id: 'first' });
+  saveBuildSnapshot(createSnapshot({ name: 'Keep me', weapon: { id: 'weapon-2', name: 'AK', shortName: 'AK' } }), storage, { id: 'second' });
+  importSavedBuildSnapshots([{
+    snapshot: createSnapshot({ name: 'Replacement' }),
+    status: 'duplicate',
+    strategy: 'replace',
+    duplicateOf: first,
+  }], storage, { now: '2026-07-21T10:00:00.000Z' });
+  assert.equal(getSavedBuild('first', storage).name, 'Replacement');
+  assert.equal(getSavedBuild('second', storage).name, 'Keep me');
+});
+
+test('batch import validates everything before one atomic write', () => {
+  const storage = createStorage();
+  saveBuildSnapshot(createSnapshot(), storage, { id: 'existing' });
+  let writes = 0;
+  const trackingStorage = {
+    getItem: storage.getItem,
+    setItem(key, value) { writes += 1; storage.setItem(key, value); },
+  };
+  importSavedBuildSnapshots([
+    { snapshot: createSnapshot({ name: 'One' }), status: 'ready', strategy: 'copy' },
+    { snapshot: createSnapshot({ name: 'Two' }), status: 'ready', strategy: 'copy' },
+  ], trackingStorage);
+  assert.equal(writes, 1);
+  assert.equal(readSavedBuilds(storage).length, 3);
 });

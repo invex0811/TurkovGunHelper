@@ -5,6 +5,7 @@ import {
   buildWeaponDiagramGraph,
   classifyWeaponDiagramNode,
   getOrthogonalEdgePath,
+  isDiagramEdgeHighlighted,
   layoutWeaponDiagramGraph,
 } from '../../src/ui/weaponBuildDiagram.js';
 
@@ -104,6 +105,13 @@ test('preserves a nested weapon to handguard to rail to laser chain', () => {
   assert.equal(handguardNode.parentId, graph.nodes[0].id);
   assert.equal(railNode.parentId, handguardNode.id);
   assert.equal(laserNode.parentId, railNode.id);
+
+  const highlightedEdges = graph.edges.filter(edge => (
+    isDiagramEdgeHighlighted(edge, laserNode.id)
+  ));
+  assert.equal(highlightedEdges.length, 1);
+  assert.equal(highlightedEdges[0].source, railNode.id);
+  assert.equal(highlightedEdges[0].target, laserNode.id);
 });
 
 test('sorts critical children before ordinary children', () => {

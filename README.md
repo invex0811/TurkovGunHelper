@@ -72,6 +72,16 @@ npm.cmd run build
 
 Builds the production bundle.
 
+## Build import and export
+
+Saved builds can be exported individually or together from the **Builds** page and imported again in another browser or device. The versioned JSON file stores only stable build data: the weapon ID, nested module and slot IDs, PvP/PvE mode, build name, and supported user settings.
+
+Dynamic prices, calculated characteristics, images, and full catalog records are not exported. During import, Tarkov Gun Helper validates the file against the current catalog for its game mode and recalculates the build from current data. Missing or incompatible items are reported before anything is saved.
+
+Duplicate builds are detected from their normalized weapon/module tree and game mode. The safe default is to skip them; the import preview also allows importing a copy or explicitly replacing the matching local build.
+
+Import and export run entirely in the browser. Build files and local saved-build data are not sent to a backend.
+
 ```bash
 npm.cmd run preview
 ```

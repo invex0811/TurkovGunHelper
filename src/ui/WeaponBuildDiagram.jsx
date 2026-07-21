@@ -1,6 +1,10 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
-import { getOrthogonalEdgePath } from './weaponBuildDiagram.js';
+import {
+  getOrthogonalEdgePath,
+  isDiagramEdgeHighlighted,
+} from './weaponBuildDiagram.js';
+import WeaponBuildDiagramStats from './WeaponBuildDiagramStats.jsx';
 
 const MIN_SCALE = 0.28;
 const MAX_SCALE = 1.5;
@@ -12,29 +16,19 @@ function clampScale(value) {
 function getNodeTooltip(node) {
   return [
     node.fullName,
-    `Категория: ${node.category}`,
-    node.slotName ? `Слот: ${node.slotName}` : null,
+    `Category: ${node.category}`,
+    node.slotName ? `Slot: ${node.slotName}` : null,
     ...(node.stats || []),
-    node.unresolved ? 'Родительский слот не определён' : null,
+    node.unresolved ? 'Parent slot could not be resolved' : null,
   ].filter(Boolean).join('\n');
 }
 
-function DiagramNode({ node }) {
+function DiagramNode({ node, isSelected, onHighlight, onSelect }) {
   const fallbackLabel = (node.name || '?').slice(0, 2).toUpperCase();
-
-  return (
-    <article
-      className={`weapon-diagram-node weapon-diagram-node--${node.nodeType}${node.critical ? ' is-critical' : ''}${node.unresolved ? ' is-unresolved' : ''}`}
-      style={{
-        left: node.position.x,
-        top: node.position.y,
-        width: node.width,
-        height: node.height,
-      }}
-      title={getNodeTooltip(node)}
-      aria-label={`${node.nodeType === 'weapon' ? 'Оружие' : 'Модуль'}: ${node.fullName}`}
-      onPointerDown={event => event.stopPropagation()}
-    >
+  const interactive = node.nodeType !== 'weapon' && Boolean(node.slotInstanceId) && !node.unresolved;
+  const className = `weapon-diagram-node weapon-diagram-node--${node.nodeType}${node.critical ? ' is-critical' : ''}${node.unresolved ? ' is-unresolved' : ''}${isSelected ? ' is-selected' : ''}`;
+  const content = (
+    <>
       <div className="weapon-diagram-node__media" aria-hidden="true">
         {node.imageUrl ? (
           <img
@@ -47,15 +41,52 @@ function DiagramNode({ node }) {
             }}
           />
         ) : (
-          <span>{fallbackLabel}</span>
+          <span>{node.nodeType === 'slot' ? '+' : fallbackLabel}</span>
         )}
       </div>
       <div className="weapon-diagram-node__body">
         <strong>{node.name}</strong>
-        <span>{node.category}</span>
-        {node.critical && <em>Критический</em>}
+        <span>{node.slotName && node.nodeType === 'module' ? `${node.category} · ${node.slotName}` : node.category}</span>
+        {node.critical && <em>Required</em>}
       </div>
-    </article>
+    </>
+  );
+
+  const sharedProps = {
+    className,
+    style: {
+      left: node.position.x,
+      top: node.position.y,
+      width: node.width,
+      height: node.height,
+    },
+    title: getNodeTooltip(node),
+    'data-slot-instance-id': node.slotInstanceId || undefined,
+    'aria-label': interactive
+      ? `${node.nodeType === 'slot' ? 'Install a module in slot' : 'Replace module'} ${node.fullName}`
+      : `${node.nodeType === 'weapon' ? 'Weapon' : 'Module'}: ${node.fullName}`,
+    onPointerDown: event => event.stopPropagation(),
+    onPointerEnter: () => onHighlight?.(node.id),
+    onPointerLeave: () => onHighlight?.(null),
+    onFocus: () => onHighlight?.(node.id),
+    onBlur: () => onHighlight?.(null),
+  };
+
+  if (interactive) {
+    return (
+      <button
+        {...sharedProps}
+        type="button"
+        aria-pressed={isSelected}
+        onClick={event => onSelect?.(node, event.currentTarget)}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <article {...sharedProps}>{content}</article>
   );
 }
 
@@ -74,11 +105,12 @@ function DiagramIcon({ type }) {
   return null;
 }
 
-export default function WeaponBuildDiagram({ layout }) {
+export default function WeaponBuildDiagram({ layout, selectedSlotId, stats, onSelectNode }) {
   const viewportRef = useRef(null);
   const dragRef = useRef(null);
   const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
   const [isPanning, setIsPanning] = useState(false);
+  const [highlightedNodeId, setHighlightedNodeId] = useState(null);
   const nodeById = useMemo(
     () => new Map(layout.nodes.map(node => [node.id, node])),
     [layout.nodes],
@@ -185,18 +217,18 @@ export default function WeaponBuildDiagram({ layout }) {
 
   return (
     <div className="weapon-diagram">
-      <div className="weapon-diagram__toolbar" aria-label="Управление схемой">
-        <button className="btn btn--ghost" type="button" onClick={() => zoomAtCenter(1.15)} aria-label="Увеличить масштаб">+</button>
-        <button className="btn btn--ghost" type="button" onClick={() => zoomAtCenter(0.85)} aria-label="Уменьшить масштаб">−</button>
+      <div className="weapon-diagram__toolbar" aria-label="Diagram controls">
+        <button className="btn btn--ghost" type="button" onClick={() => zoomAtCenter(1.15)} aria-label="Zoom in">+</button>
+        <button className="btn btn--ghost" type="button" onClick={() => zoomAtCenter(0.85)} aria-label="Zoom out">−</button>
         <button className="btn btn--ghost weapon-diagram__text-control" type="button" onClick={fitToView}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><DiagramIcon type="fit" /></svg>
-          Уместить
+          Fit
         </button>
         <button className="btn btn--ghost weapon-diagram__text-control" type="button" onClick={centerView}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><DiagramIcon type="center" /></svg>
-          По центру
+          Center
         </button>
-        <span>{Math.round(view.scale * 100)}% · колесо — масштаб, перетаскивание — обзор</span>
+        <span>{Math.round(view.scale * 100)}% · wheel to zoom, drag to pan</span>
       </div>
 
       <div
@@ -223,22 +255,37 @@ export default function WeaponBuildDiagram({ layout }) {
             viewBox={`0 0 ${layout.width} ${layout.height}`}
             aria-hidden="true"
           >
-            {layout.edges.map(edge => {
+            {[...layout.edges]
+              .sort((first, second) => (
+                Number(isDiagramEdgeHighlighted(first, highlightedNodeId))
+                - Number(isDiagramEdgeHighlighted(second, highlightedNodeId))
+              ))
+              .map(edge => {
               const sourceNode = nodeById.get(edge.source);
               const targetNode = nodeById.get(edge.target);
               const path = getOrthogonalEdgePath(sourceNode, targetNode);
               if (!path) return null;
+              const isHighlighted = isDiagramEdgeHighlighted(edge, highlightedNodeId);
               return (
                 <path
                   key={edge.id}
-                  className={edge.unresolved ? 'is-unresolved' : ''}
+                  className={`${edge.unresolved ? 'is-unresolved' : ''}${edge.free ? ' is-free' : ''}${isHighlighted ? ' is-highlighted' : ''}`.trim()}
                   d={path}
                 />
               );
             })}
           </svg>
-          {layout.nodes.map(node => <DiagramNode key={node.id} node={node} />)}
+          {layout.nodes.map(node => (
+            <DiagramNode
+              key={node.id}
+              node={node}
+              isSelected={node.slotInstanceId === selectedSlotId}
+              onHighlight={setHighlightedNodeId}
+              onSelect={onSelectNode}
+            />
+          ))}
         </div>
+        <WeaponBuildDiagramStats stats={stats} />
       </div>
     </div>
   );
