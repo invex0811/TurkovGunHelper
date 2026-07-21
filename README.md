@@ -1,47 +1,47 @@
 # Tarkov Gun Helper
 
-**Tarkov Gun Helper** — веб-сервис для подбора и редактирования сборок оружия в **Escape from Tarkov**.
+**Tarkov Gun Helper** is a web application for creating and editing weapon builds for **Escape from Tarkov**.
 
-Сайт помогает быстро подобрать совместимые модули под нужные характеристики, оценить стоимость сборки и сохранить готовые варианты.
+It helps players quickly find compatible modules for their preferred weapon characteristics, estimate the total build cost, and save completed builds.
 
-[Открыть Tarkov Gun Helper](https://invex0811.github.io/TurkovGunHelper/)
+[Open Tarkov Gun Helper](https://invex0811.github.io/TurkovGunHelper/)
 
-## Возможности
+## Features
 
-- Каталог оружия с поиском и фильтрацией по типу.
-- Автоматическое создание оптимальной Meta-сборки.
-- Пользовательская настройка приоритетов характеристик.
-- Выбор режима цен для PvP или PvE.
-- Учёт цен Барахолки и торговцев.
-- Ограничение сборки по бюджету и весу.
-- Настройка глушителя, магазина, прицела, лазера и фонаря.
-- Добавление обязательных модулей, которые должны присутствовать в сборке.
-- Отображение итоговой цены, эргономики, отдачи и веса.
-- Выделение критически важных модулей оружия.
-- Ручная замена деталей на совместимые альтернативы со сравнением характеристик и цены.
-- Интерактивная схема установленных модулей и свободных слотов.
-- Переход на страницу оружия или модуля на tarkov.dev.
-- Сохранение сборок в браузере и продолжение их редактирования.
-- Сравнение нескольких сохранённых сборок.
-- Импорт и экспорт отдельных сборок или всей коллекции.
+- Weapon catalog with search and type filters.
+- Automatic generation of optimized Meta builds.
+- Custom priorities for weapon characteristics.
+- Separate PvP and PvE price modes.
+- Flea Market and trader price support.
+- Build limits for budget and weight.
+- Suppressor, magazine, sight, laser, and flashlight settings.
+- Required modules that must be included in the build.
+- Final price, ergonomics, recoil, and weight calculations.
+- Highlighting of critical weapon modules.
+- Manual replacement of parts with compatible alternatives, including stat and price comparisons.
+- Interactive diagram of installed modules and available slots.
+- Direct links to weapon and module pages on tarkov.dev.
+- Local build saving with the ability to continue editing later.
+- Comparison of multiple saved builds.
+- Import and export of individual builds or the entire collection.
 
-## Как пользоваться
+## How to Use
 
-1. Выберите оружие в каталоге.
-2. Укажите цель сборки и необходимые ограничения.
-3. Нажмите **Generate Build**.
-4. Просмотрите характеристики, цену и список установленных деталей.
-5. При необходимости замените отдельные модули или отредактируйте сборку через диаграмму.
-6. Сохраните результат, чтобы открыть или сравнить его позже на странице **Builds**.
+1. Select a weapon from the catalog.
+2. Choose the build goal and configure the required limits.
+3. Click **Generate Build**.
+4. Review the weapon characteristics, estimated price, and installed parts.
+5. Replace individual modules or edit the build through the interactive diagram when needed.
+6. Save the result to reopen or compare it later on the **Builds** page.
 
-## Данные и хранение
+## Data and Storage
 
-Информация об оружии, модулях, совместимости и ценах загружается с [tarkov.dev](https://tarkov.dev/).
+Weapon, module, compatibility, and price data is provided by [tarkov.dev](https://tarkov.dev/).
 
-Сохранённые сборки хранятся локально в браузере. Для переноса на другое устройство их можно экспортировать в файл, а затем импортировать обратно.
+Saved builds are stored locally in the browser. To move builds to another browser or device, export them to a file and import them again.
 
-Цены являются ориентировочными и могут отличаться от текущих цен в игре.
+Prices are estimates and may differ from current in-game prices.
 
-## Примечание
+## Disclaimer
 
-Tarkov Gun Helper — независимый неофициальный проект и не связан с Battlestate Games.
+Tarkov Gun Helper is an independent, unofficial project and is not affiliated with Battlestate Games.
