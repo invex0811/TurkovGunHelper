@@ -1,4 +1,4 @@
-const API_URL = 'https://api.tarkov.dev/graphql';
+export const TARKOV_JSON_API_URL = 'https://json.tarkov.dev/';
 export const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 
 export class TarkovApiError extends Error {
@@ -7,13 +7,8 @@ export class TarkovApiError extends Error {
     this.name = 'TarkovApiError';
     this.code = code;
 
-    if (Number.isInteger(status)) {
-      this.status = status;
-    }
-
-    if (cause !== undefined) {
-      this.cause = cause;
-    }
+    if (Number.isInteger(status)) this.status = status;
+    if (cause !== undefined) this.cause = cause;
   }
 }
 
@@ -22,10 +17,7 @@ export function isAbortError(error) {
 }
 
 function getTimeoutMs(timeoutMs) {
-  if (timeoutMs === 0) {
-    return 0;
-  }
-
+  if (timeoutMs === 0) return 0;
   return Number.isFinite(timeoutMs) && timeoutMs > 0
     ? timeoutMs
     : DEFAULT_REQUEST_TIMEOUT_MS;
@@ -34,15 +26,11 @@ function getTimeoutMs(timeoutMs) {
 function createRequestScope(callerSignal, timeoutMs) {
   const controller = new AbortController();
   let timedOut = false;
-
   const abortFromCaller = () => controller.abort(callerSignal.reason);
 
   if (callerSignal) {
-    if (callerSignal.aborted) {
-      abortFromCaller();
-    } else {
-      callerSignal.addEventListener('abort', abortFromCaller, { once: true });
-    }
+    if (callerSignal.aborted) abortFromCaller();
+    else callerSignal.addEventListener('abort', abortFromCaller, { once: true });
   }
 
   const timeoutId = timeoutMs > 0
@@ -57,33 +45,46 @@ function createRequestScope(callerSignal, timeoutMs) {
     didTimeout: () => timedOut,
     wasAborted: () => controller.signal.aborted,
     cleanup: () => {
-      if (timeoutId !== undefined) {
-        clearTimeout(timeoutId);
-      }
-
-      if (callerSignal) {
-        callerSignal.removeEventListener('abort', abortFromCaller);
-      }
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+      callerSignal?.removeEventListener('abort', abortFromCaller);
     },
   };
 }
 
-function getGraphQLErrorMessage(errors) {
-  return errors.find(error => typeof error?.message === 'string')?.message
-    || 'Tarkov.dev could not complete the request.';
+function createApiUrl(path) {
+  if (typeof path !== 'string' || path.length === 0) {
+    throw new TarkovApiError('A Tarkov.dev JSON endpoint is required.', {
+      code: 'INVALID_RESPONSE',
+    });
+  }
+
+  const url = new URL(path, TARKOV_JSON_API_URL);
+  if (url.origin !== new URL(TARKOV_JSON_API_URL).origin) {
+    throw new TarkovApiError('The Tarkov.dev JSON endpoint is invalid.', {
+      code: 'INVALID_RESPONSE',
+    });
+  }
+  return url.href;
 }
 
-export async function fetchGraphQL(query, variables = {}, options = {}) {
+/**
+ * Fetches one JSON API envelope. Most endpoints expose an object in `data`;
+ * array-backed endpoints (currently barters) must opt in explicitly.
+ */
+export async function fetchTarkovJson(path, options = {}) {
   const requestScope = createRequestScope(options.signal, getTimeoutMs(options.timeoutMs));
 
   try {
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({ query, variables }),
+    if (requestScope.signal.aborted) {
+      throw new TarkovApiError('The Tarkov.dev request was cancelled.', {
+        code: 'ABORTED',
+        cause: options.signal?.reason,
+      });
+    }
+
+    const response = await fetch(createApiUrl(path), {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
       signal: requestScope.signal,
     });
 
@@ -96,37 +97,30 @@ export async function fetchGraphQL(query, variables = {}, options = {}) {
     }
 
     let result;
-
     try {
       result = await response.json();
     } catch (error) {
       throw new TarkovApiError(
-        'Tarkov.dev returned an unreadable response.',
+        'Tarkov.dev returned an unreadable JSON response.',
         { code: 'INVALID_RESPONSE', cause: error },
       );
     }
 
-    if (!result || typeof result !== 'object') {
+    const hasObjectData = result
+      && typeof result === 'object'
+      && !Array.isArray(result)
+      && result.data
+      && typeof result.data === 'object'
+      && (options.allowArrayData || !Array.isArray(result.data));
+
+    if (!hasObjectData) {
       throw new TarkovApiError(
-        'Tarkov.dev returned an invalid response.',
+        'Tarkov.dev returned an invalid JSON response.',
         { code: 'INVALID_RESPONSE' },
       );
     }
 
-    if (Array.isArray(result.errors) && result.errors.length > 0) {
-      throw new TarkovApiError(getGraphQLErrorMessage(result.errors), {
-        code: 'GRAPHQL_ERROR',
-      });
-    }
-
-    if (!Object.hasOwn(result, 'data')) {
-      throw new TarkovApiError(
-        'Tarkov.dev returned an invalid response.',
-        { code: 'INVALID_RESPONSE' },
-      );
-    }
-
-    return result.data;
+    return result;
   } catch (error) {
     if (requestScope.didTimeout()) {
       throw new TarkovApiError(
@@ -134,17 +128,13 @@ export async function fetchGraphQL(query, variables = {}, options = {}) {
         { code: 'TIMEOUT', cause: error },
       );
     }
-
     if (requestScope.wasAborted() || isAbortError(error)) {
       throw new TarkovApiError('The Tarkov.dev request was cancelled.', {
         code: 'ABORTED',
         cause: error,
       });
     }
-
-    if (error instanceof TarkovApiError) {
-      throw error;
-    }
+    if (error instanceof TarkovApiError) throw error;
 
     throw new TarkovApiError(
       'Could not reach Tarkov.dev. Check your connection and try again.',

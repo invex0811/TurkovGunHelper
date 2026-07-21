@@ -2,7 +2,7 @@
 
 Tarkov Gun Helper is a frontend-only React/Vite application for finding weapon builds for Escape from Tarkov.
 
-The project is currently an MVP / work in progress. It provides a weapon list, a weapon configurator, integration with an external Tarkov GraphQL API, and a domain-level calculator that selects compatible weapon parts according to selected build goals.
+The project is currently an MVP / work in progress. It provides a weapon list, a weapon configurator, integration with the tarkov.dev JSON API, and a domain-level calculator that selects compatible weapon parts according to selected build goals.
 
 ## Current status
 
@@ -12,7 +12,7 @@ The project currently includes:
 - HashRouter-based navigation.
 - Main weapon list page.
 - Weapon configurator page.
-- External GraphQL API integration with timeout, cancellation, and short-lived in-memory caching.
+- External JSON API integration with timeout, cancellation, translations, and short-lived in-memory caching.
 - Domain calculator for weapon build generation.
 - Calculator and API unit tests.
 - Local fixtures for calculator regression tests.
@@ -100,8 +100,9 @@ src/
   data/
     tarkovApi/
       client.js
+      itemMapper.js
       repository.js
-      queries.js
+      translations.js
 
   domain/
     calculator.js
@@ -129,7 +130,7 @@ tests/
 
 `src/pages` contains application pages.
 
-`src/data/tarkovApi` contains the current GraphQL client, repository, and query definitions.
+`src/data/tarkovApi` contains the JSON GET client, repository, item adapter, and translation mapper.
 
 `src/domain` contains domain-level calculation logic. The calculator should not depend on React, DOM state, or browser UI concerns.
 
@@ -181,16 +182,20 @@ Current known limitations:
 
 ## Data and API assumptions
 
-The application currently depends on an external Tarkov GraphQL API.
+The application uses the frontend-compatible tarkov.dev JSON API at `https://json.tarkov.dev/`.
 
 Important assumptions:
 
-- Weapon, mod, slot, conflict, stats, and price data come from the external API.
+- PvP data comes from `regular/items`; PvE data comes from `pve/items`.
+- English item names are loaded from `regular/items_en` or `pve/items_en` and applied to the translation paths advertised by the catalog response. Russian data endpoints are also supported by the repository adapter.
+- Weapon, mod, slot, conflict, stats, trader, barter, and price data come from the external API.
 - API availability and schema stability are external dependencies.
 - Requests time out after 15 seconds by default and can be cancelled with an `AbortSignal`.
-- Weapon and mod catalog responses are cached in memory for five minutes; concurrent requests share one in-flight request.
+- A complete item catalog is loaded with one `items` GET per game mode and language, then weapons, mods, and weapon details are derived locally. Supporting translation, barter, and trader metadata use their corresponding JSON endpoints.
+- Catalog bundles are cached in memory for five minutes per game mode and language; concurrent consumers share one in-flight pipeline, and the underlying requests are cancelled when every consumer cancels.
+- PvP and PvE catalogs are loaded lazily and are never fetched together unless the user requests both modes.
 - Price data is normalized by the API layer before it reaches the calculator.
-- PvP/PvE price mode maps to the corresponding tarkov.dev game mode.
+- PvP/PvE price mode maps to the corresponding `regular`/`pve` JSON endpoint family.
 - Missing or changed API fields may affect the configurator and calculator behavior.
 
 ## Troubleshooting
