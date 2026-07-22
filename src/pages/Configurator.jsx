@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import {
   PRICE_CONFIDENCE,
-  PRICE_MODE_LABELS,
   PRICE_MODE_OPTIONS,
   PRICE_SOURCE_TYPE,
 } from '../data/price/priceModes.js';
@@ -21,6 +20,7 @@ import {
   saveTargetTypePreference,
 } from '../data/settings/buildPreferences.js';
 import { getWeaponDetails, getAllMods, isAbortError } from '../data/tarkovApi';
+import { useI18n } from '../i18n/useI18n.js';
 import {
   createBuildSnapshot,
   getSavedBuild,
@@ -28,7 +28,11 @@ import {
   saveBuildSnapshot,
 } from '../data/savedBuilds.js';
 import { recalculateBuildStats } from '../domain/calculator.js';
-import { buildWeaponAssemblyTree as buildAssemblyTree } from '../domain/weaponAssembly.js';
+import { categoryMatches, hasItemCategory } from '../domain/itemCategories.js';
+import {
+  buildWeaponAssemblyTree as buildAssemblyTree,
+  rebindBuildPartsToCatalog,
+} from '../domain/weaponAssembly.js';
 import {
   DEFAULT_CUSTOM_EXACT_TARGETS,
   normalizeCustomExactTargets,
@@ -47,7 +51,6 @@ import {
   withBaseStatMaximum,
 } from '../ui/weaponStatMeters.js';
 import {
-  CRITICAL_MODULE_TOOLTIP,
   getModuleDisplayRank,
   getModuleDisplayState,
   isCriticalSlot,
@@ -74,11 +77,11 @@ function WarningIcon({ className = '' }) {
   );
 }
 
-function CriticalModuleBadge() {
+function CriticalModuleBadge({ t }) {
   return (
-    <span className="critical-module-badge" title={CRITICAL_MODULE_TOOLTIP}>
+    <span className="critical-module-badge" title={t('config.critical')}>
       <WarningIcon className="critical-module-badge__icon" />
-      Critical
+      {t('config.critical')}
     </span>
   );
 }
@@ -102,6 +105,7 @@ function ImageWithLoader({ src, alt, style, containerStyle }) {
 }
 
 function ImageWithLoaderContent({ src, alt, style, containerStyle }) {
+  const { t } = useI18n();
   const [imageState, setImageState] = useState(src ? 'loading' : 'error');
   const isLoading = Boolean(src) && imageState === 'loading';
   const canDisplayImage = Boolean(src) && imageState !== 'error';
@@ -133,7 +137,7 @@ function ImageWithLoaderContent({ src, alt, style, containerStyle }) {
           }}
         />
       ) : (
-        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>Image unavailable</span>
+        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>{t('image.unavailable')}</span>
       )}
     </div>
   );
@@ -279,11 +283,10 @@ function getSimilarityDistance(referenceMetrics, item, priceMode, includeTraderP
 }
 
 function isValidSightForMode(item, sightMode) {
-  const cats = (item.categories || []).map(c => c.name);
-  if (cats.includes('Ironsight')) {
+  if (hasItemCategory(item, 'Ironsight')) {
     return false;
   }
-  if (cats.includes('Thermal Vision') || cats.includes('Night Vision') || cats.includes('Special scope')) {
+  if (hasItemCategory(item, 'Thermal Vision') || hasItemCategory(item, 'Night Vision') || hasItemCategory(item, 'Special scope')) {
     return false;
   }
 
@@ -291,8 +294,8 @@ function isValidSightForMode(item, sightMode) {
   if (mode === 'none') return false;
   if (mode === 'any') return true;
 
-  const isReflex = cats.includes('Reflex sight') || cats.includes('Compact reflex sight');
-  const isMagnified = cats.includes('Scope') || cats.includes('Assault scope');
+  const isReflex = hasItemCategory(item, 'Reflex sight') || hasItemCategory(item, 'Compact reflex sight');
+  const isMagnified = hasItemCategory(item, 'Scope') || hasItemCategory(item, 'Assault scope');
 
   if (mode === 'reflex') return isReflex;
   if (mode === 'scope') return isMagnified;
@@ -325,17 +328,12 @@ function scoreScope(item, priceMode, includeTraderPrices) {
   return ergo - recoil * 5 - weight * 10 - (price > 0 ? price * 0.0001 : 0);
 }
 
-function getCategoryNames(item) {
-  if (!item || !item.categories) return [];
-  return item.categories.map(c => typeof c === 'string' ? c.toLowerCase() : (c.name || '').toLowerCase());
-}
-
 function isSightItem(item) {
-  return getCategoryNames(item).includes('sights');
+  return hasItemCategory(item, 'Sights');
 }
 
 function isMountItem(item) {
-  return getCategoryNames(item).includes('mount');
+  return hasItemCategory(item, 'Mount');
 }
 
 function subtreeHasSight(node) {
@@ -400,6 +398,7 @@ function findCompatibleAlternatives(
   priceMode,
   includeTraderPrices,
   sightMode,
+  t,
   mode = 'EXACT_ITEM',
 ) {
   if (!node) return [];
@@ -409,7 +408,8 @@ function findCompatibleAlternatives(
   if (!targetNode || !targetNode.parent) return [];
 
   const parentItem = targetNode.parent.item;
-  const parentSlot = parentItem.properties?.slots?.find(s => s.name === targetNode.slotName);
+  const parentSlot = targetNode.sourceSlot
+    || parentItem.properties?.slots?.find(s => s.name === targetNode.slotName);
   if (!parentSlot) return [];
 
   const allowedItems = parentSlot.filters?.allowedItems || [];
@@ -794,8 +794,8 @@ function isPositivePrice(value) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
-function formatCurrency(value, currency = 'RUB') {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value === 0) return 'N/A';
+function formatCurrency(value, currency = 'RUB', unavailable = '—') {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value === 0) return unavailable;
   return `${Math.round(value).toLocaleString()} ${currency}`;
 }
 
@@ -821,46 +821,48 @@ function getSelectedPriceInfo(item, selectedPriceMode, includeTraderPrices) {
   };
 }
 
-function formatPriceSource(priceInfo) {
+function formatPriceSource(priceInfo, t) {
   if (priceInfo?.sourceLabel) return priceInfo.sourceLabel;
   if (priceInfo?.sourceType !== PRICE_SOURCE_TYPE.TRADER) return '';
 
   const level = isPositivePrice(priceInfo.traderLevel)
-    ? `LL${priceInfo.traderLevel}`
-    : 'LL unknown';
+    ? t('config.price.traderLevel', { level: priceInfo.traderLevel })
+    : t('config.price.traderLevelUnknown');
   return [
-    priceInfo.vendorName || 'Trader',
+    priceInfo.vendorName || t('config.price.trader'),
     level,
-    priceInfo.barterOnly ? 'Barter only' : priceInfo.isBarter ? 'Barter' : null,
-    priceInfo.questRequired ? 'Quest required' : null,
+    priceInfo.barterOnly ? t('config.price.barterOnly') : priceInfo.isBarter ? t('config.price.barter') : null,
+    priceInfo.questRequired ? t('config.price.questRequired') : null,
   ].filter(Boolean).join(' · ');
 }
 
 function ItemPrice({ priceInfo, className = '' }) {
-  const sourceLabel = formatPriceSource(priceInfo);
+  const { t } = useI18n();
+  const sourceLabel = formatPriceSource(priceInfo, t);
 
   return (
     <span className={`item-price ${className}`.trim()}>
-      <strong>{formatCurrency(priceInfo?.value, priceInfo?.currency)}</strong>
+      <strong>{formatCurrency(priceInfo?.value, priceInfo?.currency, t('config.notAvailable'))}</strong>
       {sourceLabel && <span className="item-price__source">{sourceLabel}</span>}
     </span>
   );
 }
 
 function PriceSource({ priceInfo }) {
-  const sourceLabel = formatPriceSource(priceInfo);
+  const { t } = useI18n();
+  const sourceLabel = formatPriceSource(priceInfo, t);
   return sourceLabel
     ? <span className="item-price__source">{sourceLabel}</span>
     : null;
 }
 
-function getPackagePriceInfo(items, selectedPriceMode, includeTraderPrices) {
+function getPackagePriceInfo(items, selectedPriceMode, includeTraderPrices, t) {
   const packagePrice = sumPurchasePrices(items, {
     priceMode: selectedPriceMode,
     includeTraderPrices,
   });
   const sourceLabels = Array.from(new Set(
-    packagePrice.priceInfos.map(formatPriceSource).filter(Boolean),
+    packagePrice.priceInfos.map(priceInfo => formatPriceSource(priceInfo, t)).filter(Boolean),
   ));
 
   return {
@@ -869,7 +871,7 @@ function getPackagePriceInfo(items, selectedPriceMode, includeTraderPrices) {
   };
 }
 
-function formatDiagnosticsList(entries, limit = 3) {
+function formatDiagnosticsList(entries, t, limit = 3) {
   const names = entries
     .slice(0, limit)
     .map(entry => entry.label);
@@ -877,22 +879,22 @@ function formatDiagnosticsList(entries, limit = 3) {
   const remainingCount = entries.length - names.length;
 
   if (remainingCount > 0) {
-    return `${names.join(', ')} and ${remainingCount} more`;
+    return t('config.andMore', { items: names.join(', '), count: remainingCount });
   }
 
   return names.join(', ');
 }
 
-function getPriceSummaryStatus(diagnostics, includeTraderPrices) {
-  if (diagnostics.missingEntries.length > 0) return 'some prices missing';
-  if (diagnostics.fallbackEntries.length > 0) return 'includes fallback prices';
-  return includeTraderPrices ? 'cheapest Flea/Trader prices' : 'Flea Market only';
+function getPriceSummaryStatus(diagnostics, includeTraderPrices, t) {
+  if (diagnostics.missingEntries.length > 0) return t('config.price.missingStatus');
+  if (diagnostics.fallbackEntries.length > 0) return t('config.price.fallbackStatus');
+  return includeTraderPrices ? t('config.price.fleaTrader') : t('config.price.fleaOnly');
 }
 
-function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode, includeTraderPrices) {
+function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode, includeTraderPrices, t) {
   const entries = [
     {
-      label: 'Base weapon',
+      label: t('config.weapon'),
       item: weapon,
     },
     ...buildResult.build.map(part => ({
@@ -922,38 +924,38 @@ function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode, in
 
   if (missingEntries.length > 0) {
     warningMessages.push(
-      `Missing prices: ${formatDiagnosticsList(missingEntries)}. Total price may be incomplete.`,
+      t('config.price.missing', { items: formatDiagnosticsList(missingEntries, t) }),
     );
   }
 
   if (fallbackEntries.length > 0) {
     warningMessages.push(
-      `Fallback prices: ${formatDiagnosticsList(fallbackEntries)}.`,
+      t('config.price.fallback', { items: formatDiagnosticsList(fallbackEntries, t) }),
     );
   }
 
   if (modeMismatchEntries.length > 0) {
     warningMessages.push(
-      `Price mode fallback used for: ${formatDiagnosticsList(modeMismatchEntries)}.`,
+      t('config.price.modeFallback', { items: formatDiagnosticsList(modeMismatchEntries, t) }),
     );
   }
 
   if (barterOnlyEntries.length > 0) {
     warningMessages.push(
-      `Trader-only barter prices: ${formatDiagnosticsList(barterOnlyEntries)}.`,
+      t('config.price.barterOnlyWarning', { items: formatDiagnosticsList(barterOnlyEntries, t) }),
     );
   }
 
   if (sourceLabels.length > 1) {
-    warningMessages.push(`Mixed price sources: ${sourceLabels.join(', ')}.`);
+    warningMessages.push(t('config.price.mixedSources', { sources: sourceLabels.join(', ') }));
   }
 
-  const modeLabel = PRICE_MODE_LABELS[selectedPriceMode] ?? selectedPriceMode;
-  const sourceLabel = sourceLabels.length > 0 ? sourceLabels.join(' + ') : 'No source';
+  const modeLabel = t(`config.price.${selectedPriceMode}Short`);
+  const sourceLabel = sourceLabels.length > 0 ? sourceLabels.join(' + ') : t('config.price.noSource');
   const summaryStatus = getPriceSummaryStatus({
     fallbackEntries,
     missingEntries,
-  }, includeTraderPrices);
+  }, includeTraderPrices, t);
 
   return {
     entries,
@@ -969,9 +971,9 @@ function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode, in
 }
 
 const SUPPRESSOR_MODE_OPTIONS = [
-  { value: 'allow', label: 'Allow' },
-  { value: 'forbid', label: 'Forbid' },
-  { value: 'require', label: 'Require' },
+  { value: 'allow', label: 'config.suppressorAllow' },
+  { value: 'forbid', label: 'config.suppressorForbid' },
+  { value: 'require', label: 'config.suppressorRequire' },
 ];
 
 function getSuppressorOptions(suppressorMode) {
@@ -996,7 +998,7 @@ function getSuppressorOptions(suppressorMode) {
 }
 
 function isSuppressorItem(item) {
-  return getCategoryNames(item).includes('silencer');
+  return hasItemCategory(item, 'Silencer');
 }
 
 function getReplacementConstraintErrors({
@@ -1009,6 +1011,7 @@ function getReplacementConstraintErrors({
   requiredItemIds,
   suppressorMode,
   sightMode,
+  t,
 }) {
   const errors = [];
   const items = [weapon, ...buildParts.map(part => part.item)];
@@ -1016,12 +1019,12 @@ function getReplacementConstraintErrors({
 
   for (const item of items) {
     if (!item?.id) {
-      errors.push('The replacement contains an invalid item.');
+      errors.push(t('config.invalidReplacementItem'));
       continue;
     }
 
     if (itemsById.has(item.id)) {
-      errors.push(`The replacement would install ${getItemDisplayName(item)} more than once.`);
+      errors.push(t('config.duplicateReplacement', { item: getItemDisplayName(item, t('config.item')) }));
       continue;
     }
 
@@ -1034,7 +1037,7 @@ function getReplacementConstraintErrors({
       .find(Boolean);
 
     if (conflictingItem) {
-      errors.push(`${getItemDisplayName(item)} conflicts with ${getItemDisplayName(conflictingItem)}.`);
+      errors.push(t('config.itemConflict', { item: getItemDisplayName(item, t('config.item')), conflict: getItemDisplayName(conflictingItem, t('config.item')) }));
       break;
     }
   }
@@ -1042,22 +1045,22 @@ function getReplacementConstraintErrors({
   const requiredIds = new Set((requiredItemIds || []).map(String));
   const missingRequiredIds = [...requiredIds].filter(itemId => !itemsById.has(itemId));
   if (missingRequiredIds.length > 0) {
-    errors.push(`Required module${missingRequiredIds.length > 1 ? 's' : ''} would be removed by this replacement.`);
+    errors.push(t('config.requiredRemoved'));
   }
 
   const suppressorCount = [...itemsById.values()].filter(isSuppressorItem).length;
   if (suppressorMode === 'require' && suppressorCount === 0) {
-    errors.push('This replacement would remove the required suppressor.');
+    errors.push(t('config.requiredSuppressorRemoved'));
   }
   if (suppressorMode === 'forbid' && suppressorCount > 0) {
-    errors.push('This replacement would install a forbidden suppressor.');
+    errors.push(t('config.forbiddenSuppressor'));
   }
 
   const installedSights = [...itemsById.values()].filter(isSightItem);
   if (sightMode === 'none' && installedSights.length > 0) {
-    errors.push('This replacement would install a sight while “No sight” is selected.');
+    errors.push(t('config.sightWhenNone'));
   } else if (sightMode !== 'none' && !installedSights.some(item => isValidSightForMode(item, sightMode))) {
-    errors.push('This replacement would no longer satisfy the selected sight requirement.');
+    errors.push(t('config.sightRequirement'));
   }
 
   const stats = recalculateBuildStats(weapon, buildParts, {
@@ -1068,18 +1071,18 @@ function getReplacementConstraintErrors({
   const parsedMaxPrice = Number(maxPrice) || 0;
 
   if (parsedMaxWeight > 0 && Number(stats.weight) > parsedMaxWeight + 0.0001) {
-    errors.push(`This replacement exceeds the ${parsedMaxWeight} kg weight limit.`);
+    errors.push(t('config.weightLimit', { weight: parsedMaxWeight }));
   }
   if (parsedMaxPrice > 0 && !isPositivePrice(stats.price)) {
-    errors.push('This replacement contains an item without an available price for the active policy.');
+    errors.push(t('config.priceUnavailable'));
   } else if (parsedMaxPrice > 0 && stats.price > parsedMaxPrice) {
-    errors.push(`This replacement exceeds the ${parsedMaxPrice} RUB budget limit.`);
+    errors.push(t('config.budgetLimit', { price: parsedMaxPrice }));
   }
 
   return { errors, stats };
 }
 
-function getUnattachedBuildPartError(weapon, buildParts) {
+function getUnattachedBuildPartError(weapon, buildParts, t) {
   const tree = buildAssemblyTree(weapon, buildParts);
   let attachedPartCount = 0;
 
@@ -1093,7 +1096,7 @@ function getUnattachedBuildPartError(weapon, buildParts) {
   countAttachedParts(tree);
   return attachedPartCount === buildParts.length
     ? null
-    : 'This replacement would leave one or more parts without a compatible parent slot.';
+    : t('config.unattached');
 }
 
 function InlineMessage({ type = 'info', title, children }) {
@@ -1154,10 +1157,9 @@ function getAvailableZoomLevels(allMods) {
   const zooms = new Set();
 
   Object.values(allMods).forEach(mod => {
-    const cats = (mod.categories || []).map(c => c.name);
-    if (cats.includes('Ironsight')) return;
+    if (hasItemCategory(mod, 'Ironsight')) return;
 
-    if (cats.includes('Sights')) {
+    if (hasItemCategory(mod, 'Sights')) {
       const zoomLevels = mod.properties?.zoomLevels;
       if (zoomLevels) {
         const flat = zoomLevels.flat();
@@ -1167,7 +1169,7 @@ function getAvailableZoomLevels(allMods) {
           }
         });
       } else {
-        const isReflex = cats.includes('Reflex sight') || cats.includes('Compact reflex sight');
+        const isReflex = hasItemCategory(mod, 'Reflex sight') || hasItemCategory(mod, 'Compact reflex sight');
         if (isReflex) {
           zooms.add(1);
         }
@@ -1178,13 +1180,11 @@ function getAvailableZoomLevels(allMods) {
   return Array.from(zooms).sort((a, b) => a - b);
 }
 
-function getModuleCategoryLabel(item) {
-  const categories = (item.categories || [])
-    .map(category => category.name)
-    .filter(Boolean);
-
-  const preferred = categories.find(category => !['Item', 'Weapon mod', 'Gear mod', 'Functional mod', 'Essential mod', 'Compound item'].includes(category));
-  return preferred || categories[0] || 'Module';
+function getModuleCategoryLabel(item, t) {
+  const categories = (item.categories || []).filter(category => category?.name);
+  const genericCategories = ['Item', 'Weapon mod', 'Gear mod', 'Functional mod', 'Essential mod', 'Compound item'];
+  const preferred = categories.find(category => !genericCategories.some(name => categoryMatches(category, name)));
+  return preferred?.name || categories[0]?.name || t('config.module');
 }
 
 function getModuleSearchText(item) {
@@ -1216,34 +1216,34 @@ function getRequiredModuleSearchResults(allMods, query, selectedIds) {
 }
 
 const SLOT_GROUP_NAME_MAPPINGS = {
-  'reciever': 'Receiver',
-  'receiver': 'Receiver',
-  'pistolgrip': 'Pistol Grip',
-  'pistol grip': 'Pistol Grip',
-  'grip': 'Pistol Grip',
-  'gasblock': 'Gas Block',
-  'front sight': 'Front Sight',
-  'rear sight': 'Rear Sight',
-  'ubgl': 'Underbarrel Launcher',
-  'tactical': 'Tactical Device',
-  'foregrip': 'Foregrip',
-  'bipod': 'Bipod',
-  'launcher': 'Launcher',
-  'scope': 'Scope / Sight',
-  'mount': 'Mount / Adapter',
-  'charge': 'Charging Handle',
-  'charging handle': 'Charging Handle',
-  'dustcover': 'Dust Cover',
-  'dust cover': 'Dust Cover',
-  'barrel': 'Barrel',
-  'handguard': 'Handguard',
-  'muzzle': 'Muzzle Device',
-  'stock': 'Stock',
-  'magazine': 'Magazine'
+  'reciever': 'config.slotGroup.receiver',
+  'receiver': 'config.slotGroup.receiver',
+  'pistolgrip': 'config.slotGroup.pistolGrip',
+  'pistol grip': 'config.slotGroup.pistolGrip',
+  'grip': 'config.slotGroup.pistolGrip',
+  'gasblock': 'config.slotGroup.gasBlock',
+  'front sight': 'config.slotGroup.frontSight',
+  'rear sight': 'config.slotGroup.rearSight',
+  'ubgl': 'config.slotGroup.underbarrelLauncher',
+  'tactical': 'config.slotGroup.tacticalDevice',
+  'foregrip': 'config.slotGroup.foregrip',
+  'bipod': 'config.slotGroup.bipod',
+  'launcher': 'config.slotGroup.launcher',
+  'scope': 'config.slotGroup.scope',
+  'mount': 'config.slotGroup.mount',
+  'charge': 'config.slotGroup.chargingHandle',
+  'charging handle': 'config.slotGroup.chargingHandle',
+  'dustcover': 'config.slotGroup.dustCover',
+  'dust cover': 'config.slotGroup.dustCover',
+  'barrel': 'config.slotGroup.barrel',
+  'handguard': 'config.slotGroup.handguard',
+  'muzzle': 'config.slotGroup.muzzle',
+  'stock': 'config.slotGroup.stock',
+  'magazine': 'config.slotGroup.magazine'
 };
 
-function getReadableSlotGroupName(slotName) {
-  if (!slotName) return 'Other';
+function getReadableSlotGroupName(slotName, t) {
+  if (!slotName) return t('config.other');
   let name = slotName.trim().toLowerCase();
   
   if (name.startsWith('mod_')) {
@@ -1253,7 +1253,7 @@ function getReadableSlotGroupName(slotName) {
   name = name.replace(/[\s_-]+/g, ' ');
   
   if (SLOT_GROUP_NAME_MAPPINGS[name]) {
-    return SLOT_GROUP_NAME_MAPPINGS[name];
+    return t(SLOT_GROUP_NAME_MAPPINGS[name]);
   }
   
   return name.split(' ')
@@ -1282,7 +1282,7 @@ const GROUP_ORDER = [
   'Underbarrel Launcher'
 ];
 
-function StatMeterRow({ label, value, displayValue = value, range }) {
+function StatMeterRow({ label, value, displayValue = value, range, t }) {
   const hasNumericValue = typeof value === 'number' && Number.isFinite(value);
   const percent = normalizeStatPercent(value, range.min, range.max);
   const accessibleValue = hasNumericValue
@@ -1299,7 +1299,7 @@ function StatMeterRow({ label, value, displayValue = value, range }) {
         aria-valuemin={range.min}
         aria-valuemax={range.max}
         aria-valuenow={accessibleValue}
-        aria-valuetext={hasNumericValue ? undefined : 'Not available'}
+        aria-valuetext={hasNumericValue ? undefined : t('config.notAvailable')}
       >
         <span
           className="bar__gradient"
@@ -1312,7 +1312,20 @@ function StatMeterRow({ label, value, displayValue = value, range }) {
   );
 }
 
+function getBuildResultErrorMessage(buildResult, language, t) {
+  if (buildResult.errorCode === 'CUSTOM_EXACT_TARGETS_UNMET') {
+    return t('config.exactTargetsUnmet');
+  }
+
+  return language === 'ru' ? t('config.constraintMessage') : buildResult.error;
+}
+
+function getBuildResultWarningMessage(buildResult, language, t) {
+  return language === 'ru' ? t('config.buildWarningMessage') : buildResult.warning;
+}
+
 function Configurator() {
+  const { language, t } = useI18n();
   const { weaponId } = useParams();
   const [searchParams] = useSearchParams();
   const requestedSavedBuildId = searchParams.get('build');
@@ -1362,6 +1375,8 @@ function Configurator() {
   const nextCalculationRequestIdRef = useRef(0);
   const latestCalculationRequestIdRef = useRef(0);
   const pendingCalculationsRef = useRef(new Map());
+  const lastLoadedRequestRef = useRef(null);
+  const lastLoadedWeaponRef = useRef(null);
 
   const cancelPendingCalculations = useCallback((exceptRequestId = null) => {
     const worker = calculatorWorkerRef.current;
@@ -1481,13 +1496,18 @@ function Configurator() {
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
+    const previousRequest = lastLoadedRequestRef.current;
+    const isCatalogReload = previousRequest
+      && previousRequest.weaponId === weaponId
+      && previousRequest.savedBuildId === requestedSavedBuildId
+      && previousRequest.priceMode === priceMode;
 
     Promise.resolve().then(() => {
       if (cancelled) return;
       setLoading(true);
       return Promise.all([
-        getWeaponDetails(weaponId, priceMode, { signal: controller.signal }),
-        getAllMods(priceMode, { signal: controller.signal }),
+        getWeaponDetails(weaponId, priceMode, { signal: controller.signal, language }),
+        getAllMods(priceMode, { signal: controller.signal, language }),
       ]);
     }).then(result => {
       if (cancelled || !result) return;
@@ -1496,6 +1516,34 @@ function Configurator() {
 
       setWeapon(weaponData);
       setAllMods(modsData);
+
+      if (isCatalogReload) {
+        setBuildResult(current => {
+          if (!current?.build) return current;
+
+          const localizedBuild = rebindBuildPartsToCatalog(
+            lastLoadedWeaponRef.current,
+            current.build,
+            weaponData,
+            modsData,
+          );
+
+          return {
+            ...current,
+            build: localizedBuild,
+          };
+        });
+        setLoadError(null);
+        setLoading(false);
+        lastLoadedRequestRef.current = {
+          weaponId,
+          savedBuildId: requestedSavedBuildId,
+          priceMode,
+          language,
+        };
+        lastLoadedWeaponRef.current = weaponData;
+        return;
+      }
       
       const capacities = getAvailableCapacities(weaponData, modsData);
       if (capacities.length > 0) {
@@ -1519,7 +1567,7 @@ function Configurator() {
           build: restored.build,
           stats: restoredResult.stats,
           warning: restored.missingItemIds.length > 0
-            ? `${restored.missingItemIds.length} saved module(s) are no longer available and were skipped.`
+            ? t('config.savedModulesSkipped', { count: restored.missingItemIds.length })
             : undefined,
         });
         setTargetType(normalizeTargetType(settings.targetType));
@@ -1541,25 +1589,32 @@ function Configurator() {
         setCustomExactTargets(DEFAULT_CUSTOM_EXACT_TARGETS);
         setRequiredModuleIds([]);
         setActiveSavedBuildId(null);
-        setSaveName(`${weaponData.shortName || weaponData.name} build`);
+        setSaveName(t('config.defaultBuildName', { weapon: weaponData.shortName || weaponData.name }));
       }
       setRequiredModuleSearch('');
       setLoadError(null);
       setGenerationError(
         requestedSavedBuildId && !requestedSavedBuild
-          ? 'This saved build no longer exists in local storage.'
+          ? t('config.savedBuildMissing')
           : null,
       );
       setReplacementError(null);
       setSaveFeedback(null);
       setLoading(false);
+      lastLoadedRequestRef.current = {
+        weaponId,
+        savedBuildId: requestedSavedBuildId,
+        priceMode,
+        language,
+      };
+      lastLoadedWeaponRef.current = weaponData;
     }).catch(err => {
       if (cancelled || controller.signal.aborted || isAbortError(err)) return;
 
       console.error(err);
       setWeapon(null);
       setAllMods(null);
-      setLoadError('Failed to load weapon details. Please go back to the weapon list and try again.');
+      setLoadError(t('config.error'));
       setBuildResult(null);
       setGenerationError(null);
       setReplacementError(null);
@@ -1570,7 +1625,7 @@ function Configurator() {
       cancelled = true;
       controller.abort();
     };
-  }, [weaponId, priceMode, requestedSavedBuild, requestedSavedBuildId]);
+  }, [weaponId, priceMode, requestedSavedBuild, requestedSavedBuildId, language, t]);
 
   const handleReplacePart = (targetNode, alternativeItem, mode = 'EXACT_ITEM') => {
     if (!buildResult || !targetNode) return;
@@ -1583,7 +1638,7 @@ function Configurator() {
     function checkCompatibilityAndCollect(nodeToCheck, parentItem) {
       nodeToCheck.children.forEach(child => {
         const slots = parentItem.properties?.slots || [];
-        const matchingSlot = slots.find(s => s.name === child.slotName);
+        const matchingSlot = child.sourceSlot || slots.find(s => s.name === child.slotName);
         
         let isCompatible = false;
         if (matchingSlot) {
@@ -1642,7 +1697,7 @@ function Configurator() {
       });
     }
 
-    const attachmentError = getUnattachedBuildPartError(weapon, updatedBuild);
+    const attachmentError = getUnattachedBuildPartError(weapon, updatedBuild, t);
     const { errors, stats } = getReplacementConstraintErrors({
       weapon,
       buildParts: updatedBuild,
@@ -1653,6 +1708,7 @@ function Configurator() {
       requiredItemIds: requiredModuleIds,
       suppressorMode,
       sightMode,
+      t,
     });
 
     if (attachmentError) errors.unshift(attachmentError);
@@ -1687,9 +1743,9 @@ function Configurator() {
   }, []);
 
   const handleDiagramBuildChange = useCallback((nextBuildParts) => {
-    if (!weapon || !buildResult) return ['The current build is unavailable for editing.'];
+    if (!weapon || !buildResult) return [t('config.currentBuildUnavailable')];
 
-    const attachmentError = getUnattachedBuildPartError(weapon, nextBuildParts);
+    const attachmentError = getUnattachedBuildPartError(weapon, nextBuildParts, t);
     const { errors, stats: recalculatedResult } = getReplacementConstraintErrors({
       weapon,
       buildParts: nextBuildParts,
@@ -1700,6 +1756,7 @@ function Configurator() {
       requiredItemIds: requiredModuleIds,
       suppressorMode,
       sightMode,
+      t,
     });
     if (attachmentError) errors.unshift(attachmentError);
     if (errors.length > 0) return errors;
@@ -1721,6 +1778,7 @@ function Configurator() {
     sightMode,
     suppressorMode,
     weapon,
+    t,
   ]);
 
   const handleAddRequiredModule = (item) => {
@@ -1752,9 +1810,9 @@ function Configurator() {
     } : current);
     setPricePolicyWarning(
       budgetLimit > 0 && !isPositivePrice(recalculated.stats.price)
-        ? 'The current build contains an item without an available price for this policy.'
+        ? t('config.currentPriceUnavailable')
         : budgetLimit > 0 && recalculated.stats.price > budgetLimit
-          ? `The current build exceeds the ${budgetLimit} RUB budget under this price policy.`
+          ? t('config.currentBudgetExceeded', { price: budgetLimit })
           : null,
     );
   };
@@ -1799,24 +1857,24 @@ function Configurator() {
       if (err?.name === 'AbortError') return;
       if (requestId !== null && requestId !== latestCalculationRequestIdRef.current) return;
       console.error(err);
-      setGenerationError('Failed to generate build. Mod data could not be loaded or the calculation failed.');
+      setGenerationError(t('config.generateFailed'));
     } finally {
       if (requestId === latestCalculationRequestIdRef.current) {
         setGenerating(false);
       }
     }
-  }, [allMods, suppressorMode, magazineCapacity, priceMode, includeTraderPrices, includeLaser, includeFlashlight, sightMode, requiredModuleIds, weapon, targetType, customProfile, customExactTargets, runBuildCalculation]);
+  }, [allMods, suppressorMode, magazineCapacity, priceMode, includeTraderPrices, includeLaser, includeFlashlight, sightMode, requiredModuleIds, weapon, targetType, customProfile, customExactTargets, runBuildCalculation, t]);
 
   const handleSaveBuild = () => {
     if (!weapon || !buildResult || buildResult.error || !Array.isArray(buildResult.build) || buildResult.build.length === 0) {
-      setSaveFeedback({ type: 'error', message: 'Generate a valid build before saving it.' });
+      setSaveFeedback({ type: 'error', message: t('config.saveValidFirst') });
       return;
     }
 
     try {
       const savedBuild = saveBuildSnapshot(createBuildSnapshot({
         id: activeSavedBuildId,
-        name: saveName.trim() || `${weapon.shortName || weapon.name} build`,
+        name: saveName.trim() || t('config.saveNameDefault', { weapon: weapon.shortName || weapon.name }),
         weapon,
         buildResult,
         settings: {
@@ -1845,11 +1903,11 @@ function Configurator() {
 
       setActiveSavedBuildId(savedBuild.id);
       setSaveName(savedBuild.name);
-      setSaveFeedback({ type: 'success', message: activeSavedBuildId ? 'Saved build updated.' : 'Build saved locally.' });
-    } catch (error) {
+      setSaveFeedback({ type: 'success', message: activeSavedBuildId ? t('config.saveUpdated') : t('config.saveLocal') });
+  } catch {
       setSaveFeedback({
         type: 'error',
-        message: error instanceof Error ? error.message : 'The build could not be saved.',
+        message: t('config.saveFailed'),
       });
     }
   };
@@ -1922,10 +1980,11 @@ function Configurator() {
         priceMode,
         includeTraderPrices,
         sightMode,
+        t,
         replaceMode,
       ),
     };
-  }, [weapon, buildResult, hasBuildParts, activeReplacePartId, allMods, priceMode, includeTraderPrices, sightMode, replaceMode]);
+  }, [weapon, buildResult, hasBuildParts, activeReplacePartId, allMods, priceMode, includeTraderPrices, sightMode, t, replaceMode]);
 
   const isLoading = loading || (weapon && weapon.id !== weaponId);
 
@@ -1936,7 +1995,7 @@ function Configurator() {
           <div className="loader-ring"></div>
           <div className="loader-ring"></div>
           <div className="loader-ring"></div>
-          <p className="loader-text">Загрузка...</p>
+          <p className="loader-text">{t('config.loader')}</p>
         </div>
       </div>
     );
@@ -1946,55 +2005,56 @@ function Configurator() {
     return (
       <div className="glass-panel" style={{ padding: '2rem', textAlign: 'center' }}>
         {loadError ? (
-          <InlineMessage type="error" title="Weapon loading failed">
+          <InlineMessage type="error" title={t('config.loadingFailed')}>
             {loadError}
           </InlineMessage>
         ) : (
-          'Weapon not found.'
+          t('config.notFound')
         )}
       </div>
     );
   }
 
   const priceDiagnostics = canShowBuildDetails
-    ? collectBuildPriceDiagnostics(weapon, buildResult, priceMode, includeTraderPrices)
+    ? collectBuildPriceDiagnostics(weapon, buildResult, priceMode, includeTraderPrices, t)
     : {
-      summaryLabel: `${PRICE_MODE_LABELS[priceMode]} · tarkov.dev · ${includeTraderPrices ? 'cheapest Flea/Trader prices' : 'Flea Market only'}`,
-      summaryStatus: includeTraderPrices ? 'cheapest Flea/Trader prices' : 'Flea Market only',
+      summaryLabel: `${t(`config.price.${priceMode}Short`)} · tarkov.dev · ${includeTraderPrices ? t('config.price.fleaTrader') : t('config.price.fleaOnly')}`,
+      summaryStatus: includeTraderPrices ? t('config.price.fleaTrader') : t('config.price.fleaOnly'),
       warningMessages: [],
     };
 
   // Рассчитываем текущие значения для панели метрик
-  const currentErgo = canShowBuildDetails ? buildResult.stats.ergonomics : (weapon.properties?.ergonomics ?? 'N/A');
+  const currentErgo = canShowBuildDetails ? buildResult.stats.ergonomics : (weapon.properties?.ergonomics ?? t('config.notAvailable'));
   const currentWeightValue = toFiniteStatNumber(
     canShowBuildDetails ? buildResult.stats.weight : weapon.weight,
   );
-  const currentWeight = canShowBuildDetails ? `${buildResult.stats.weight} kg` : (weapon.weight ? `${weapon.weight} kg` : 'N/A');
-  const currentRecoilV = canShowBuildDetails ? buildResult.stats.recoilVertical : (weapon.properties?.recoilVertical ?? 'N/A');
-  const currentRecoilH = canShowBuildDetails ? buildResult.stats.recoilHorizontal : (weapon.properties?.recoilHorizontal ?? 'N/A');
+  const currentWeight = canShowBuildDetails ? `${buildResult.stats.weight} kg` : (weapon.weight ? `${weapon.weight} kg` : t('config.notAvailable'));
+  const currentRecoilV = canShowBuildDetails ? buildResult.stats.recoilVertical : (weapon.properties?.recoilVertical ?? t('config.notAvailable'));
+  const currentRecoilH = canShowBuildDetails ? buildResult.stats.recoilHorizontal : (weapon.properties?.recoilHorizontal ?? t('config.notAvailable'));
   const currentPrice = canShowBuildDetails 
-    ? formatCurrency(buildResult.stats.price, 'RUB') 
+    ? formatCurrency(buildResult.stats.price, 'RUB', t('config.notAvailable'))
     : formatCurrency(
       getSelectedPriceInfo(weapon, priceMode, includeTraderPrices).value,
       'RUB',
+      t('config.notAvailable'),
     );
   const statMeters = [
     {
       key: 'weight',
-      label: 'Weight',
+      label: t('config.stat.weight'),
       value: currentWeightValue,
       displayValue: currentWeight,
       range: WEAPON_STAT_UI_RANGES.weight,
     },
     {
       key: 'ergonomics',
-      label: 'Ergonomics',
+      label: t('config.stat.ergonomics'),
       value: currentErgo,
       range: WEAPON_STAT_UI_RANGES.ergonomics,
     },
     {
       key: 'vertical-recoil',
-      label: 'Vertical Recoil',
+      label: t('config.stat.verticalRecoil'),
       value: currentRecoilV,
       range: withBaseStatMaximum(
         WEAPON_STAT_UI_RANGES.verticalRecoil,
@@ -2003,7 +2063,7 @@ function Configurator() {
     },
     {
       key: 'horizontal-recoil',
-      label: 'Horizontal Recoil',
+      label: t('config.stat.horizontalRecoil'),
       value: currentRecoilH,
       range: withBaseStatMaximum(
         WEAPON_STAT_UI_RANGES.horizontalRecoil,
@@ -2017,7 +2077,7 @@ function Configurator() {
   if (canShowBuildDetails) {
     const groupMap = new Map();
     getBuildModuleDisplayItems(weapon, buildResult.build).forEach(part => {
-      const slotGroup = getReadableSlotGroupName(part.slotName);
+      const slotGroup = getReadableSlotGroupName(part.slotName, t);
       const displayRank = getModuleDisplayRank(part);
       const groupKey = `${displayRank}:${slotGroup}`;
       let group = groupMap.get(groupKey);
@@ -2074,16 +2134,16 @@ function Configurator() {
   return (
     <div className="layout">
       {/* Левый сайдбар с конфигурацией сборки */}
-      <aside className="config" aria-label="Build Configuration">
+      <aside className="config" aria-label={t('config.buildConfiguration')}>
         <div className="config__head">
-          <h2>Build Configuration</h2>
+          <h2>{t('config.buildConfiguration')}</h2>
         </div>
 
         <section className="config__section config__section--tabs">
           <div className="segmented segmented--tabs">
             {[
-              { value: 'basic', label: 'Basic' },
-              { value: 'advanced', label: 'Advanced' }
+              { value: 'basic', label: t('config.basic') },
+              { value: 'advanced', label: t('config.advanced') }
             ].map(option => (
               <button
                 key={option.value}
@@ -2100,11 +2160,11 @@ function Configurator() {
         {configTab === 'basic' && (
           <>
         <section className="config__section">
-          <label className="field-label">Build Goal</label>
+          <label className="field-label">{t('config.goal')}</label>
           <div className="segmented segmented--goals">
             {[
-              { value: 'meta', label: 'Meta (Top)' },
-              { value: 'custom', label: 'Custom' }
+              { value: 'meta', label: t('config.meta') },
+              { value: 'custom', label: t('config.custom') }
             ].map(option => (
               <button
                 key={option.value}
@@ -2112,7 +2172,7 @@ function Configurator() {
                 type="button"
                 onClick={() => setTargetType(option.value)}
               >
-                {option.label}
+              {option.label}
               </button>
             ))}
           </div>
@@ -2138,7 +2198,7 @@ function Configurator() {
         </div>
 
         <section className="config__section">
-          <label className="field-label">Suppressor Mode</label>
+          <label className="field-label">{t('config.suppressor')}</label>
           <div className="segmented segmented--three">
             {SUPPRESSOR_MODE_OPTIONS.map(option => (
               <button
@@ -2147,14 +2207,14 @@ function Configurator() {
                 type="button"
                 onClick={() => setSuppressorMode(option.value)}
               >
-                {option.label}
+                {t(option.label)}
               </button>
             ))}
           </div>
         </section>
 
         <section className="config__section">
-          <label className="field-label">Price Mode</label>
+          <label className="field-label">{t('config.priceMode')}</label>
           <div className="segmented segmented--two">
             {PRICE_MODE_OPTIONS.map(option => (
               <button
@@ -2163,7 +2223,7 @@ function Configurator() {
                 type="button"
                 onClick={() => setPriceMode(option.value)}
               >
-                {option.label}
+                {t(`config.price.${option.value}`)}
               </button>
             ))}
           </div>
@@ -2176,10 +2236,10 @@ function Configurator() {
                 onChange={event => handleIncludeTraderPricesChange(event.target.checked)}
                 aria-describedby="includeTraderPricesHelp"
               />
-              <span>Include trader prices</span>
+              <span>{t('config.includeTraders')}</span>
             </label>
             <span id="includeTraderPricesHelp" className="field-help">
-              Use the lowest available price from the Flea Market or traders.
+              {t('config.helpPrices')}
             </span>
           </div>
         </section>
@@ -2187,11 +2247,11 @@ function Configurator() {
         {targetType !== 'custom' && <section className="config__section">
           <div className="input-grid">
             <div>
-              <label className="field-label" htmlFor="maxWeight">Max Weight (kg)</label>
+              <label className="field-label" htmlFor="maxWeight">{t('config.maxWeight')}</label>
               <input 
                 id="maxWeight" 
                 type="number" 
-                placeholder="No limit" 
+                placeholder={t('config.noLimit')}
                 min="0" 
                 max={WEAPON_STAT_UI_RANGES.weight.max}
                 step="0.05"
@@ -2203,11 +2263,11 @@ function Configurator() {
               />
             </div>
             <div>
-              <label className="field-label" htmlFor="maxBudget">Max Budget (RUB)</label>
+              <label className="field-label" htmlFor="maxBudget">{t('config.maxBudget')}</label>
               <input 
                 id="maxBudget" 
                 type="number" 
-                placeholder="No limit" 
+                placeholder={t('config.noLimit')}
                 min="0" 
                 max={WEAPON_STAT_UI_RANGES.price.max}
                 step="1000"
@@ -2222,7 +2282,7 @@ function Configurator() {
         </section>}
 
         <section className="config__section">
-          <label className="field-label">Magazine Capacity (rounds)</label>
+          <label className="field-label">{t('config.magazine')}</label>
           <div className="segmented segmented--capacity">
             {availableCapacities.map(capacity => (
               <button
@@ -2238,7 +2298,7 @@ function Configurator() {
         </section>
 
         <section className="config__section">
-          <label className="field-label" htmlFor="sightZoom">Sight Zoom / Type</label>
+          <label className="field-label" htmlFor="sightZoom">{t('config.sight')}</label>
           <div className={`config-select-wrap ${isSightSelectOpen ? 'is-open' : ''}`}>
             <select
               id="sightZoom"
@@ -2255,13 +2315,13 @@ function Configurator() {
               }}
             >
               {[
-                { value: 'none', label: 'NO SIGHT' },
-                { value: 'any', label: 'ANY SIGHT' },
-                { value: 'reflex', label: 'REFLEX (1x)' },
-                { value: 'scope', label: 'SCOPE (Any zoom)' },
+                { value: 'none', label: t('config.sight.none') },
+                { value: 'any', label: t('config.sight.any') },
+                { value: 'reflex', label: t('config.sight.reflex') },
+                { value: 'scope', label: t('config.sight.scope') },
                 ...availableZoomLevels
                   .filter(z => z > 1)
-                  .map(z => ({ value: String(z), label: `${z}x Zoom` }))
+                  .map(z => ({ value: String(z), label: t('config.sight.zoom', { zoom: z }) }))
               ].map(option => (
                 <option
                   key={option.value}
@@ -2276,7 +2336,7 @@ function Configurator() {
         </section>
 
         <section className="config__section">
-          <label className="field-label">Tactical Accessories</label>
+          <label className="field-label">{t('config.accessories')}</label>
           <div className="checks">
             <label className="check">
               <input 
@@ -2284,7 +2344,7 @@ function Configurator() {
                 checked={includeLaser}
                 onChange={e => setIncludeLaser(e.target.checked)}
               /> 
-              <span>Laser / TBL</span>
+              <span>{t('config.laser')}</span>
             </label>
             <label className="check">
               <input 
@@ -2292,7 +2352,7 @@ function Configurator() {
                 checked={includeFlashlight}
                 onChange={e => setIncludeFlashlight(e.target.checked)}
               /> 
-              <span>Flashlight</span>
+              <span>{t('config.flashlight')}</span>
             </label>
           </div>
         </section>
@@ -2301,11 +2361,11 @@ function Configurator() {
 
         {configTab === 'advanced' && (
           <section className="config__section advanced-builder">
-            <label className="field-label" htmlFor="requiredModuleSearch">Must Include Modules</label>
+            <label className="field-label" htmlFor="requiredModuleSearch">{t('config.modules')}</label>
             <input
               id="requiredModuleSearch"
               type="search"
-              placeholder="Search modules..."
+              placeholder={t('config.searchModules')}
               value={requiredModuleSearch}
               onChange={e => setRequiredModuleSearch(e.target.value)}
             />
@@ -2332,10 +2392,10 @@ function Configurator() {
                       </span>
                       <span className="module-search-item__body">
                         <strong>{formatPartName(item.shortName || item.name)}</strong>
-                        <span>{getModuleCategoryLabel(item)} · {formatCurrency(priceInfo.value, priceInfo.currency)}</span>
+                        <span>{getModuleCategoryLabel(item, t)} · {formatCurrency(priceInfo.value, priceInfo.currency, t('config.notAvailable'))}</span>
                         <PriceSource priceInfo={priceInfo} />
                       </span>
-                      <span className="module-search-item__action">Add</span>
+                      <span className="module-search-item__action">{t('config.add')}</span>
                     </button>
                   );
                 })}
@@ -2344,7 +2404,7 @@ function Configurator() {
 
             <div className="required-modules">
               {selectedRequiredModules.length === 0 ? (
-                <div className="required-modules__empty">No required modules selected.</div>
+                <div className="required-modules__empty">{t('config.noRequiredModules')}</div>
               ) : (
                 selectedRequiredModules.map(item => {
                   const priceInfo = getSelectedPriceInfo(item, priceMode, includeTraderPrices);
@@ -2360,16 +2420,16 @@ function Configurator() {
                     </div>
                     <div className="required-module__body">
                       <strong>{formatPartName(item.shortName || item.name)}</strong>
-                      <span>{getModuleCategoryLabel(item)} · {formatCurrency(priceInfo.value, priceInfo.currency)}</span>
+                      <span>{getModuleCategoryLabel(item, t)} · {formatCurrency(priceInfo.value, priceInfo.currency, t('config.notAvailable'))}</span>
                       <PriceSource priceInfo={priceInfo} />
                     </div>
                     <button
                       className="required-module__remove"
                       type="button"
                       onClick={() => handleRemoveRequiredModule(item.id)}
-                      aria-label={`Remove ${item.shortName || item.name}`}
+                      aria-label={t('config.removeModule', { name: item.shortName || item.name })}
                     >
-                      Remove
+                      {t('config.remove')}
                     </button>
                   </div>;
                 })
@@ -2386,7 +2446,7 @@ function Configurator() {
             onClick={handleGenerate}
             disabled={generating}
           >
-            {generating ? 'Calculating...' : 'Generate Build'}
+            {generating ? t('config.calculating') : t('config.generateBuild')}
           </button>
         </section>
       </aside>
@@ -2403,9 +2463,14 @@ function Configurator() {
                 <p>{weapon.name}</p>
               </div>
               <div className="source">
-                <span>{PRICE_MODE_LABELS[priceMode]}</span>
+                <span>{t(`config.price.${priceMode}Short`)}</span>
                 <span className="source__separator" aria-hidden="true">·</span>
-                <TarkovDevItemLink weapon={weapon} />
+                <TarkovDevItemLink
+                  weapon={weapon}
+                  title={t('config.tarkovDevLinkTitle')}
+                  ariaLabel={t('config.tarkovDevLinkAria', { weapon: weapon.name || weapon.shortName || t('config.weapon') })}
+                  fallbackWeaponName={t('config.weapon')}
+                />
                 <span className="source__separator" aria-hidden="true">·</span>
                 <span>{priceDiagnostics.summaryStatus}</span>
               </div>
@@ -2422,9 +2487,9 @@ function Configurator() {
 
             {/* Шкалы сравнения статов */}
             <div className="stat-compare">
-              {statMeters.map((stat) => (
-                <StatMeterRow key={stat.key} {...stat} />
-              ))}
+                {statMeters.map(({ key, ...stat }) => (
+                  <StatMeterRow key={key} {...stat} t={t} />
+                ))}
             </div>
 
             <div className="weapon-diagram-trigger">
@@ -2433,26 +2498,26 @@ function Configurator() {
                 type="button"
                 onClick={() => setIsBuildDiagramOpen(true)}
               >
-                Build Diagram
+                {t('config.diagram')}
               </button>
             </div>
 
             <div className="weapon__actions">
               <div className="price-box">
-                <span className="price-title">Est. Build Price</span>
+                <span className="price-title">{t('config.price')}</span>
                 <span className="price-amount">{currentPrice}</span>
               </div>
               {selectedRequiredModules.length > 0 && (
                 <div className="chip">
-                  Required
-                  <strong>{selectedRequiredModules.length} modules</strong>
+                  {t('config.required')}
+                  <strong>{t('config.modulesCount', { count: selectedRequiredModules.length })}</strong>
                 </div>
               )}
 
               {canShowBuildDetails && (
                 <div className="save-build-bar">
                   <label htmlFor="saveBuildName">
-                    <span>Build name</span>
+                    <span>{t('config.buildName')}</span>
                     <input
                       id="saveBuildName"
                       type="text"
@@ -2462,11 +2527,11 @@ function Configurator() {
                         setSaveName(event.target.value);
                         setSaveFeedback(null);
                       }}
-                      placeholder={`${weapon.shortName || weapon.name} build`}
+                      placeholder={t('config.saveNameDefault', { weapon: weapon.shortName || weapon.name })}
                     />
                   </label>
                   <button className="btn btn--primary" type="button" onClick={handleSaveBuild}>
-                    {activeSavedBuildId ? 'Update saved build' : 'Save build'}
+                    {activeSavedBuildId ? t('config.update') : t('config.save')}
                   </button>
                 </div>
               )}
@@ -2474,7 +2539,7 @@ function Configurator() {
               {saveFeedback && (
                 <InlineMessage
                   type={saveFeedback.type}
-                  title={saveFeedback.type === 'error' ? 'Save failed' : 'Saved locally'}
+                  title={saveFeedback.type === 'error' ? t('config.saveFailedTitle') : t('config.savedLocalTitle')}
                 >
                   {saveFeedback.message}
                 </InlineMessage>
@@ -2489,7 +2554,7 @@ function Configurator() {
             <div className="parts-toolbar">
               <input 
                 type="search" 
-                placeholder="Filter parts..." 
+                placeholder={t('config.filterParts')}
                 value={partsFilter}
                 onChange={e => setPartsFilter(e.target.value)}
               />
@@ -2498,43 +2563,43 @@ function Configurator() {
                 type="button"
                 onClick={() => setPartsFilter('')}
               >
-                Clear
+                {t('config.clear')}
               </button>
             </div>
 
             {/* Вывод ошибок при расчете сборки */}
             {generationError && (
-              <InlineMessage type="error" title="Build generation failed">
+              <InlineMessage type="error" title={t('config.generationFailedTitle')}>
                 {generationError}
               </InlineMessage>
             )}
 
             {pricePolicyWarning && (
-              <InlineMessage type="warning" title="Price policy notice">
+              <InlineMessage type="warning" title={t('config.pricePolicyTitle')}>
                 {pricePolicyWarning}
               </InlineMessage>
             )}
 
             {replacementError && (
-              <InlineMessage type="error" title="Replacement rejected">
+              <InlineMessage type="error" title={t('config.replacementRejected')}>
                 {replacementError}
               </InlineMessage>
             )}
 
             {buildResult && hasCalculationError && (
-              <InlineMessage type="error" title="Constraint satisfaction failed">
-                {buildResult.error}
+              <InlineMessage type="error" title={t('config.constraintFailed')}>
+                {getBuildResultErrorMessage(buildResult, language, t)}
               </InlineMessage>
             )}
 
             {buildResult && !hasCalculationError && buildResult.warning && (
-              <InlineMessage type="warning" title="Build notice">
-                {buildResult.warning}
+              <InlineMessage type="warning" title={t('config.buildNotice')}>
+                {getBuildResultWarningMessage(buildResult, language, t)}
               </InlineMessage>
             )}
 
             {canShowBuildDetails && priceDiagnostics?.warningMessages.length > 0 && (
-              <InlineMessage type="warning" title="Price data notice">
+              <InlineMessage type="warning" title={t('config.priceDataNotice')}>
                 {priceDiagnostics.warningMessages.join(' ')}
               </InlineMessage>
             )}
@@ -2544,7 +2609,7 @@ function Configurator() {
               <div key={`${group.displayRank}:${group.rootSlotName}`} className="parts-group">
                 <div className="parts-group__head">
                   <h3>{group.rootSlotName}</h3>
-                  <span>{group.parts.length} parts</span>
+                  <span>{t('config.parts', { count: group.parts.length })}</span>
                 </div>
                 <div className="parts-grid">
                   {group.parts.map(part => {
@@ -2562,7 +2627,7 @@ function Configurator() {
                               </span>
                             </div>
                             <div className="part-card__badges">
-                              <CriticalModuleBadge />
+                            <CriticalModuleBadge t={t} />
                             </div>
                           </div>
                         </article>
@@ -2594,7 +2659,7 @@ function Configurator() {
                               <h4>{formatPartName(part.item.shortName)}</h4>
                               {part.isCritical && (
                                 <div className="part-card__badges">
-                                  <CriticalModuleBadge />
+                                  <CriticalModuleBadge t={t} />
                                 </div>
                               )}
                             </div>
@@ -2608,7 +2673,7 @@ function Configurator() {
                               handleOpenReplaceDrawer(part);
                             }}
                           >
-                            Replace
+                            {t('config.replace')}
                           </button>
                         </div>
                       </article>
@@ -2620,7 +2685,7 @@ function Configurator() {
 
             {!generating && !buildResult && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '3rem 2rem', border: '1px dashed var(--line)', borderRadius: 'var(--radius)', color: 'var(--muted)', fontSize: '0.95rem' }}>
-                Configure parameters and click "Generate Build" to see the optimal parts list here.
+                {t('config.emptyBuild')}
               </div>
             )}
           </section>
@@ -2659,8 +2724,8 @@ function Configurator() {
           <div className="drawer is-open" onClick={() => setActiveReplacePartId(null)}>
             <div className="drawer__panel" onClick={e => e.stopPropagation()}>
               <div className="drawer__head">
-                <h2>Replace Part</h2>
-                <button className="btn btn--ghost" type="button" onClick={() => setActiveReplacePartId(null)}>Close</button>
+                <h2>{t('config.replacePart')}</h2>
+                <button className="btn btn--ghost" type="button" onClick={() => setActiveReplacePartId(null)}>{t('common.close')}</button>
               </div>
               <div className="drawer__body" style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 100px)', paddingRight: '4px' }}>
                 
@@ -2672,7 +2737,7 @@ function Configurator() {
                       onClick={() => setReplaceMode('SIGHT_ITEM')}
                       style={{ flex: 1 }}
                     >
-                      Replace Optic
+                      {t('config.replaceOptic')}
                     </button>
                     {hasMountInChain && (
                       <button
@@ -2681,7 +2746,7 @@ function Configurator() {
                         onClick={() => setReplaceMode('SIGHT_MOUNT')}
                         style={{ flex: 1 }}
                       >
-                        Replace Mount
+                        {t('config.replaceMount')}
                       </button>
                     )}
                     <button
@@ -2690,7 +2755,7 @@ function Configurator() {
                       onClick={() => setReplaceMode('SIGHT_ASSEMBLY')}
                       style={{ flex: 1 }}
                     >
-                      Replace Assembly
+                      {t('config.replaceAssembly')}
                     </button>
                   </div>
                 )}
@@ -2703,7 +2768,7 @@ function Configurator() {
                     containerStyle={{ width: '70px', height: '70px', minWidth: 0, minHeight: 0, padding: '6px', background: '#101310', border: '1px solid rgba(204, 194, 158, 0.1)', borderRadius: '6px', boxSizing: 'border-box' }}
                   />
                   <div>
-                    <div className="generated-meta">{getReadableSlotGroupName(activePart.slotName)} - Slot: {activePart.slotName}</div>
+                    <div className="generated-meta">{getReadableSlotGroupName(activePart.slotName, t)} · {t('config.slot', { slot: activePart.slotName })}</div>
                     <h3 style={{ margin: '8px 0 6px', fontSize: '1.1rem' }}>{formatPartName(activePart.item.shortName)}</h3>
                     <ItemPrice priceInfo={priceInfo} />
                   </div>
@@ -2711,13 +2776,13 @@ function Configurator() {
 
                 <div style={{ marginTop: '1.5rem' }}>
                   <div style={{ fontSize: '0.8rem', color: 'var(--color-accent-gold)', marginBottom: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Compatible Alternatives ({alternatives.length})
+                    {t('config.compatibleAlternatives', { count: alternatives.length })}
                   </div>
                   {alternatives.length === 0 ? (
                     <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '1rem 0' }}>
                       {targetNode && targetNode.children.length > 0
-                        ? "No fully compatible alternatives found that support all currently installed attachments. Try replacing or removing some attachments first."
-                        : "No fully compatible alternative modules found in the database."}
+                        ? t('config.noCompatibleAttachments')
+                        : t('config.noCompatibleModules')}
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -2727,6 +2792,7 @@ function Configurator() {
                           altPackageItems,
                           priceMode,
                           includeTraderPrices,
+                          t,
                         );
                         const altPriceValue = altPriceInfo.value;
                         
@@ -2750,6 +2816,7 @@ function Configurator() {
                           baselineParts,
                           priceMode,
                           includeTraderPrices,
+                          t,
                         );
                         const baselinePrice = baselinePriceInfo.value;
                         const baselineErgo = baselineParts.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
@@ -2831,19 +2898,19 @@ function Configurator() {
                               </div>
                               <div style={{ fontSize: '0.72rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', color: 'var(--muted)' }}>
                                 <span>
-                                  Ergo:{' '}
+                                  {t('config.ergo')}:{' '}
                                   <strong style={{ color: ergoDiff > 0 ? 'var(--green)' : ergoDiff < 0 ? 'var(--red)' : 'var(--muted)' }}>
                                     {ergoDiffText}
                                   </strong>
                                 </span>
                                 <span>
-                                  Recoil:{' '}
+                                  {t('config.recoil')}:{' '}
                                   <strong style={{ color: recoilDiff < 0 ? 'var(--green)' : recoilDiff > 0 ? 'var(--red)' : 'var(--muted)' }}>
                                     {recoilDiffText}
                                   </strong>
                                 </span>
                                 <span>
-                                  Weight:{' '}
+                                  {t('config.weight')}:{' '}
                                   <strong style={{ color: weightDiff < 0 ? 'var(--green)' : weightDiff > 0 ? 'var(--red)' : 'var(--muted)' }}>
                                     {weightDiffText}
                                   </strong>
@@ -2854,11 +2921,11 @@ function Configurator() {
                               <ItemPrice priceInfo={altPriceInfo} className="item-price--drawer" />
                               <div style={{ fontSize: '0.7rem', color: priceDiff < 0 ? 'var(--green)' : priceDiff > 0 ? 'var(--red)' : 'var(--muted)' }}>
                                 {priceDiff === null
-                                  ? 'Price diff unavailable'
+                                  ? t('config.priceDifferenceUnavailable')
                                   : priceDiff > 0
-                                    ? `+${formatCurrency(priceDiff, altPriceInfo.currency)}`
+                                    ? `+${formatCurrency(priceDiff, altPriceInfo.currency, t('config.notAvailable'))}`
                                     : priceDiff < 0
-                                      ? formatCurrency(priceDiff, altPriceInfo.currency)
+                                      ? formatCurrency(priceDiff, altPriceInfo.currency, t('config.notAvailable'))
                                       : '0 RUB'}
                               </div>
                             </div>

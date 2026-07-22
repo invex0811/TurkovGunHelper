@@ -1606,6 +1606,25 @@ test('required sight replaces optional sight assemblies instead of stacking with
   assertStatsMatchParts(result);
 });
 
+test('stable category and slot identifiers keep tactical modules available with localized API names', () => {
+  const laser = createTestMod({
+    id: 'localized-laser',
+    categories: [{ id: 'comb-tact-device', name: 'Комбинированное тактическое устройство', normalizedName: 'comb-tact-device' }],
+    ergonomicsModifier: 4,
+  });
+  const testWeapon = createTestWeapon({
+    slots: [createSlot('Тактический слот', [laser.id], 'mod_tactical')],
+  });
+
+  const result = calculateBestBuild(testWeapon, 'meta', 70, 50, createModMap(laser), {
+    ...defaultOptions,
+    includeLaser: true,
+  });
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, laser.id);
+});
+
 test('any sight installs only one optional sight assembly across separate mount slots', () => {
   const firstSight = createTestMod({
     id: 'first-optional-sight',

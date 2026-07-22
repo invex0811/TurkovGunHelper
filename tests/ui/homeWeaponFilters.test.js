@@ -47,6 +47,24 @@ test('builds deduplicated sorted type and caliber options', () => {
   });
 });
 
+test('excludes generic category labels using stable category metadata across locales', () => {
+  const localizedWeapons = [{
+    name: 'AK-74N',
+    shortName: 'AK-74N',
+    categories: [
+      { id: 'weapon-category', name: 'Оружие', normalizedName: 'weapon' },
+      { id: 'assault-rifle-category', name: 'Штурмовая винтовка', normalizedName: 'assault-rifle' },
+      { id: 'item-category', name: 'Предмет', normalizedName: 'item' },
+    ],
+    properties: { caliber: 'Caliber545x39' },
+  }];
+
+  assert.deepEqual(getHomeWeaponFilterOptions(localizedWeapons), {
+    types: ['Штурмовая винтовка'],
+    calibers: ['Caliber545x39'],
+  });
+});
+
 test('formats raw Tarkov caliber enum keys into readable labels without changing their keys', () => {
   assert.equal(formatCaliberLabel('Caliber545x39'), '5.45x39');
   assert.equal(formatCaliberLabel('Caliber556x45NATO'), '5.56x45 NATO');

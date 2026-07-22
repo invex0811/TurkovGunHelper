@@ -1,4 +1,10 @@
-const EXCLUDED_WEAPON_TYPES = new Set(['Weapon', 'Item']);
+const EXCLUDED_WEAPON_TYPE_IDENTIFIERS = new Set([
+  'weapon',
+  'item',
+  'weapon-category',
+  'item-category',
+]);
+const EXCLUDED_WEAPON_TYPE_NAMES = new Set(['weapon', 'item', 'оружие', 'предмет']);
 const CALIBER_LABEL_OVERRIDES = new Map([
   ['725', '72.5mm'],
 ]);
@@ -24,6 +30,22 @@ function getWeaponCaliber(weapon) {
   return typeof caliber === 'string' ? caliber.trim() : '';
 }
 
+function normalizeCategoryIdentifier(value) {
+  return typeof value === 'string'
+    ? value.trim().toLocaleLowerCase()
+    : '';
+}
+
+function isExcludedWeaponType(category) {
+  const identifier = normalizeCategoryIdentifier(category?.normalizedName)
+    || normalizeCategoryIdentifier(category?.id);
+  if (EXCLUDED_WEAPON_TYPE_IDENTIFIERS.has(identifier)) return true;
+
+  // Older cached data may not have category IDs or normalized names. Keep this
+  // fallback deliberately narrow, including the Russian generic labels.
+  return EXCLUDED_WEAPON_TYPE_NAMES.has(normalizeCategoryIdentifier(category?.name));
+}
+
 export function getHomeWeaponFilterOptions(weapons) {
   const types = new Set();
   const calibers = new Set();
@@ -31,7 +53,7 @@ export function getHomeWeaponFilterOptions(weapons) {
   weapons.forEach(weapon => {
     weapon.categories?.forEach(category => {
       const type = category?.name?.trim();
-      if (type && !EXCLUDED_WEAPON_TYPES.has(type)) types.add(type);
+      if (type && !isExcludedWeaponType(category)) types.add(type);
     });
     const caliber = getWeaponCaliber(weapon);
     if (caliber) calibers.add(caliber);

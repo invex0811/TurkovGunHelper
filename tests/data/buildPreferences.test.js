@@ -9,6 +9,11 @@ import {
   saveIncludeTraderPricesPreference,
   saveTargetTypePreference,
 } from '../../src/data/settings/buildPreferences.js';
+import {
+  DEFAULT_LANGUAGE,
+  loadLanguagePreference,
+  saveLanguagePreference,
+} from '../../src/i18n/language.js';
 
 function withWindow(localStorage, run) {
   const originalWindow = globalThis.window;
@@ -80,5 +85,27 @@ test('removed stored build goals migrate to Meta', () => {
 
     saveTargetTypePreference('custom');
     assert.equal(loadTargetTypePreference(), 'custom');
+  });
+});
+
+test('language preference defaults to English and accepts only supported languages', () => {
+  const storage = createStorage();
+  withWindow(storage, () => {
+    assert.equal(loadLanguagePreference(), DEFAULT_LANGUAGE);
+    saveLanguagePreference('ru');
+    assert.equal(loadLanguagePreference(), 'ru');
+    saveLanguagePreference('invalid');
+    assert.equal(loadLanguagePreference(), DEFAULT_LANGUAGE);
+  });
+});
+
+test('language preference safely handles unavailable storage', () => {
+  const localStorage = {
+    getItem() { throw new Error('blocked'); },
+    setItem() { throw new Error('blocked'); },
+  };
+  withWindow(localStorage, () => {
+    assert.equal(loadLanguagePreference(), DEFAULT_LANGUAGE);
+    assert.doesNotThrow(() => saveLanguagePreference('ru'));
   });
 });

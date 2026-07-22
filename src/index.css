@@ -2465,6 +2465,23 @@ button.weapon-diagram-node:focus-visible,
   }
 }
 
+.language-switcher select {
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-elevated, var(--surface-2));
+  color: var(--color-text-main, var(--text));
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 700;
+}
+
+@media (max-width: 520px) {
+  .topbar__actions { gap: .35rem; }
+  .language-switcher { margin-left: auto; }
+}
+
 @media (max-width: 520px) {
   .custom-radar {
     padding-inline: 2px;

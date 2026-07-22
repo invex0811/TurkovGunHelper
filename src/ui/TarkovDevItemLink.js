@@ -69,7 +69,12 @@ function ExternalLinkIcon() {
   );
 }
 
-export function TarkovDevItemLink({ weapon }) {
+export function TarkovDevItemLink({
+  weapon,
+  title = 'Открыть оружие на tarkov.dev',
+  ariaLabel,
+  fallbackWeaponName = 'оружие',
+}) {
   const url = getTarkovDevItemUrl(weapon);
 
   if (!url) {
@@ -78,7 +83,7 @@ export function TarkovDevItemLink({ weapon }) {
 
   const weaponName = typeof weapon.name === 'string' && weapon.name.trim()
     ? weapon.name.trim()
-    : 'оружие';
+    : fallbackWeaponName;
 
   return createElement(
     'a',
@@ -87,8 +92,8 @@ export function TarkovDevItemLink({ weapon }) {
       href: url,
       target: '_blank',
       rel: 'noopener noreferrer',
-      title: 'Открыть оружие на tarkov.dev',
-      'aria-label': `Открыть ${weaponName} на tarkov.dev`,
+      title,
+      'aria-label': ariaLabel || `Открыть ${weaponName} на tarkov.dev`,
     },
     'tarkov.dev',
     createElement(ExternalLinkIcon),

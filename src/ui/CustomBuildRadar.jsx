@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useI18n } from '../i18n/useI18n.js';
 import {
   formatCustomBuildRadarValue,
   getCustomBuildRadarAxes,
@@ -16,12 +17,12 @@ function toPoints(points) {
   return points.map(point => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ');
 }
 
-function getExactTooltip(axis) {
+function getExactTooltip(axis, t) {
   if (axis.key === 'price') {
-    return 'Exact price allows a tolerance of 1% of the target, with a minimum of 1,000 RUB. The result may be slightly above the target.';
+    return t('ui.radar.exactPriceTooltip');
   }
 
-  return 'Match this target within the small tolerance used for discrete module stats.';
+  return t('ui.radar.exactTooltip');
 }
 
 function ExactLockIcon({ locked }) {
@@ -50,6 +51,7 @@ function RadarValueInput({
   onChange,
   exact,
   onExactChange,
+  t,
 }) {
   const [draft, setDraft] = useState(null);
   const cancelEditRef = useRef(false);
@@ -73,7 +75,7 @@ function RadarValueInput({
 
   return (
     <div className={`custom-radar__input-field ${exact ? 'is-exact' : ''}`}>
-      <span className="custom-radar__input-label">{axis.label}</span>
+      <span className="custom-radar__input-label">{t(`ui.radar.axis.${axis.key}`)}</span>
       <span className={`custom-radar__input-control custom-radar__input-control--${axis.key} ${axis.unit ? 'has-unit' : ''}`}>
         <input
           type="number"
@@ -81,7 +83,7 @@ function RadarValueInput({
           max={axis.range.max}
           step={axis.step}
           value={draft ?? (Number.isFinite(value) ? String(value) : '')}
-          aria-label={`${axis.label} value`}
+          aria-label={t('ui.radar.value', { label: t(`ui.radar.axis.${axis.key}`) })}
           onFocus={() => setDraft(Number.isFinite(value) ? String(value) : '')}
           onChange={event => setDraft(event.target.value)}
           onBlur={commitValue}
@@ -95,11 +97,11 @@ function RadarValueInput({
         />
         {axis.unit && <span className="custom-radar__input-unit">{axis.unit}</span>}
       </span>
-      <label className="custom-radar__exact-toggle" title={getExactTooltip(axis)}>
+      <label className="custom-radar__exact-toggle" title={getExactTooltip(axis, t)}>
         <input
           type="checkbox"
           checked={exact}
-          aria-label={`Use exact target for ${axis.label}`}
+          aria-label={t('ui.radar.exactTarget', { label: t(`ui.radar.axis.${axis.key}`) })}
           onChange={event => onExactChange(axis.key, event.target.checked)}
         />
         <ExactLockIcon locked={exact} />
@@ -115,6 +117,7 @@ export default function CustomBuildRadar({
   exactTargets = {},
   onExactChange = () => {},
 }) {
+  const { t } = useI18n();
   const svgRef = useRef(null);
   const animationFrameRef = useRef(null);
   const pendingPointerRef = useRef(null);
@@ -225,15 +228,15 @@ export default function CustomBuildRadar({
   return (
     <div className="custom-radar">
       <p className="custom-radar__help">
-        Drag points or enter values below. Enable Exact for values the build should match closely.
-        <span>Exact targets use a small tolerance because module stats are discrete.</span>
+        {t('ui.radar.help')}
+        <span>{t('ui.radar.exactTolerance')}</span>
       </p>
       <svg
         ref={svgRef}
         className="custom-radar__svg"
         viewBox={`0 0 ${VIEW_BOX.width} ${VIEW_BOX.height}`}
         role="group"
-        aria-label="Custom build requirements"
+        aria-label={t('ui.radar.requirements')}
       >
         <g className="custom-radar__grid" aria-hidden="true">
           {gridPolygons.map((points, index) => <polygon key={GRID_LEVELS[index]} points={points} />)}
@@ -296,7 +299,7 @@ export default function CustomBuildRadar({
               className={`custom-radar__handle ${activeAxisKey === axis.key ? 'is-active' : ''} ${exactTargets?.[axis.key] ? 'is-exact' : ''}`}
               role="slider"
               tabIndex="0"
-              aria-label={axis.label}
+              aria-label={t(`ui.radar.axis.${axis.key}`)}
               aria-valuemin="0"
               aria-valuemax="100"
               aria-valuenow={requirementPercent}
@@ -337,7 +340,7 @@ export default function CustomBuildRadar({
               textAnchor={anchor}
               aria-hidden="true"
             >
-              <tspan x={labelX}>{axis.label}</tspan>
+              <tspan x={labelX}>{t(`ui.radar.axis.${axis.key}`)}</tspan>
               <tspan className="custom-radar__label-value" x={labelX} dy="14">
                 {formatCustomBuildRadarValue(profile[axis.key], axis)}
               </tspan>
@@ -356,6 +359,7 @@ export default function CustomBuildRadar({
             onChange={onChange}
             exact={exactTargets?.[axis.key] === true}
             onExactChange={onExactChange}
+            t={t}
           />
         ))}
       </div>

@@ -238,6 +238,33 @@ test('classifies structural, upper, and lower modules from slot/category semanti
   assert.equal(classifyWeaponDiagramNode(semanticNode('magazine', 'Magazine')).direction, 'bottom');
 });
 
+test('uses stable category keys when localized category and slot names do not contain English semantics', () => {
+  const barrel = {
+    ...semanticNode('barrel', 'Ствол', 'weapon', 'Ствольный слот'),
+    categoryKeys: ['barrel'],
+    slotId: 'mod barrel',
+  };
+  const sight = {
+    ...semanticNode('sight', 'Прицелы', 'weapon', 'Оптический слот'),
+    categoryKeys: ['sights', 'scope'],
+    slotId: 'mod scope',
+  };
+
+  assert.equal(classifyWeaponDiagramNode(barrel).backbone, 'front');
+  assert.equal(classifyWeaponDiagramNode(sight).direction, 'top');
+});
+
+test('normalizes stable API slot identifiers for localized diagram layout', () => {
+  const localizedNode = slotId => ({
+    ...semanticNode('localized', 'Модуль', 'weapon', 'Локализованный слот'),
+    slotId,
+  });
+
+  assert.equal(classifyWeaponDiagramNode(localizedNode('mod_gas_block')).backbone, 'front');
+  assert.equal(classifyWeaponDiagramNode(localizedNode('mod_reciever')).backbone, 'center');
+  assert.equal(classifyWeaponDiagramNode(localizedNode('mod_pistol_grip')).direction, 'bottom');
+});
+
 test('lays the weapon backbone horizontally from muzzle to stock around the centered weapon', () => {
   const layout = layoutWeaponDiagramGraph(semanticGraph());
   const byId = new Map(layout.nodes.map(node => [node.id, node]));

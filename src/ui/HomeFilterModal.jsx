@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { formatCaliberLabel } from '../pages/homeWeaponFilters.js';
+import { useI18n } from '../i18n/useI18n.js';
 
 const FOCUSABLE_SELECTOR = 'button:not(:disabled), select:not(:disabled), [href], [tabindex]:not([tabindex="-1"])';
 
 function HomeFilterModal({ calibers, onApply, onClose, selectedCaliber, selectedType, types }) {
+  const { t } = useI18n();
   const [draftType, setDraftType] = useState(selectedType);
   const [draftCaliber, setDraftCaliber] = useState(selectedCaliber);
   const dialogRef = useRef(null);
@@ -50,32 +52,32 @@ function HomeFilterModal({ calibers, onApply, onClose, selectedCaliber, selected
       <section id="homeFilterModal" className="home-filter-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="homeFilterModalTitle" aria-describedby="homeFilterModalDescription" ref={dialogRef}>
         <header className="home-filter-modal__header">
           <div>
-            <h2 id="homeFilterModalTitle">Filter weapons</h2>
-            <p id="homeFilterModalDescription">Refine the weapon list by type and caliber.</p>
+            <h2 id="homeFilterModalTitle">{t('filter.title')}</h2>
+            <p id="homeFilterModalDescription">{t('filter.description')}</p>
           </div>
-          <button className="btn btn--ghost" type="button" onClick={onClose}>Close</button>
+          <button className="btn btn--ghost" type="button" onClick={onClose}>{t('common.close')}</button>
         </header>
         <div className="home-filter-modal__body">
           <label className="home-filter-modal__field">
-            <span>Weapon type</span>
+            <span>{t('filter.weaponType')}</span>
             <select value={draftType} onChange={event => setDraftType(event.target.value)}>
-              <option value="All">All types</option>
+              <option value="All">{t('filter.allTypes')}</option>
               {types.map(type => <option key={type} value={type}>{type}</option>)}
             </select>
           </label>
           <label className="home-filter-modal__field">
-            <span>Caliber</span>
+            <span>{t('filter.caliber')}</span>
             <select value={draftCaliber} onChange={event => setDraftCaliber(event.target.value)}>
-              <option value="All">All calibers</option>
+              <option value="All">{t('filter.allCalibers')}</option>
               {calibers.map(caliber => <option key={caliber} value={caliber}>{formatCaliberLabel(caliber)}</option>)}
             </select>
           </label>
         </div>
         <footer className="home-filter-modal__actions">
-          <button className="btn btn--ghost" type="button" onClick={() => { setDraftType('All'); setDraftCaliber('All'); }}>Reset</button>
+          <button className="btn btn--ghost" type="button" onClick={() => { setDraftType('All'); setDraftCaliber('All'); }}>{t('common.reset')}</button>
           <div>
-            <button className="btn btn--ghost" type="button" onClick={onClose}>Cancel</button>
-            <button className="btn btn--primary" type="button" onClick={() => onApply({ type: draftType, caliber: draftCaliber })}>Apply</button>
+            <button className="btn btn--ghost" type="button" onClick={onClose}>{t('common.cancel')}</button>
+            <button className="btn btn--primary" type="button" onClick={() => onApply({ type: draftType, caliber: draftCaliber })}>{t('common.apply')}</button>
           </div>
         </footer>
       </section>

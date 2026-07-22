@@ -5,6 +5,7 @@ import {
   hasEnabledCustomExactTargets,
   normalizeCustomExactTargets,
 } from './customExactTargets.js';
+import { getItemCategoryKeys, normalizeCategoryIdentifier } from './itemCategories.js';
 
 const PRICE_AWARE_TARGET = Symbol('priceAware');
 
@@ -105,21 +106,21 @@ function _calculateWeighted(
     'charging handle': 12
   };
 
-  function getCategoryNames(item) {
-    const cachedCategoryNames = calculationCache.categoryNamesByItem.get(item);
-    if (cachedCategoryNames) return cachedCategoryNames;
+  function getCategoryKeys(item) {
+    const cachedCategoryKeys = calculationCache.categoryNamesByItem.get(item);
+    if (cachedCategoryKeys) return cachedCategoryKeys;
 
-    const categoryNames = new Set((item.categories || []).map(category => category.name));
-    calculationCache.categoryNamesByItem.set(item, categoryNames);
-    return categoryNames;
+    const categoryKeys = getItemCategoryKeys(item);
+    calculationCache.categoryNamesByItem.set(item, categoryKeys);
+    return categoryKeys;
   }
 
   function hasCategory(item, categoryName) {
-    return getCategoryNames(item).has(categoryName);
+    return getCategoryKeys(item).has(normalizeCategoryIdentifier(categoryName));
   }
 
   function getSlotSearchName(slotName, slotNameId = '') {
-    return `${slotName || ''} ${slotNameId || ''}`.toLowerCase();
+    return `${slotName || ''} ${slotNameId || ''}`.toLowerCase().replace(/[_-]+/g, ' ');
   }
 
   function isStockSlot(slotName, slotNameId = '') {
@@ -265,8 +266,8 @@ function _calculateWeighted(
     });
   }
 
-  function getSlotPriority(slotName) {
-    const name = (slotName || '').toLowerCase();
+  function getSlotPriority(slot) {
+    const name = getSlotSearchName(slot?.name, slot?.nameId || slot?.id);
     if (calculationCache.slotPrioritiesByName.has(name)) {
       return calculationCache.slotPrioritiesByName.get(name);
     }
@@ -306,7 +307,7 @@ function _calculateWeighted(
 
       const requiredOrder = Number(b.required === true) - Number(a.required === true);
       if (requiredOrder !== 0) return requiredOrder;
-      return getSlotPriority(a.name) - getSlotPriority(b.name);
+      return getSlotPriority(a) - getSlotPriority(b);
     });
     calculationCache.sortedSlotsBySource.set(slots, sortedSlots);
     return sortedSlots;
@@ -319,12 +320,7 @@ function _calculateWeighted(
     if (cachedPrice !== undefined) return cachedPrice;
 
     let allowed = slot.filters?.allowedItems || [];
-    const slotName = (slot.name || '').toLowerCase();
-    const isMagSlot = slotName === 'mag'
-      || slotName === 'magazine'
-      || slot.nameId === 'mod_magazine';
-
-    if (isMagSlot) {
+    if (isMagazineSlot(slot)) {
       allowed = filterAllowedItems(allowed, targetCapacity);
     }
 
@@ -389,12 +385,7 @@ function _calculateWeighted(
     if (cachedWeight !== undefined) return cachedWeight;
 
     let allowed = slot.filters?.allowedItems || [];
-    const slotName = (slot.name || '').toLowerCase();
-    const isMagSlot = slotName === 'mag'
-      || slotName === 'magazine'
-      || slot.nameId === 'mod_magazine';
-
-    if (isMagSlot) {
+    if (isMagazineSlot(slot)) {
       allowed = filterAllowedItems(allowed, targetCapacity);
     }
 
@@ -449,8 +440,21 @@ function _calculateWeighted(
     return totalRequiredWeight;
   }
 
-  function isTacticalSlot(slotName) {
-    const name = (slotName || '').toLowerCase();
+  function isMagazineSlot(slot) {
+    const displayName = String(slot?.name || '').trim().toLowerCase();
+    const stableName = String(slot?.nameId || slot?.id || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, ' ');
+    return displayName === 'mag'
+      || displayName === 'magazine'
+      || stableName === 'mag'
+      || stableName === 'magazine'
+      || stableName.includes('mod magazine');
+  }
+
+  function isTacticalSlot(slotName, slotNameId = '') {
+    const name = getSlotSearchName(slotName, slotNameId);
     return name.includes('tactical') || name.includes('flashlight');
   }
 
@@ -700,6 +704,7 @@ function _calculateWeighted(
     currentPrice = totalPrice,
     reservedPrice = 0,
     reservedWeight = 0,
+    slotNameId = '',
   ) {
     const item = modMap[itemId];
     if (!item) return invalidBranchEvaluation();
@@ -719,7 +724,7 @@ function _calculateWeighted(
       ]),
     );
 
-    if (!isRequiredItem && weaponHasSeparateStockSlot && isPistolGripSlot(slotName) && isCombinedPistolGripStock(item)) {
+    if (!isRequiredItem && weaponHasSeparateStockSlot && isPistolGripSlot(slotName, slotNameId) && isCombinedPistolGripStock(item)) {
       return invalidBranchEvaluation();
     }
 
@@ -727,7 +732,7 @@ function _calculateWeighted(
       return invalidBranchEvaluation();
     }
 
-    const isTacSlot = isTacticalSlot(slotName);
+    const isTacSlot = isTacticalSlot(slotName, slotNameId);
     const hasAnyTactical = options.includeLaser || options.includeFlashlight;
     if (isTacSlot && hasAnyTactical) {
       if (isReservedForRequiredTacticalDevice(item)) {
@@ -842,11 +847,7 @@ function _calculateWeighted(
           continue;
         }
 
-        const isMagSlot = slot.name.toLowerCase() === 'mag'
-          || slot.name.toLowerCase() === 'magazine'
-          || slot.nameId === 'mod_magazine';
-
-        if (isMagSlot) {
+        if (isMagazineSlot(slot)) {
           allowed = filterAllowedItems(allowed, targetCapacity);
         }
 
@@ -896,6 +897,7 @@ function _calculateWeighted(
             branchTotalPrice,
             childReservedPrice,
             childReservedWeight,
+            slot.nameId || slot.id,
           );
 
           if (childEval.isValid && childEval.score !== -Infinity) {
@@ -981,11 +983,7 @@ function _calculateWeighted(
         continue;
       }
 
-      const isMagSlot = slot.name.toLowerCase() === 'mag'
-        || slot.name.toLowerCase() === 'magazine'
-        || slot.nameId === 'mod_magazine';
-
-      if (isMagSlot) {
+      if (isMagazineSlot(slot)) {
         allowed = filterAllowedItems(allowed, targetCapacity);
       }
 
@@ -1030,6 +1028,7 @@ function _calculateWeighted(
           totalPrice,
           reservedPrice,
           reservedWeight,
+          slot.nameId || slot.id,
         );
         if (!branchEval.isValid) return;
         if (hasSight && branchEval.hasSight && !branchHasRequiredSight(branchEval)) return;
@@ -1277,7 +1276,7 @@ function _calculateWeighted(
       if (!barrelSlot && !hasCategory(item, 'Barrel')) return;
 
       forcedBarrelItems.forEach(forcedBarrelItem => {
-        const evaluateCandidate = () => evaluateBranch(rootSlotContext.slot.name, item.id, totalErgo, new Set(), totalWeight, new Set(), new Set(), totalPrice);
+        const evaluateCandidate = () => evaluateBranch(rootSlotContext.slot.name, item.id, totalErgo, new Set(), totalWeight, new Set(), new Set(), totalPrice, 0, 0, rootSlotContext.slot.nameId || rootSlotContext.slot.id);
         const branchEval = forcedBarrelItem && barrelSlot
           ? withForcedSlotAllowedItem(barrelSlot, forcedBarrelItem, evaluateCandidate)
           : evaluateCandidate();
@@ -1342,6 +1341,9 @@ function _calculateWeighted(
             new Set(),
             new Set(),
             totalPrice,
+            0,
+            0,
+            slotContext.slot.nameId || slotContext.slot.id,
           );
           if (!candidateEval.isValid) continue;
 
@@ -1398,6 +1400,9 @@ function _calculateWeighted(
         new Set(),
         new Set(),
         totalPrice,
+        0,
+        0,
+        slotContext.slot.nameId || slotContext.slot.id,
       );
 
       if (!replacementEval.isValid) {

@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useI18n } from '../i18n/useI18n.js';
 
 import {
   getOrthogonalEdgePath,
@@ -13,18 +14,41 @@ function clampScale(value) {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, value));
 }
 
-function getNodeTooltip(node) {
+function getNodeLabels(node, t) {
+  const fallbackName = node.nodeType === 'slot'
+    ? t('ui.diagram.emptySlot')
+    : t('ui.diagram.unknownModule');
+  const name = node.name || fallbackName;
+  const fullName = node.fullName || name;
+  const category = node.category || (
+    node.nodeType === 'slot'
+      ? t('ui.diagram.emptySlot')
+      : node.nodeType === 'weapon'
+        ? t('ui.diagram.weaponCategory')
+        : t('ui.diagram.moduleCategory')
+  );
+  return { name, fullName, category };
+}
+
+function formatNodeStat(stat, t) {
+  if (typeof stat === 'string') return stat;
+  if (!stat?.key) return '';
+  return t(`ui.diagram.stat.${stat.key}`, { value: stat.value });
+}
+
+function getNodeTooltip(node, labels, t) {
   return [
-    node.fullName,
-    `Category: ${node.category}`,
-    node.slotName ? `Slot: ${node.slotName}` : null,
-    ...(node.stats || []),
-    node.unresolved ? 'Parent slot could not be resolved' : null,
+    labels.fullName,
+    t('ui.diagram.category', { category: labels.category }),
+    node.slotName ? t('ui.diagram.slot', { slot: node.slotName }) : null,
+    ...(node.stats || []).map(stat => formatNodeStat(stat, t)),
+    node.unresolved ? t('ui.diagram.unresolvedParent') : null,
   ].filter(Boolean).join('\n');
 }
 
-function DiagramNode({ node, isSelected, onHighlight, onSelect }) {
-  const fallbackLabel = (node.name || '?').slice(0, 2).toUpperCase();
+function DiagramNode({ node, isSelected, onHighlight, onSelect, t }) {
+  const labels = getNodeLabels(node, t);
+  const fallbackLabel = labels.name.slice(0, 2).toUpperCase();
   const interactive = node.nodeType !== 'weapon' && Boolean(node.slotInstanceId) && !node.unresolved;
   const className = `weapon-diagram-node weapon-diagram-node--${node.nodeType}${node.critical ? ' is-critical' : ''}${node.unresolved ? ' is-unresolved' : ''}${isSelected ? ' is-selected' : ''}`;
   const content = (
@@ -45,9 +69,9 @@ function DiagramNode({ node, isSelected, onHighlight, onSelect }) {
         )}
       </div>
       <div className="weapon-diagram-node__body">
-        <strong>{node.name}</strong>
-        <span>{node.slotName && node.nodeType === 'module' ? `${node.category} · ${node.slotName}` : node.category}</span>
-        {node.critical && <em>Required</em>}
+        <strong>{labels.name}</strong>
+        <span>{node.slotName && node.nodeType === 'module' ? `${labels.category} · ${node.slotName}` : labels.category}</span>
+        {node.critical && <em>{t('ui.diagram.required')}</em>}
       </div>
     </>
   );
@@ -60,11 +84,15 @@ function DiagramNode({ node, isSelected, onHighlight, onSelect }) {
       width: node.width,
       height: node.height,
     },
-    title: getNodeTooltip(node),
+    title: getNodeTooltip(node, labels, t),
     'data-slot-instance-id': node.slotInstanceId || undefined,
     'aria-label': interactive
-      ? `${node.nodeType === 'slot' ? 'Install a module in slot' : 'Replace module'} ${node.fullName}`
-      : `${node.nodeType === 'weapon' ? 'Weapon' : 'Module'}: ${node.fullName}`,
+      ? node.nodeType === 'slot'
+        ? t('ui.diagram.installInSlot', { name: labels.fullName })
+        : t('ui.diagram.replaceModule', { name: labels.fullName })
+      : node.nodeType === 'weapon'
+        ? t('ui.diagram.weapon', { name: labels.fullName })
+        : t('ui.diagram.module', { name: labels.fullName }),
     onPointerDown: event => event.stopPropagation(),
     onPointerEnter: () => onHighlight?.(node.id),
     onPointerLeave: () => onHighlight?.(null),
@@ -106,6 +134,7 @@ function DiagramIcon({ type }) {
 }
 
 export default function WeaponBuildDiagram({ layout, selectedSlotId, stats, onSelectNode }) {
+  const { t } = useI18n();
   const viewportRef = useRef(null);
   const dragRef = useRef(null);
   const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
@@ -217,18 +246,18 @@ export default function WeaponBuildDiagram({ layout, selectedSlotId, stats, onSe
 
   return (
     <div className="weapon-diagram">
-      <div className="weapon-diagram__toolbar" aria-label="Diagram controls">
-        <button className="btn btn--ghost" type="button" onClick={() => zoomAtCenter(1.15)} aria-label="Zoom in">+</button>
-        <button className="btn btn--ghost" type="button" onClick={() => zoomAtCenter(0.85)} aria-label="Zoom out">−</button>
+      <div className="weapon-diagram__toolbar" aria-label={t('ui.diagram.controls')}>
+        <button className="btn btn--ghost" type="button" onClick={() => zoomAtCenter(1.15)} aria-label={t('ui.diagram.zoomIn')}>+</button>
+        <button className="btn btn--ghost" type="button" onClick={() => zoomAtCenter(0.85)} aria-label={t('ui.diagram.zoomOut')}>−</button>
         <button className="btn btn--ghost weapon-diagram__text-control" type="button" onClick={fitToView}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><DiagramIcon type="fit" /></svg>
-          Fit
+          {t('ui.diagram.fit')}
         </button>
         <button className="btn btn--ghost weapon-diagram__text-control" type="button" onClick={centerView}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><DiagramIcon type="center" /></svg>
-          Center
+          {t('ui.diagram.center')}
         </button>
-        <span>{Math.round(view.scale * 100)}% · wheel to zoom, drag to pan</span>
+        <span>{t('ui.diagram.panZoomHint', { scale: Math.round(view.scale * 100) })}</span>
       </div>
 
       <div
@@ -282,6 +311,7 @@ export default function WeaponBuildDiagram({ layout, selectedSlotId, stats, onSe
               isSelected={node.slotInstanceId === selectedSlotId}
               onHighlight={setHighlightedNodeId}
               onSelect={onSelectNode}
+              t={t}
             />
           ))}
         </div>
