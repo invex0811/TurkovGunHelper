@@ -30,6 +30,8 @@ export default function WeaponBuildSlotPanel({
   onRemove,
   onConfirmPlan,
   onCancelPlan,
+  onHoverCandidate,
+  onFocusCandidate,
   onClose,
 }) {
   const [query, setQuery] = useState('');
@@ -111,6 +113,10 @@ export default function WeaponBuildSlotPanel({
                 type="button"
                 key={item.id}
                 onClick={() => onChoose(item)}
+                onPointerEnter={() => onHoverCandidate?.(item)}
+                onPointerLeave={() => onHoverCandidate?.(null)}
+                onFocus={() => onFocusCandidate?.(item)}
+                onBlur={() => onFocusCandidate?.(null)}
                 disabled={isCurrent || Boolean(pendingPlan)}
                 aria-label={`${isCurrent ? 'Current module' : 'Install'} ${getItemName(item)}`}
               >

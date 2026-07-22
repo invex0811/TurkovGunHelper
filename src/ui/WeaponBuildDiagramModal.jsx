@@ -9,6 +9,10 @@ import {
 import WeaponBuildDiagram from './WeaponBuildDiagram.jsx';
 import WeaponBuildSlotPanel from './WeaponBuildSlotPanel.jsx';
 import {
+  getActivePreviewCandidate,
+  getProjectedBuildMeters,
+} from './weaponBuildStatPreview.js';
+import {
   buildWeaponDiagramGraph,
   layoutWeaponDiagramGraph,
 } from './weaponBuildDiagram.js';
@@ -29,6 +33,8 @@ export default function WeaponBuildDiagramModal({
   const [showFreeSlots, setShowFreeSlots] = useState(false);
   const [selectedSlotId, setSelectedSlotId] = useState(null);
   const [pendingPlan, setPendingPlan] = useState(null);
+  const [hoveredCandidate, setHoveredCandidate] = useState(null);
+  const [focusedCandidate, setFocusedCandidate] = useState(null);
   const [panelError, setPanelError] = useState(null);
   const [feedback, setFeedback] = useState(null);
   const graph = useMemo(
@@ -59,15 +65,45 @@ export default function WeaponBuildDiagramModal({
     [allMods, buildParts, includeTraderPrices, priceMode, slotContext, weapon],
   );
   const moduleCount = graph.nodes.filter(node => node.nodeType === 'module').length;
+  const activePreviewCandidate = getActivePreviewCandidate(hoveredCandidate, focusedCandidate);
+  const previewMeters = useMemo(() => activePreviewCandidate && selectedSlotId
+    ? getProjectedBuildMeters({
+      weapon,
+      buildParts,
+      allMods,
+      slotInstanceId: selectedSlotId,
+      nextItem: activePreviewCandidate,
+      priceMode,
+      includeTraderPrices,
+      meters: stats,
+    })
+    : null, [
+      allMods,
+      buildParts,
+      activePreviewCandidate,
+      includeTraderPrices,
+      priceMode,
+      selectedSlotId,
+      stats,
+      weapon,
+    ]);
 
   useEffect(() => {
     selectedSlotRef.current = selectedSlotId;
   }, [selectedSlotId]);
 
+  const closeModal = useCallback(() => {
+    setHoveredCandidate(null);
+    setFocusedCandidate(null);
+    onClose();
+  }, [onClose]);
+
   const closePanel = useCallback(() => {
     const slotId = selectedSlotRef.current;
     setSelectedSlotId(null);
     setPendingPlan(null);
+    setHoveredCandidate(null);
+    setFocusedCandidate(null);
     setPanelError(null);
     setFeedback(null);
     window.requestAnimationFrame(() => {
@@ -90,7 +126,7 @@ export default function WeaponBuildDiagramModal({
         event.stopPropagation();
         closePanel();
       } else {
-        onClose();
+        closeModal();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -100,7 +136,7 @@ export default function WeaponBuildDiagramModal({
       document.body.style.overflow = previousOverflow;
       previousActiveElement?.focus?.();
     };
-  }, [closePanel, onClose]);
+  }, [closeModal, closePanel]);
 
   useEffect(() => {
     if (!import.meta.env.DEV || graph.diagnostics.length === 0) return;
@@ -111,11 +147,15 @@ export default function WeaponBuildDiagramModal({
     lastTriggerRef.current = trigger;
     setSelectedSlotId(node.slotInstanceId);
     setPendingPlan(null);
+    setHoveredCandidate(null);
+    setFocusedCandidate(null);
     setPanelError(null);
     setFeedback(null);
   }, []);
 
   const applyPlan = useCallback(plan => {
+    setHoveredCandidate(null);
+    setFocusedCandidate(null);
     const errors = onBuildChange?.(plan.buildParts) || [];
     if (errors.length > 0) {
       setPanelError(errors.join(' '));
@@ -127,6 +167,8 @@ export default function WeaponBuildDiagramModal({
   }, [onBuildChange]);
 
   const requestChange = useCallback(nextItem => {
+    setHoveredCandidate(null);
+    setFocusedCandidate(null);
     const plan = planBuildSlotChange({
       weapon,
       buildParts,
@@ -150,7 +192,7 @@ export default function WeaponBuildDiagramModal({
   }, [allMods, applyPlan, buildParts, includeTraderPrices, priceMode, selectedSlotId, weapon]);
 
   return createPortal(
-    <div className="weapon-diagram-modal" role="presentation" onMouseDown={onClose}>
+    <div className="weapon-diagram-modal" role="presentation" onMouseDown={closeModal}>
       <section
         className="weapon-diagram-modal__dialog"
         role="dialog"
@@ -179,7 +221,7 @@ export default function WeaponBuildDiagramModal({
             ref={closeButtonRef}
             className="btn btn--ghost weapon-diagram-modal__close"
             type="button"
-            onClick={onClose}
+            onClick={closeModal}
             aria-label="Close build diagram"
           >
             ×
@@ -190,7 +232,7 @@ export default function WeaponBuildDiagramModal({
           <WeaponBuildDiagram
             layout={layout}
             selectedSlotId={selectedSlotId}
-            stats={stats}
+            stats={previewMeters ?? stats}
             onSelectNode={handleSelectNode}
           />
           {slotContext && (
@@ -208,7 +250,13 @@ export default function WeaponBuildDiagramModal({
               onChoose={requestChange}
               onRemove={() => requestChange(null)}
               onConfirmPlan={() => applyPlan(pendingPlan)}
-              onCancelPlan={() => setPendingPlan(null)}
+              onCancelPlan={() => {
+                setHoveredCandidate(null);
+                setFocusedCandidate(null);
+                setPendingPlan(null);
+              }}
+              onHoverCandidate={setHoveredCandidate}
+              onFocusCandidate={setFocusedCandidate}
               onClose={closePanel}
             />
           )}
