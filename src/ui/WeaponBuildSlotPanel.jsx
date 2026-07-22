@@ -1,19 +1,22 @@
 import { useMemo, useState } from 'react';
+import { useI18n } from '../i18n/useI18n.js';
 
 import { getPurchasePriceValue } from '../data/price/priceMapper.js';
 import { getSlotOptionComparison } from './weaponBuildSlotStats.js';
 
-function getItemName(item) {
-  return item?.name || item?.shortName || 'Unknown module';
+function getItemName(item, t) {
+  return item?.name || item?.shortName || t('ui.slot.unknownModule');
 }
 
-function formatPrice(item, priceMode, includeTraderPrices) {
+function formatPrice(item, priceMode, includeTraderPrices, t) {
   const price = getPurchasePriceValue(
     item,
     { priceMode, includeTraderPrices },
     Number.POSITIVE_INFINITY,
   );
-  return Number.isFinite(price) ? `${Math.round(price).toLocaleString('en-US')} ₽` : 'Price unavailable';
+  return Number.isFinite(price)
+    ? `${Math.round(price).toLocaleString('en-US')} ₽`
+    : t('ui.slot.priceUnavailable');
 }
 
 export default function WeaponBuildSlotPanel({
@@ -34,6 +37,7 @@ export default function WeaponBuildSlotPanel({
   onFocusCandidate,
   onClose,
 }) {
+  const { t } = useI18n();
   const [query, setQuery] = useState('');
   const currentItem = slotContext?.installedNode?.item || null;
   const parentItem = slotContext?.parent?.item || null;
@@ -48,32 +52,32 @@ export default function WeaponBuildSlotPanel({
   if (!slotContext) return null;
 
   return (
-    <aside className="weapon-slot-panel" aria-label={`Edit slot ${slotContext.slot.name}`}>
+    <aside className="weapon-slot-panel" aria-label={t('ui.slot.editSlotLabel', { name: slotContext.slot.name })}>
       <header className="weapon-slot-panel__head">
         <div>
-          <span>Edit slot</span>
+          <span>{t('ui.slot.editSlot')}</span>
           <h3>{slotContext.slot.name}</h3>
-          <p>{getItemName(parentItem)}</p>
+          <p>{getItemName(parentItem, t)}</p>
         </div>
-        <button className="btn btn--ghost" type="button" onClick={onClose} aria-label="Close module selection panel">×</button>
+        <button className="btn btn--ghost" type="button" onClick={onClose} aria-label={t('ui.slot.close')}>×</button>
       </header>
 
       <div className="weapon-slot-panel__body">
         {currentItem && (
-          <section className="weapon-slot-panel__current" aria-label="Current module">
-            <span>Installed</span>
-            <strong>{getItemName(currentItem)}</strong>
-            <small>{formatPrice(currentItem, priceMode, includeTraderPrices)}</small>
+          <section className="weapon-slot-panel__current" aria-label={t('ui.slot.currentModule')}>
+            <span>{t('ui.slot.installed')}</span>
+            <strong>{getItemName(currentItem, t)}</strong>
+            <small>{formatPrice(currentItem, priceMode, includeTraderPrices, t)}</small>
           </section>
         )}
 
         <label className="weapon-slot-panel__search">
-          <span>Search by name</span>
+          <span>{t('ui.slot.searchByName')}</span>
           <input
             type="search"
             value={query}
             onChange={event => setQuery(event.target.value)}
-            placeholder="Enter module name"
+            placeholder={t('ui.slot.searchPlaceholder')}
           />
         </label>
 
@@ -82,20 +86,20 @@ export default function WeaponBuildSlotPanel({
 
         {pendingPlan && (
           <div className="weapon-slot-panel__warning" role="alert">
-            <strong>The following incompatible child modules will be removed:</strong>
-            <span>{pendingPlan.removedItems.map(getItemName).join(', ')}</span>
+            <strong>{t('ui.slot.incompatibleRemoved')}</strong>
+            <span>{pendingPlan.removedItems.map(item => getItemName(item, t)).join(', ')}</span>
             <div>
-              <button className="btn btn--primary" type="button" onClick={onConfirmPlan}>Continue</button>
-              <button className="btn btn--ghost" type="button" onClick={onCancelPlan}>Cancel</button>
+              <button className="btn btn--primary" type="button" onClick={onConfirmPlan}>{t('ui.slot.continue')}</button>
+              <button className="btn btn--ghost" type="button" onClick={onCancelPlan}>{t('ui.slot.cancel')}</button>
             </div>
           </div>
         )}
 
         <div className="weapon-slot-panel__list" aria-live="polite">
-          {isLoading && <div className="weapon-slot-panel__empty">Loading compatible modules…</div>}
+          {isLoading && <div className="weapon-slot-panel__empty">{t('ui.slot.loading')}</div>}
           {!isLoading && filteredItems.length === 0 && (
             <div className="weapon-slot-panel__empty">
-              {compatibleItems.length === 0 ? 'No compatible modules are available for this slot.' : 'No modules match your search.'}
+              {compatibleItems.length === 0 ? t('ui.slot.noCompatible') : t('ui.slot.noSearchResults')}
             </div>
           )}
           {!isLoading && filteredItems.map(item => {
@@ -118,26 +122,28 @@ export default function WeaponBuildSlotPanel({
                 onFocus={() => onFocusCandidate?.(item)}
                 onBlur={() => onFocusCandidate?.(null)}
                 disabled={isCurrent || Boolean(pendingPlan)}
-                aria-label={`${isCurrent ? 'Current module' : 'Install'} ${getItemName(item)}`}
+                aria-label={isCurrent
+                  ? t('ui.slot.currentModuleLabel', { name: getItemName(item, t) })
+                  : t('ui.slot.install', { name: getItemName(item, t) })}
               >
                 <span className="weapon-slot-option__image" aria-hidden="true">
                   {item.image512pxLink || item.iconLink ? <img src={item.image512pxLink || item.iconLink} alt="" loading="lazy" /> : '—'}
                 </span>
                 <span className="weapon-slot-option__body">
-                  <strong>{getItemName(item)}</strong>
+                  <strong>{getItemName(item, t)}</strong>
                   <span className="weapon-slot-option__stats">
                     {comparison.stats.map(stat => (
                       <span className="weapon-slot-option__stat" key={stat.key}>
-                        {stat.label}:{' '}
+                        {t(`ui.slot.stat.${stat.key}`)}:{' '}
                         <strong className={`is-${stat.tone}`}>{stat.text}</strong>
                       </span>
                     ))}
                   </span>
                 </span>
                 <span className="weapon-slot-option__meta">
-                  <small>{formatPrice(item, priceMode, includeTraderPrices)}</small>
-                  <em className={`is-${comparison.priceTone}`}>{comparison.priceDiffText}</em>
-                  {isCurrent && <span className="weapon-slot-option__badge">Current</span>}
+                  <small>{formatPrice(item, priceMode, includeTraderPrices, t)}</small>
+                  <em className={`is-${comparison.priceTone}`}>{comparison.priceDiff === null ? t('ui.slot.differenceUnavailable') : comparison.priceDiffText}</em>
+                  {isCurrent && <span className="weapon-slot-option__badge">{t('ui.slot.current')}</span>}
                 </span>
               </button>
             );
@@ -151,11 +157,11 @@ export default function WeaponBuildSlotPanel({
               type="button"
               onClick={onRemove}
               disabled={slotContext.slot.required === true || Boolean(pendingPlan)}
-              title={slotContext.slot.required === true ? 'A required module can only be replaced' : undefined}
+              title={slotContext.slot.required === true ? t('ui.slot.requiredReplace') : undefined}
             >
-              Remove module
+              {t('ui.slot.remove')}
             </button>
-            {slotContext.slot.required === true && <small>A required slot cannot be left empty.</small>}
+            {slotContext.slot.required === true && <small>{t('ui.slot.requiredEmpty')}</small>}
           </div>
         )}
       </div>

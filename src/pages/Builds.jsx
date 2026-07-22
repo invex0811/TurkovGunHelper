@@ -9,32 +9,36 @@ import {
 import { loadItemsCatalog } from '../data/tarkovApi/index.js';
 import { downloadAllBuilds, downloadBuildFile } from '../features/buildTransfer/index.js';
 import BuildImportModal from '../ui/BuildImportModal.jsx';
+import { useI18n } from '../i18n/useI18n.js';
+import { getBuildGameMode, getLocalizedBuildWeapon } from './buildsLocalizedWeapons.js';
 
 const METRICS = [
-  { key: 'ergonomics', label: 'Ergonomics', direction: 'high', format: value => value },
-  { key: 'recoilVertical', label: 'Vertical recoil', direction: 'low', format: value => value },
-  { key: 'recoilHorizontal', label: 'Horizontal recoil', direction: 'low', format: value => value },
-  { key: 'weight', label: 'Weight', direction: 'low', format: value => `${value} kg` },
-  {
-    key: 'price',
-    label: 'Estimated price',
-    direction: 'low',
-    format: value => `${Math.round(Number(value) || 0).toLocaleString()} RUB`,
-  },
+  { key: 'ergonomics', label: 'builds.metricErgonomics', direction: 'high' },
+  { key: 'recoilVertical', label: 'builds.metricVerticalRecoil', direction: 'low' },
+  { key: 'recoilHorizontal', label: 'builds.metricHorizontalRecoil', direction: 'low' },
+  { key: 'weight', label: 'builds.metricWeight', direction: 'low' },
+  { key: 'price', label: 'builds.metricPrice', direction: 'low' },
 ];
 
-function formatSavedDate(value) {
+function formatSavedDate(value, language) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+  return new Intl.DateTimeFormat(language === 'ru' ? 'ru-RU' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
 
-function getGoalLabel(targetType) {
-  if (targetType === 'custom') return 'Custom';
-  return 'Meta';
+function formatNumber(value, language, options) {
+  return new Intl.NumberFormat(language === 'ru' ? 'ru-RU' : 'en-US', options).format(Number(value) || 0);
+}
+
+function formatMetric(value, key, language, t) {
+  const numericValue = Number(value) || 0;
+  if (key === 'weight') return t('page.builds.weightValue', { value: formatNumber(numericValue, language, { maximumFractionDigits: 2 }) });
+  if (key === 'price') return t('page.builds.priceValue', { value: formatNumber(Math.round(numericValue), language) });
+  return formatNumber(numericValue, language, { maximumFractionDigits: 2 });
 }
 
 function Builds() {
+  const { language, t } = useI18n();
   const navigate = useNavigate();
   const [builds, setBuilds] = useState(readSavedBuilds);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -42,12 +46,57 @@ function Builds() {
   const [isComparisonOpen, setIsComparisonOpen] = useState(false);
   const [buildPendingDeletion, setBuildPendingDeletion] = useState(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [localizedCatalogs, setLocalizedCatalogs] = useState(() => ({
+    language: null,
+    byGameMode: new Map(),
+  }));
 
   useEffect(() => {
     const handleStorage = () => setBuilds(readSavedBuilds());
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
+
+  useEffect(() => {
+    const gameModes = [...new Set(builds.map(getBuildGameMode))];
+    if (gameModes.length === 0) {
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    let isCurrent = true;
+
+    Promise.allSettled(gameModes.map(async gameMode => [
+      gameMode,
+      await loadItemsCatalog(gameMode, {
+        priceMode: gameMode === 'pve' ? 'pve' : 'pvp',
+        language,
+        signal: controller.signal,
+      }),
+    ]))
+      .then(results => {
+        if (!isCurrent) return;
+
+        setLocalizedCatalogs(previous => {
+          const byGameMode = previous.language === language
+            ? new Map(previous.byGameMode)
+            : new Map();
+          results.forEach(result => {
+            if (result.status === 'fulfilled') byGameMode.set(...result.value);
+          });
+          return { language, byGameMode };
+        });
+      })
+      .catch(() => {
+        // allSettled normally cannot reject; retain snapshots if an unexpected error occurs.
+        if (isCurrent) setLocalizedCatalogs({ language, byGameMode: new Map() });
+      });
+
+    return () => {
+      isCurrent = false;
+      controller.abort();
+    };
+  }, [builds, language]);
 
   useEffect(() => {
     if (!isComparisonOpen && !buildPendingDeletion) return undefined;
@@ -69,6 +118,10 @@ function Builds() {
     return builds.filter(build => selectedSet.has(build.id));
   }, [builds, selectedIds]);
 
+  const displayCatalogs = localizedCatalogs.language === language
+    ? localizedCatalogs.byGameMode
+    : new Map();
+
   const openBuild = build => {
     navigate(`/configure/${encodeURIComponent(build.weapon.id)}?build=${encodeURIComponent(build.id)}`);
   };
@@ -79,7 +132,7 @@ function Builds() {
     setSelectedIds(current => {
       if (current.includes(buildId)) return current.filter(id => id !== buildId);
       if (current.length >= MAX_COMPARE_BUILDS) {
-        setNotice(`You can compare up to ${MAX_COMPARE_BUILDS} builds at once.`);
+        setNotice(t('builds.compareLimit', { count: MAX_COMPARE_BUILDS }));
         return current;
       }
       return [...current, buildId];
@@ -109,33 +162,32 @@ function Builds() {
   const handleExport = async (event, build) => {
     event.stopPropagation();
     try {
-      setNotice(`Preparing “${build.name}” for export…`);
-      const gameMode = build.settings.priceMode === 'pve' ? 'pve' : 'regular';
+      setNotice(t('builds.preparingExport', { name: build.name }));
+      const gameMode = getBuildGameMode(build);
       const catalog = await loadItemsCatalog(gameMode, {
         priceMode: gameMode === 'pve' ? 'pve' : 'pvp',
+        language,
       });
       downloadBuildFile(build, { catalog });
-      setNotice(`Exported “${build.name}”.`);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'The build could not be exported.');
+      setNotice(t('builds.exported', { name: build.name }));
+    } catch {
+      setNotice(t('builds.exportError'));
     }
   };
 
   const handleExportAll = async () => {
     if (builds.length === 0) return;
     try {
-      setNotice('Preparing builds for export…');
-      const modes = [...new Set(builds.map(build => (
-        build.settings.priceMode === 'pve' ? 'pve' : 'regular'
-      )))];
+      setNotice(t('builds.preparingExports'));
+      const modes = [...new Set(builds.map(getBuildGameMode))];
       const catalogs = new Map(await Promise.all(modes.map(async gameMode => [
         gameMode,
-        await loadItemsCatalog(gameMode, { priceMode: gameMode === 'pve' ? 'pve' : 'pvp' }),
+        await loadItemsCatalog(gameMode, { priceMode: gameMode === 'pve' ? 'pve' : 'pvp', language }),
       ])));
       downloadAllBuilds(builds, { catalogs });
-      setNotice(`Exported ${builds.length} build${builds.length === 1 ? '' : 's'}.`);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'The builds could not be exported.');
+      setNotice(t('builds.exportedCount', { count: builds.length }));
+    } catch {
+      setNotice(t('builds.exportsError'));
     }
   };
 
@@ -143,18 +195,18 @@ function Builds() {
     <div className={`builds-page${selectedBuilds.length > 0 ? ' has-comparison-tray' : ''}`}>
       <section className="builds-hero">
         <div>
-          <span className="builds-hero__eyebrow">Local armory</span>
-          <h2>Saved builds</h2>
-          <p>Open a card to continue working on it, or use the hover control to add it to comparison.</p>
+          <span className="builds-hero__eyebrow">{t('builds.localArmory')}</span>
+          <h2>{t('builds.saved')}</h2>
+          <p>{t('builds.description')}</p>
         </div>
         <div className="builds-hero__tools">
           <div className="builds-hero__count">
             <strong>{builds.length}</strong>
-            <span>of 100 saved</span>
+            <span>{t('builds.ofSaved')}</span>
           </div>
           <div className="builds-hero__actions">
-            <button className="btn btn--primary" type="button" onClick={() => setIsImportOpen(true)}>Import</button>
-            <button className="btn btn--ghost" type="button" onClick={handleExportAll} disabled={builds.length === 0}>Export all</button>
+            <button className="btn btn--primary" type="button" onClick={() => setIsImportOpen(true)}>{t('builds.import')}</button>
+            <button className="btn btn--ghost" type="button" onClick={handleExportAll} disabled={builds.length === 0}>{t('builds.exportAll')}</button>
           </div>
         </div>
       </section>
@@ -163,14 +215,15 @@ function Builds() {
 
       {builds.length === 0 ? (
         <section className="builds-empty">
-          <h3>No saved builds yet</h3>
-          <p>Generate a weapon build and save it. It will appear here in this browser.</p>
-          <Link className="btn btn--primary" to="/">Choose a weapon</Link>
+          <h3>{t('builds.empty')}</h3>
+          <p>{t('builds.emptyDescription')}</p>
+          <Link className="btn btn--primary" to="/">{t('builds.chooseWeapon')}</Link>
         </section>
       ) : (
-        <section className="build-card-grid" aria-label="Saved weapon builds">
+        <section className="build-card-grid" aria-label={t('builds.savedLabel')}>
           {builds.map(build => {
             const isSelected = selectedIds.includes(build.id);
+            const displayWeapon = getLocalizedBuildWeapon(build, displayCatalogs);
             return (
               <article
                 key={build.id}
@@ -190,40 +243,40 @@ function Builds() {
                   className="build-card__compare"
                   type="button"
                   aria-pressed={isSelected}
-                  aria-label={isSelected ? `Remove ${build.name} from comparison` : `Add ${build.name} to comparison`}
+                  aria-label={isSelected ? t('builds.removeComparison', { name: build.name }) : t('builds.addComparison', { name: build.name })}
                   onClick={event => toggleComparison(event, build.id)}
                 >
                   <span aria-hidden="true">{isSelected ? '✓' : '+'}</span>
-                  {isSelected ? 'Added' : 'Compare'}
+                  {isSelected ? t('builds.added') : t('builds.compare')}
                 </button>
 
                 <div className="build-card__image">
                   {build.weapon.imageUrl ? (
                     <img src={build.weapon.imageUrl} alt="" loading="lazy" decoding="async" />
                   ) : (
-                    <span>{build.weapon.shortName || 'Weapon'}</span>
+                    <span>{displayWeapon.shortName || t('builds.weapon')}</span>
                   )}
                 </div>
 
                 <div className="build-card__body">
-                  <span className="build-card__weapon">{build.weapon.shortName || build.weapon.name}</span>
+                  <span className="build-card__weapon">{displayWeapon.shortName || displayWeapon.name || t('builds.weapon')}</span>
                   <h3 title={build.name}>{build.name}</h3>
                   <div className="build-card__meta">
-                    <span>{getGoalLabel(build.settings.targetType)}</span>
-                    <span>{build.parts.length} parts</span>
+                    <span>{t(build.settings.targetType === 'custom' ? 'page.builds.goalCustom' : 'page.builds.goalMeta')}</span>
+                    <span>{t('builds.parts', { count: build.parts.length })}</span>
                   </div>
                   <div className="build-card__stats">
-                    <span><small>Ergo</small><strong>{build.stats.ergonomics}</strong></span>
-                    <span><small>V. recoil</small><strong>{build.stats.recoilVertical}</strong></span>
-                    <span><small>Weight</small><strong>{build.stats.weight} kg</strong></span>
+                    <span><small>{t('builds.ergo')}</small><strong>{build.stats.ergonomics}</strong></span>
+                    <span><small>{t('builds.verticalRecoil')}</small><strong>{build.stats.recoilVertical}</strong></span>
+                    <span><small>{t('builds.weight')}</small><strong>{formatMetric(build.stats.weight, 'weight', language, t)}</strong></span>
                   </div>
                 </div>
 
                 <div className="build-card__footer">
-                  <span>{formatSavedDate(build.updatedAt)}</span>
+                  <span>{formatSavedDate(build.updatedAt, language)}</span>
                   <div className="build-card__actions">
-                    <button type="button" onClick={event => handleExport(event, build)}>Export</button>
-                    <button className="is-danger" type="button" onClick={event => handleDelete(event, build)}>Delete</button>
+                    <button type="button" onClick={event => handleExport(event, build)}>{t('builds.export')}</button>
+                    <button className="is-danger" type="button" onClick={event => handleDelete(event, build)}>{t('builds.delete')}</button>
                   </div>
                 </div>
               </article>
@@ -233,27 +286,27 @@ function Builds() {
       )}
 
       {selectedBuilds.length > 0 && (
-        <aside className="comparison-tray" aria-label="Selected builds for comparison">
+        <aside className="comparison-tray" aria-label={t('page.builds.selectedForComparison')}>
           <div className="comparison-tray__summary">
             <span className="comparison-tray__count">{selectedBuilds.length}</span>
             <div>
               <strong>
                 {selectedBuilds.length < 2
-                  ? 'Select one more build'
-                  : `${selectedBuilds.length} builds ready`}
+                  ? t('page.builds.selectOneMore')
+                  : t('page.builds.readyToCompare', { count: selectedBuilds.length })}
               </strong>
               <span>{selectedBuilds.map(build => build.name).join(' · ')}</span>
             </div>
           </div>
           <div className="comparison-tray__actions">
-            <button className="btn btn--ghost" type="button" onClick={clearComparison}>Clear</button>
+            <button className="btn btn--ghost" type="button" onClick={clearComparison}>{t('builds.clear')}</button>
             <button
               className="btn btn--primary"
               type="button"
               disabled={selectedBuilds.length < 2}
               onClick={() => setIsComparisonOpen(true)}
             >
-              Compare builds
+              {t('builds.compareBuilds')}
             </button>
           </div>
         </aside>
@@ -265,21 +318,21 @@ function Builds() {
             className="comparison-panel comparison-modal__dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="Build comparison"
+            aria-label={t('builds.comparison')}
             onMouseDown={event => event.stopPropagation()}
           >
             <div className="comparison-panel__head">
               <div>
-                <span className="builds-hero__eyebrow">Comparison</span>
-                <h2>{selectedBuilds.length} builds selected</h2>
+                <span className="builds-hero__eyebrow">{t('builds.comparison')}</span>
+                <h2>{t('page.builds.selectedCount', { count: selectedBuilds.length })}</h2>
               </div>
-              <button className="btn btn--ghost" type="button" onClick={() => setIsComparisonOpen(false)}>Close</button>
+              <button className="btn btn--ghost" type="button" onClick={() => setIsComparisonOpen(false)}>{t('builds.close')}</button>
             </div>
             <div className="comparison-table-wrap">
               <table className="comparison-table">
                 <thead>
                   <tr>
-                    <th>Metric</th>
+                    <th>{t('builds.metric')}</th>
                     {selectedBuilds.map(build => <th key={build.id}>{build.name}</th>)}
                   </tr>
                 </thead>
@@ -292,12 +345,12 @@ function Builds() {
 
                     return (
                       <tr key={metric.key}>
-                        <th>{metric.label}</th>
+                        <th>{t(metric.label)}</th>
                         {selectedBuilds.map(build => {
                           const value = Number(build.stats[metric.key]);
                           return (
                             <td key={build.id} className={value === bestValue ? 'is-best' : ''}>
-                              {metric.format(build.stats[metric.key])}
+                              {formatMetric(build.stats[metric.key], metric.key, language, t)}
                             </td>
                           );
                         })}
@@ -305,7 +358,7 @@ function Builds() {
                     );
                   })}
                   <tr>
-                    <th>Parts</th>
+                    <th>{t('page.builds.partsMetric')}</th>
                     {selectedBuilds.map(build => <td key={build.id}>{build.parts.length}</td>)}
                   </tr>
                 </tbody>
@@ -331,18 +384,18 @@ function Builds() {
           >
             <div className="delete-confirm__icon" aria-hidden="true">!</div>
             <div className="delete-confirm__content">
-              <span className="builds-hero__eyebrow">Delete saved build</span>
-              <h2 id="deleteBuildTitle">Delete “{buildPendingDeletion.name}”?</h2>
+              <span className="builds-hero__eyebrow">{t('builds.deleteSaved')}</span>
+              <h2 id="deleteBuildTitle">{t('page.builds.deleteTitle', { name: buildPendingDeletion.name })}</h2>
               <p id="deleteBuildDescription">
-                This build is stored only in this browser. Once deleted, it cannot be restored.
+                {t('page.builds.deleteDescription')}
               </p>
             </div>
             <div className="delete-confirm__actions">
               <button className="btn btn--ghost" type="button" onClick={() => setBuildPendingDeletion(null)}>
-                Cancel
+                {t('common.cancel')}
               </button>
               <button className="btn btn--danger" type="button" onClick={confirmDelete} autoFocus>
-                Delete build
+                {t('page.builds.confirmDelete')}
               </button>
             </div>
           </section>
@@ -352,6 +405,7 @@ function Builds() {
       {isImportOpen && (
         <BuildImportModal
           existingBuilds={builds}
+          language={language}
           onClose={() => setIsImportOpen(false)}
           onImported={nextBuilds => {
             setBuilds(nextBuilds);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useI18n } from '../i18n/useI18n.js';
 
 import {
   findBuildSlotContext,
@@ -17,6 +18,19 @@ import {
   layoutWeaponDiagramGraph,
 } from './weaponBuildDiagram.js';
 
+function getSlotPlanErrorMessage(error, t) {
+  if (error === 'The selected slot no longer exists in the current build.') return t('ui.slot.errorSlotUnavailable');
+  if (error === 'A required module cannot be removed without a replacement.') return t('ui.slot.requiredReplace');
+  if (error === 'The selected module is incompatible with this slot instance.') return t('ui.slot.errorIncompatible');
+  if (error === 'This module is already installed in the build.') return t('ui.slot.errorDuplicate');
+  if (error === 'After this change, one or more modules will lose their compatible parent slot.') return t('ui.slot.errorUnattached');
+
+  const conflictMatch = /^(.+) conflicts with (.+)\.$/.exec(error);
+  if (conflictMatch) return t('ui.slot.errorConflict', { first: conflictMatch[1], second: conflictMatch[2] });
+
+  return t('ui.slot.errorGeneric');
+}
+
 export default function WeaponBuildDiagramModal({
   weapon,
   buildParts,
@@ -27,6 +41,7 @@ export default function WeaponBuildDiagramModal({
   onBuildChange,
   onClose,
 }) {
+  const { t } = useI18n();
   const closeButtonRef = useRef(null);
   const selectedSlotRef = useRef(null);
   const lastTriggerRef = useRef(null);
@@ -163,8 +178,8 @@ export default function WeaponBuildDiagramModal({
     }
     setPendingPlan(null);
     setPanelError(null);
-    setFeedback(plan.nextItem ? 'Module installed. Build stats and price updated.' : 'Module removed. Build stats and price updated.');
-  }, [onBuildChange]);
+    setFeedback(t(plan.nextItem ? 'ui.slot.installedFeedback' : 'ui.slot.removedFeedback'));
+  }, [onBuildChange, t]);
 
   const requestChange = useCallback(nextItem => {
     setHoveredCandidate(null);
@@ -179,7 +194,7 @@ export default function WeaponBuildDiagramModal({
       includeTraderPrices,
     });
     if (plan.errors?.length > 0) {
-      setPanelError(plan.errors.join(' '));
+      setPanelError(plan.errors.map(error => getSlotPlanErrorMessage(error, t)).join(' '));
       return;
     }
     setPanelError(null);
@@ -189,7 +204,7 @@ export default function WeaponBuildDiagramModal({
       return;
     }
     applyPlan(plan);
-  }, [allMods, applyPlan, buildParts, includeTraderPrices, priceMode, selectedSlotId, weapon]);
+  }, [allMods, applyPlan, buildParts, includeTraderPrices, priceMode, selectedSlotId, t, weapon]);
 
   return createPortal(
     <div className="weapon-diagram-modal" role="presentation" onMouseDown={closeModal}>
@@ -202,12 +217,12 @@ export default function WeaponBuildDiagramModal({
       >
         <header className="weapon-diagram-modal__head">
           <div>
-            <span>Current configuration</span>
-            <h2 id="weaponDiagramTitle">Build Diagram</h2>
+            <span>{t('ui.diagram.currentConfiguration')}</span>
+            <h2 id="weaponDiagramTitle">{t('ui.diagram.title')}</h2>
           </div>
           <div className="weapon-diagram-modal__summary">
             <strong>{weapon.shortName || weapon.name}</strong>
-            <span>{moduleCount} {moduleCount === 1 ? 'module' : 'modules'}</span>
+            <span>{t('ui.diagram.modules', { count: moduleCount })}</span>
           </div>
           <label className="weapon-diagram-modal__free-toggle">
             <input
@@ -215,14 +230,14 @@ export default function WeaponBuildDiagramModal({
               checked={showFreeSlots}
               onChange={event => setShowFreeSlots(event.target.checked)}
             />
-            <span>Show empty slots</span>
+            <span>{t('ui.diagram.showEmptySlots')}</span>
           </label>
           <button
             ref={closeButtonRef}
             className="btn btn--ghost weapon-diagram-modal__close"
             type="button"
             onClick={closeModal}
-            aria-label="Close build diagram"
+            aria-label={t('ui.diagram.close')}
           >
             ×
           </button>

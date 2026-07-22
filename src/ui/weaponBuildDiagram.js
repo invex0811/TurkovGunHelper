@@ -1,5 +1,6 @@
 import { buildWeaponAssemblyTree } from '../domain/weaponAssembly.js';
 import { getCompatibleItemsForSlot } from '../domain/weaponBuildEditor.js';
+import { categoryMatches, getItemCategoryKeys, hasItemCategory } from '../domain/itemCategories.js';
 
 export const WEAPON_DIAGRAM_NODE_SIZE = Object.freeze({ width: 190, height: 76 });
 
@@ -29,26 +30,26 @@ const GENERIC_CATEGORIES = new Set([
 ]);
 
 function getItemCategory(item, fallback = 'Module') {
-  const categories = (item?.categories || [])
-    .map(category => category?.name)
-    .filter(Boolean);
-  return categories.find(category => !GENERIC_CATEGORIES.has(category))
-    || categories[0]
+  const categories = (item?.categories || []).filter(category => category?.name);
+  return categories.find(category => ![...GENERIC_CATEGORIES].some(name => categoryMatches(category, name)))?.name
+    || categories[0]?.name
     || fallback;
 }
 
 function getCategoryPriority(item, slotName) {
-  const categoryText = [
-    slotName,
-    ...(item?.categories || []).map(category => category?.name),
-  ].filter(Boolean).join(' ').toLowerCase();
+  const legacySlotName = String(slotName || '').toLowerCase();
+  const hasCategory = categoryName => hasItemCategory(item, categoryName);
 
-  if (/(receiver|barrel|handguard|stock|gas block|charging handle|muzzle|buffer)/.test(categoryText)) {
+  if (
+    ['Receiver', 'Barrel', 'Handguard', 'Stock', 'Gas block', 'Gas tube', 'Charging handle', 'Muzzle', 'Buffer tube']
+      .some(hasCategory)
+    || /(receiver|barrel|handguard|stock|gas block|charging handle|muzzle|buffer)/.test(legacySlotName)
+  ) {
     return 1;
   }
-  if (/(sight|scope|optic|mount)/.test(categoryText)) return 2;
-  if (/(magazine|pistol grip|foregrip|grip)/.test(categoryText)) return 3;
-  if (/(tactical|laser|flashlight|rail)/.test(categoryText)) return 4;
+  if (['Sights', 'Scope', 'Mount'].some(hasCategory) || /(sight|scope|optic|mount)/.test(legacySlotName)) return 2;
+  if (['Magazine', 'Pistol grip', 'Foregrip'].some(hasCategory) || /(magazine|pistol grip|foregrip|grip)/.test(legacySlotName)) return 3;
+  if (['Comb. tact. device', 'Flashlight', 'Mount'].some(hasCategory) || /(tactical|laser|flashlight|rail)/.test(legacySlotName)) return 4;
   return 5;
 }
 
@@ -78,13 +79,19 @@ function getImageUrl(item) {
 function getNodeStats(item) {
   const stats = [];
   if (Number.isFinite(Number(item?.weight)) && Number(item.weight) > 0) {
-    stats.push(`Weight: ${Number(item.weight).toFixed(3)} kg`);
+    stats.push({ key: 'weight', value: `${Number(item.weight).toFixed(3)} kg` });
   }
   if (Number.isFinite(Number(item?.ergonomicsModifier)) && Number(item.ergonomicsModifier) !== 0) {
-    stats.push(`Ergonomics: ${Number(item.ergonomicsModifier) > 0 ? '+' : ''}${item.ergonomicsModifier}`);
+    stats.push({
+      key: 'ergonomics',
+      value: `${Number(item.ergonomicsModifier) > 0 ? '+' : ''}${item.ergonomicsModifier}`,
+    });
   }
   if (Number.isFinite(Number(item?.recoilModifier)) && Number(item.recoilModifier) !== 0) {
-    stats.push(`Recoil: ${Number(item.recoilModifier) > 0 ? '+' : ''}${item.recoilModifier}%`);
+    stats.push({
+      key: 'recoil',
+      value: `${Number(item.recoilModifier) > 0 ? '+' : ''}${item.recoilModifier}%`,
+    });
   }
   return stats;
 }
@@ -114,9 +121,10 @@ function createDiagramNode({
     slotId: slotInstanceId || slot?.nameId || slot?.name || slotName || undefined,
     slotInstanceId,
     slotName: slot?.name || slotName || undefined,
-    name: isFreeSlot ? (slot?.name || slotName || 'Empty slot') : (item?.shortName || item?.name || 'Unknown module'),
-    fullName: isFreeSlot ? `Empty slot: ${slot?.name || slotName || 'unnamed'}` : (item?.name || item?.shortName || 'Unknown module'),
-    category: isFreeSlot ? 'Empty slot' : getItemCategory(item, nodeType === 'weapon' ? 'Weapon' : 'Module'),
+    name: isFreeSlot ? (slot?.name || slotName || '') : (item?.shortName || item?.name || ''),
+    fullName: isFreeSlot ? (slot?.name || slotName || '') : (item?.name || item?.shortName || ''),
+    category: isFreeSlot ? '' : getItemCategory(item, ''),
+    categoryKeys: isFreeSlot ? [] : [...getItemCategoryKeys(item)],
     imageUrl: getImageUrl(item),
     critical,
     nodeType,
@@ -259,10 +267,17 @@ export function buildWeaponDiagramGraph(weapon, buildParts = [], options = {}) {
 }
 
 function getSemanticText(node) {
-  return [node?.category, node?.slotName, node?.slotId]
+  return [
+    node?.category,
+    node?.slotName,
+    node?.slotId,
+    ...(node?.categoryKeys || []).map(category => category.replaceAll('-', ' ')),
+  ]
     .filter(Boolean)
     .join(' ')
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\breciever\b/g, 'receiver');
 }
 
 export function classifyWeaponDiagramNode(node) {

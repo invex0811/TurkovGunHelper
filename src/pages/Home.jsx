@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getWeapons, isAbortError } from '../data/tarkovApi';
+import { filterHomeWeapons, getHomeWeaponFilterOptions } from './homeWeaponFilters.js';
+import HomeFilterModal from '../ui/HomeFilterModal.jsx';
+import { useI18n } from '../i18n/useI18n.js';
 
-function ImageWithLoader({ src, alt, style, containerStyle }) {
+function ImageWithLoader({ src, alt, style, containerStyle, unavailableLabel }) {
   const [imageState, setImageState] = useState(src ? 'loading' : 'error');
   const isLoading = Boolean(src) && imageState === 'loading';
   const canDisplayImage = Boolean(src) && imageState !== 'error';
@@ -34,138 +37,148 @@ function ImageWithLoader({ src, alt, style, containerStyle }) {
           }}
         />
       ) : (
-        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>Image unavailable</span>
+        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>{unavailableLabel}</span>
       )}
     </div>
   );
 }
 
 function Home() {
+  const { language, t } = useI18n();
   const [weapons, setWeapons] = useState([]);
   const [search, setSearch] = useState('');
   const [selectedType, setSelectedType] = useState('All');
+  const [selectedCaliber, setSelectedCaliber] = useState('All');
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const loadWeapons = useCallback(async ({ signal, forceRefresh = false } = {}) => {
     setLoading(true);
     setError(null);
+    // A catalog is localized as a whole. Do not keep the previous locale visible
+    // while the replacement request is in flight or after it fails.
+    setWeapons([]);
 
     try {
-      const data = await getWeapons({ signal, forceRefresh });
+      const data = await getWeapons({ signal, forceRefresh, language });
 
       if (!signal?.aborted) {
         setWeapons(data);
       }
     } catch (loadError) {
       if (!signal?.aborted && !isAbortError(loadError)) {
-        setError(loadError instanceof Error ? loadError.message : 'Unable to load weapons. Please try again.');
+        setError(t('error.load'));
       }
     } finally {
       if (!signal?.aborted) {
         setLoading(false);
       }
     }
-  }, []);
+  }, [language, t]);
 
   useEffect(() => {
     const controller = new AbortController();
 
-    void getWeapons({ signal: controller.signal })
+    void Promise.resolve()
+      .then(() => {
+        if (controller.signal.aborted) return null;
+        setLoading(true);
+        setError(null);
+        // A catalog is localized as a whole. Do not keep the previous locale visible
+        // while the replacement request is in flight or after it fails.
+        setWeapons([]);
+        // Category labels are supplied by Tarkov.dev and change with the locale.
+        // Keep raw caliber keys and the search intact, but discard a label-based type
+        // selection so it cannot become an invalid, stale filter after a language switch.
+        setSelectedType('All');
+        return getWeapons({ signal: controller.signal, language });
+      })
       .then(data => {
-        if (!controller.signal.aborted) {
-          setWeapons(data);
-        }
+        if (data && !controller.signal.aborted) setWeapons(data);
       })
       .catch(loadError => {
         if (!controller.signal.aborted && !isAbortError(loadError)) {
-          setError(loadError instanceof Error ? loadError.message : 'Unable to load weapons. Please try again.');
+          setError(t('error.load'));
         }
       })
       .finally(() => {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
+        if (!controller.signal.aborted) setLoading(false);
       });
 
     return () => controller.abort();
-  }, []);
+  }, [language, t]);
 
-  const weaponTypes = useMemo(() => Array.from(new Set(
-    weapons.flatMap(weapon => weapon.categories?.map(category => category.name) || [])
-      .filter(category => category !== 'Weapon' && category !== 'Item'),
-  )).sort(), [weapons]);
+  const { types: weaponTypes, calibers } = useMemo(() => getHomeWeaponFilterOptions(weapons), [weapons]);
 
-  const filteredWeapons = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
+  const filteredWeapons = useMemo(
+    () => filterHomeWeapons(weapons, { search, type: selectedType, caliber: selectedCaliber }),
+    [search, selectedCaliber, selectedType, weapons],
+  );
 
-    return weapons.filter(weapon => {
-      const matchesSearch = !normalizedSearch
-        || weapon.name.toLowerCase().includes(normalizedSearch)
-        || weapon.shortName.toLowerCase().includes(normalizedSearch);
-      const matchesType = selectedType === 'All'
-        || weapon.categories?.some(category => category.name === selectedType);
-
-      return matchesSearch && matchesType;
-    });
-  }, [search, selectedType, weapons]);
-
-  const hasActiveFilters = search.length > 0 || selectedType !== 'All';
+  const activeFacetFilterCount = Number(selectedType !== 'All') + Number(selectedCaliber !== 'All');
+  const hasActiveFilters = search.trim().length > 0 || activeFacetFilterCount > 0;
   const showInitialLoading = loading && weapons.length === 0;
   const showInitialError = error && weapons.length === 0;
 
   const resetFilters = () => {
     setSearch('');
     setSelectedType('All');
+    setSelectedCaliber('All');
   };
+
+  const closeFilterModal = useCallback(() => setIsFilterModalOpen(false), []);
 
   return (
     <div className="glass-panel home-page-panel" style={{ marginTop: '18px', padding: '2rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <h2>Select Weapon</h2>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <div style={{ position: 'relative' }}>
-            <select
-              value={selectedType}
-              onChange={event => setSelectedType(event.target.value)}
-              style={{
-                padding: '0.75rem 2rem 0.75rem 1rem',
-                backgroundColor: 'rgba(0,0,0,0.5)',
-                border: '1px solid var(--color-border)',
-                color: 'var(--color-text)',
-                borderRadius: 'var(--radius-sm)',
-                appearance: 'none',
-                cursor: 'pointer',
-                outline: 'none',
-                minWidth: '150px',
-              }}
-            >
-              <option value="All">All Types</option>
-              {weaponTypes.map(type => (
-                <option key={type} value={type}>{type}</option>
-              ))}
-            </select>
-            <span style={{ position: 'absolute', right: '0.8rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>⌄</span>
-          </div>
+        <h2>{t('home.selectWeapon')}</h2>
+        <div className="home-filter-toolbar">
+          <button
+            className={`btn btn--ghost home-filter-trigger${activeFacetFilterCount ? ' is-active' : ''}`}
+            type="button"
+            aria-haspopup="dialog"
+            aria-expanded={isFilterModalOpen}
+            aria-controls="homeFilterModal"
+            onClick={() => setIsFilterModalOpen(true)}
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M3 5h18l-7.2 8.1v5.4l-3.6 1.8v-7.2L3 5Z" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>
+            <span>{t('home.filters')}</span>
+            {activeFacetFilterCount > 0 && <span className="home-filter-trigger__badge" aria-label={t('home.activeFilters', { count: activeFacetFilterCount })}>{activeFacetFilterCount}</span>}
+          </button>
           <input
             type="search"
-            className="input-field"
-            placeholder="Search weapons..."
-            aria-label="Search weapons"
-            style={{ width: '300px' }}
+            className="input-field home-search-input"
+            placeholder={t('home.searchPlaceholder')}
+            aria-label={t('home.searchLabel')}
             value={search}
             onChange={event => setSearch(event.target.value)}
           />
         </div>
       </div>
 
+      {isFilterModalOpen && (
+        <HomeFilterModal
+          types={weaponTypes}
+          calibers={calibers}
+          selectedType={selectedType}
+          selectedCaliber={selectedCaliber}
+          onClose={closeFilterModal}
+          onApply={({ type, caliber }) => {
+            setSelectedType(type);
+            setSelectedCaliber(caliber);
+            closeFilterModal();
+          }}
+        />
+      )}
+
       {showInitialLoading ? (
-        <p aria-live="polite" style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '3rem 0' }}>Loading weapons from Tarkov.dev...</p>
+        <p aria-live="polite" style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '3rem 0' }}>{t('home.loading')}</p>
       ) : showInitialError ? (
         <section aria-live="assertive" style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '3rem 0' }}>
           <p style={{ margin: '0 0 1rem' }}>{error}</p>
           <button className="btn btn--primary" type="button" onClick={() => loadWeapons({ forceRefresh: true })} disabled={loading}>
-            Try again
+            {t('common.tryAgain')}
           </button>
         </section>
       ) : (
@@ -174,17 +187,17 @@ function Home() {
             <div role="alert" style={{ border: '1px solid var(--color-accent-red)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-main)', display: 'flex', gap: '1rem', justifyContent: 'space-between', marginBottom: '1rem', padding: '0.75rem 1rem' }}>
               <span>{error}</span>
               <button className="btn btn--ghost" type="button" onClick={() => loadWeapons({ forceRefresh: true })} disabled={loading}>
-                Retry
+                {t('common.retry')}
               </button>
             </div>
           )}
 
           {filteredWeapons.length === 0 ? (
             <section aria-live="polite" style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '3rem 0' }}>
-              <p>{hasActiveFilters ? 'No weapons match the selected filters.' : 'Tarkov.dev did not return any weapons.'}</p>
+              <p>{hasActiveFilters ? t('home.emptyFiltered') : t('home.empty')}</p>
               {hasActiveFilters && (
                 <button className="btn btn--ghost" type="button" onClick={resetFilters}>
-                  Clear filters
+                  {t('home.clearFilters')}
                 </button>
               )}
             </section>
@@ -209,6 +222,7 @@ function Home() {
                         key={weapon.properties?.defaultPreset?.image512pxLink || weapon.image512pxLink || `${weapon.id}-missing-image`}
                         src={weapon.properties?.defaultPreset?.image512pxLink || weapon.image512pxLink}
                         alt={weapon.shortName}
+                        unavailableLabel={t('image.unavailable')}
                         style={{ maxWidth: '100%', maxHeight: '100px', objectFit: 'contain' }}
                         containerStyle={{ height: '100px' }}
                       />
@@ -235,7 +249,7 @@ function Home() {
           fontWeight: 'bold',
           fontFamily: 'monospace',
         }}>i</span>
-        <span>All data is sourced from <a href="https://tarkov.dev" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent-gold)', textDecoration: 'none', borderBottom: '1px dotted var(--color-accent-gold)' }}>tarkov.dev</a></span>
+        <span>{t('home.source')} <a href="https://tarkov.dev" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent-gold)', textDecoration: 'none', borderBottom: '1px dotted var(--color-accent-gold)' }}>tarkov.dev</a></span>
       </div>
     </div>
   );
