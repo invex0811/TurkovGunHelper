@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import Home from './pages/Home';
 import I18nProvider from './i18n/I18nProvider.jsx';
@@ -6,6 +6,19 @@ import { useI18n } from './i18n/useI18n.js';
 
 const Configurator = lazy(() => import('./pages/Configurator'));
 const Builds = lazy(() => import('./pages/Builds'));
+
+function useTheme() {
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('tarkov-gun-helper-theme') || 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('tarkov-gun-helper-theme', theme);
+  }, [theme]);
+
+  return [theme, setTheme];
+}
 
 function ConfiguratorLoading() {
   const { t } = useI18n();
@@ -23,6 +36,8 @@ function ConfiguratorLoading() {
 
 function MainLayout() {
   const { language, setLanguage, t } = useI18n();
+  const [theme, setTheme] = useTheme();
+
   return (
     <div className="app">
       <header className="topbar">
@@ -41,6 +56,14 @@ function MainLayout() {
         <div className="topbar__actions">
           <Link to="/" className="btn btn--ghost">{t('app.weapons')}</Link>
           <Link to="/builds" className="btn btn--ghost">{t('app.builds')}</Link>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => setTheme(prev => prev === 'light' ? 'dark' : 'light')}
+            aria-label="Toggle theme"
+          >
+            {theme === 'light' ? '☀️ Светлая' : '🌙 Тёмная'}
+          </button>
           <label className="language-switcher">
             <span className="visually-hidden">{t('language.label')}</span>
             <select value={language} onChange={event => setLanguage(event.target.value)} aria-label={t('language.label')}>
