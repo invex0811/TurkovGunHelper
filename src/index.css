@@ -72,7 +72,8 @@
   pointer-events: none;
 }
 
-:root {
+:root,
+[data-theme="dark"] {
   /* Tokens copied from the UI mockup. */
   --bg-darker: #080a09;
   --bg-base: #0f1110;
@@ -143,7 +144,133 @@
   --shadow-glass: var(--shadow);
   --blur-glass: var(--blur-amount);
   --color-text: var(--text-primary);
+
+  /* Component background overrides */
+  --topbar-bg: rgba(12, 14, 13, 0.85);
+  --brand-mark-bg: #000000;
+  --config-bg: rgba(20, 24, 22, 0.92);
+  --segmented-tabs-bg: rgba(0, 0, 0, 0.3);
+  --input-bg: rgba(8, 10, 9, 0.7);
+  --search-item-bg: rgba(8, 10, 9, 0.35);
+  --modal-backdrop-bg: rgba(3, 5, 4, .86);
+  --dialog-bg: rgba(15, 19, 17, .99);
+  --dialog-head-bg: rgba(20, 25, 22, .98);
+  --diagram-toolbar-bg: rgba(10, 13, 11, .78);
+  --diagram-viewport-bg: #0a0d0b;
+  --diagram-stats-bg: rgba(12, 16, 14, .9);
+  --diagram-node-bg: rgba(20, 25, 22, .98);
+  --slot-panel-bg: rgba(17, 21, 18, .99);
+  --option-bg: rgba(10, 13, 11, .72);
+  --option-img-bg: #0a0d0b;
+  --price-box-bg: rgba(0, 0, 0, 0.2);
+  --save-build-bar-bg: rgba(92, 214, 138, 0.05);
+  --btn-primary-text: #080a09;
+  --diagram-node-selected-bg: rgba(35, 40, 33, .99);
+  --diagram-node-slot-bg: rgba(18, 22, 19, .82);
+  --diagram-node-weapon-bg: rgba(40, 41, 30, .98);
+  --diagram-node-media-bg: #0d100e;
+  --diagram-node-badge-border: rgba(213, 116, 67, .46);
+  --diagram-node-badge-bg: rgba(201, 105, 57, .1);
+  --diagram-node-badge-color: #dd9366;
+  --stat-bar-track-bg: rgba(255, 255, 255, 0.08);
+  --home-panel-bg: rgba(20, 24, 22, 0.94);
+  --weapon-card-bg: rgba(16, 19, 17, 0.8);
+  --weapon-card-hover-bg: rgba(20, 24, 22, 0.95);
+  --radar-value-fill: rgba(163, 153, 97, .2);
+  --radar-value-stroke: rgba(216, 205, 143, .88);
+  --bg-image-pattern: linear-gradient(180deg, rgba(92, 214, 138, 0.03), transparent 400px),
+                      radial-gradient(circle at 80% 20%, rgba(199, 192, 154, 0.04) 0%, transparent 50%),
+                      repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.003) 0, rgba(255, 255, 255, 0.003) 1px, transparent 1px, transparent 4px);
 }
+
+[data-theme="light"] {
+  --bg-darker: #eef0ea;
+  --bg-base: #f5f6f2;
+  --panel-bg: #ffffff;
+  --panel-border: #d4ded0;
+  --panel-border-active: #5f744b;
+  --text-primary: #1b211a;
+  --text-muted: #536152;
+  --text-disabled: #8b998a;
+  --color-gold: #6e5e34;
+  --color-gold-hover: #544726;
+  --color-gold-dim: #493e21;
+  --color-green: #25703d;
+  --color-green-dim: #1a4a28;
+  --color-orange: #be6812;
+  --color-red: #b8333b;
+  --shadow-lg: 0 10px 30px rgba(27, 33, 26, 0.1);
+  --blur-amount: blur(12px);
+
+  /* Compatibility aliases */
+  --bg: var(--bg-base);
+  --surface: var(--panel-bg);
+  --surface-2: #edf0e8;
+  --surface-3: #e0e5db;
+  --line: var(--panel-border);
+  --line-strong: var(--panel-border-active);
+  --text: var(--text-primary);
+  --muted: var(--text-muted);
+  --gold: var(--color-gold);
+  --gold-strong: var(--color-gold-dim);
+  --green: var(--color-green);
+  --green-dark: var(--color-green-dim);
+  --red: var(--color-red);
+  --shadow: var(--shadow-lg);
+  color-scheme: light;
+
+  --color-bg-base: var(--bg);
+  --color-bg-panel: var(--panel-bg);
+  --color-bg-panel-hover: var(--surface-2);
+  --color-border: var(--line);
+  --color-border-active: var(--line-strong);
+  --color-text-main: var(--text);
+  --color-text-muted: var(--muted);
+  --color-accent-gold: var(--gold);
+  --color-accent-gold-dark: var(--gold-strong);
+  --color-accent-green: var(--green);
+  --color-accent-red: var(--red);
+  --color-text: var(--text-primary);
+
+  /* Light Theme Specific Component Backings */
+  --topbar-bg: rgba(255, 255, 255, 0.92);
+  --brand-mark-bg: #f5f6f2;
+  --config-bg: #ffffff;
+  --segmented-tabs-bg: #e6eae0;
+  --input-bg: #ffffff;
+  --search-item-bg: #f9faf7;
+  --modal-backdrop-bg: rgba(25, 30, 24, 0.55);
+  --dialog-bg: #ffffff;
+  --dialog-head-bg: #f5f7f3;
+  --diagram-toolbar-bg: #edf0ea;
+  --diagram-viewport-bg: #f2f4ee;
+  --diagram-stats-bg: rgba(255, 255, 255, 0.95);
+  --diagram-node-bg: #ffffff;
+  --diagram-node-selected-bg: #ffffff;
+  --diagram-node-slot-bg: #f8faf5;
+  --diagram-node-weapon-bg: #ffffff;
+  --diagram-node-media-bg: #eaece5;
+  --diagram-node-badge-border: #f4d3c3;
+  --diagram-node-badge-bg: #fdf3ed;
+  --diagram-node-badge-color: #b84a1d;
+  --save-build-bar-bg: #f3f7ef;
+  --builds-notice-bg: #f7f4ea;
+  --btn-primary-text: #ffffff;
+  --stat-bar-track-bg: #dbe2d8;
+  --slot-panel-bg: #ffffff;
+  --option-bg: #f9faf7;
+  --option-img-bg: #eaece5;
+  --price-box-bg: #f0f3ec;
+  --home-panel-bg: #ffffff;
+  --weapon-card-bg: #ffffff;
+  --weapon-card-hover-bg: #f4f6f1;
+  --radar-value-fill: rgba(110, 94, 52, 0.15);
+  --radar-value-stroke: rgba(110, 94, 52, 0.88);
+  --bg-image-pattern: linear-gradient(180deg, rgba(89, 107, 67, 0.05), transparent 400px),
+                      radial-gradient(circle at 80% 20%, rgba(110, 94, 52, 0.04) 0%, transparent 50%),
+                      repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.008) 0, rgba(0, 0, 0, 0.008) 1px, transparent 1px, transparent 4px);
+}
+
 
 * {
   box-sizing: border-box;
@@ -153,10 +280,7 @@ body {
   margin: 0;
   min-height: 100vh;
   background-color: var(--bg-darker);
-  background-image:
-    linear-gradient(180deg, rgba(92, 214, 138, 0.03), transparent 400px),
-    radial-gradient(circle at 80% 20%, rgba(199, 192, 154, 0.04) 0%, transparent 50%),
-    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.003) 0, rgba(255, 255, 255, 0.003) 1px, transparent 1px, transparent 4px);
+  background-image: var(--bg-image-pattern);
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: 14px;
@@ -216,20 +340,23 @@ a {
   gap: 16px;
   align-items: center;
   padding: 14px 20px;
-  background: rgba(12, 14, 13, 0.85);
+  background: var(--topbar-bg);
   backdrop-filter: var(--blur-amount);
   -webkit-backdrop-filter: var(--blur-amount);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   box-sizing: border-box;
 }
 
 .brand {
-  display: flex;
+  display: inline-flex;
   min-width: 0;
+  width: fit-content;
+  max-width: 100%;
   align-items: center;
   gap: 14px;
+  justify-self: start;
 }
 
 .brand__mark {
@@ -237,7 +364,7 @@ a {
   height: 44px;
   border: 1.5px solid var(--color-gold);
   border-radius: var(--radius-sm);
-  background: #000;
+  background: var(--brand-mark-bg);
   object-fit: cover;
 }
 
@@ -290,7 +417,7 @@ a {
 .btn--primary {
   border-color: var(--color-gold);
   background: var(--color-gold);
-  color: var(--bg-darker);
+  color: var(--btn-primary-text, var(--bg-darker));
 }
 
 .btn--primary:hover:not(:disabled) {
@@ -369,7 +496,7 @@ a {
   overflow-y: auto;
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
-  background: rgba(20, 24, 22, 0.92);
+  background: var(--config-bg);
   box-shadow: var(--shadow-lg);
 }
 
@@ -600,8 +727,8 @@ a {
 }
 
 .custom-radar__value {
-  fill: rgba(163, 153, 97, .2);
-  stroke: rgba(216, 205, 143, .88);
+  fill: var(--radar-value-fill);
+  stroke: var(--radar-value-stroke);
   stroke-linejoin: round;
   stroke-width: 1.6;
   vector-effect: non-scaling-stroke;
@@ -689,7 +816,7 @@ a {
   padding: 2px;
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--segmented-tabs-bg);
 }
 
 .segmented__btn {
@@ -749,8 +876,46 @@ a {
 
 .input-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.limit-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+
+.limit-field {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+
+.limit-field__label {
+  display: block;
+  align-self: start;
+  margin: 0 0 8px 0;
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-family: var(--font-sans);
+  letter-spacing: 0.5px;
+  line-height: 1.35;
+}
+
+.limit-field__control {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0;
 }
 
 input[type="number"], input[type="search"], select {
@@ -758,7 +923,7 @@ input[type="number"], input[type="search"], select {
   min-height: 42px;
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-sm);
-  background: rgba(8, 10, 9, 0.7);
+  background: var(--input-bg);
   color: var(--text-primary);
   padding: 0 11px;
   outline: none;
@@ -928,7 +1093,7 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   min-height: 62px;
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-sm);
-  background: rgba(8, 10, 9, 0.35);
+  background: var(--search-item-bg);
   color: var(--text);
   padding: 7px;
 }
@@ -1046,8 +1211,8 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   overflow: hidden;
   border: 1px solid var(--panel-border-active);
   border-radius: var(--radius-md);
-  background: rgba(15, 19, 17, .99);
-  box-shadow: 0 32px 90px rgba(0, 0, 0, .68);
+  background: var(--dialog-bg);
+  box-shadow: 0 32px 90px rgba(0, 0, 0, .45);
 }
 
 .weapon-diagram-modal__head {
@@ -1057,7 +1222,7 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   align-items: center;
   padding: 14px 16px;
   border-bottom: 1px solid var(--panel-border);
-  background: rgba(20, 25, 22, .98);
+  background: var(--dialog-head-bg);
 }
 
 .weapon-diagram-modal__head > div:first-child {
@@ -1145,7 +1310,7 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   align-items: center;
   padding: 9px 12px;
   border-bottom: 1px solid rgba(199, 192, 154, .1);
-  background: rgba(10, 13, 11, .78);
+  background: var(--diagram-toolbar-bg);
 }
 
 .weapon-diagram__toolbar .btn {
@@ -1181,7 +1346,7 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   min-height: 0;
   flex: 1;
   overflow: hidden;
-  background-color: #0a0d0b;
+  background-color: var(--diagram-viewport-bg);
   background-image:
     linear-gradient(rgba(199, 192, 154, .035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(199, 192, 154, .035) 1px, transparent 1px);
@@ -1207,8 +1372,8 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   padding: 12px 14px;
   border: 1px solid rgba(199, 192, 154, .18);
   border-radius: 8px;
-  background: rgba(12, 16, 14, .9);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, .38);
+  background: var(--diagram-stats-bg);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .18);
   backdrop-filter: blur(7px);
   pointer-events: none;
 }
@@ -1275,8 +1440,8 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   overflow: hidden;
   border: 1px solid rgba(199, 192, 154, .24);
   border-radius: 7px;
-  background: rgba(20, 25, 22, .98);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, .34);
+  background: var(--diagram-node-bg);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .14);
   padding: 9px;
   box-sizing: border-box;
   color: inherit;
@@ -1294,8 +1459,8 @@ button.weapon-diagram-node:hover,
 button.weapon-diagram-node:focus-visible,
 .weapon-diagram-node.is-selected {
   border-color: var(--gold);
-  background: rgba(35, 40, 33, .99);
-  box-shadow: 0 0 0 3px rgba(216, 205, 143, .12), 0 14px 30px rgba(0, 0, 0, .46);
+  background: var(--diagram-node-selected-bg, rgba(35, 40, 33, .99));
+  box-shadow: 0 0 0 3px rgba(216, 205, 143, .12), 0 14px 30px rgba(0, 0, 0, .26);
   outline: none;
   transform: translateY(-2px);
 }
@@ -1303,7 +1468,7 @@ button.weapon-diagram-node:focus-visible,
 .weapon-diagram-node--slot {
   border-style: dashed;
   border-color: rgba(199, 192, 154, .34);
-  background: rgba(18, 22, 19, .82);
+  background: var(--diagram-node-slot-bg, rgba(18, 22, 19, .82));
   opacity: .88;
 }
 
@@ -1314,9 +1479,9 @@ button.weapon-diagram-node:focus-visible,
 }
 
 .weapon-diagram-node--weapon {
-  border: 2px solid rgba(216, 205, 143, .82);
-  background: rgba(40, 41, 30, .98);
-  box-shadow: 0 0 0 3px rgba(216, 205, 143, .08), 0 14px 34px rgba(0, 0, 0, .46);
+  border: 2px solid var(--color-gold);
+  background: var(--diagram-node-weapon-bg, rgba(40, 41, 30, .98));
+  box-shadow: 0 0 0 3px rgba(216, 205, 143, .08), 0 14px 34px rgba(0, 0, 0, .26);
 }
 
 .weapon-diagram-node.is-critical {
@@ -1337,7 +1502,7 @@ button.weapon-diagram-node:focus-visible,
   overflow: hidden;
   border: 1px solid rgba(199, 192, 154, .13);
   border-radius: 5px;
-  background: #0d100e;
+  background: var(--diagram-node-media-bg, #0d100e);
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: .7rem;
@@ -1375,10 +1540,10 @@ button.weapon-diagram-node:focus-visible,
 
 .weapon-diagram-node__body em {
   width: fit-content;
-  border: 1px solid rgba(213, 116, 67, .46);
+  border: 1px solid var(--diagram-node-badge-border, rgba(213, 116, 67, .46));
   border-radius: 999px;
-  background: rgba(201, 105, 57, .1);
-  color: #dd9366;
+  background: var(--diagram-node-badge-bg, rgba(201, 105, 57, .1));
+  color: var(--diagram-node-badge-color, #dd9366);
   padding: 1px 5px;
   font-size: .52rem;
   font-style: normal;
@@ -1395,7 +1560,7 @@ button.weapon-diagram-node:focus-visible,
   flex: 0 0 auto;
   flex-direction: column;
   border-left: 1px solid var(--panel-border-active);
-  background: rgba(17, 21, 18, .99);
+  background: var(--slot-panel-bg);
 }
 
 .weapon-slot-panel__head {
@@ -1474,7 +1639,7 @@ button.weapon-diagram-node:focus-visible,
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #0b0e0c;
+  background: var(--input-bg);
   color: var(--text);
   outline: none;
 }
@@ -1532,7 +1697,7 @@ button.weapon-diagram-node:focus-visible,
   padding: 8px;
   border: 1px solid var(--panel-border);
   border-radius: 7px;
-  background: rgba(10, 13, 11, .72);
+  background: var(--option-bg);
   color: var(--text);
   cursor: pointer;
   text-align: left;
@@ -1561,7 +1726,7 @@ button.weapon-diagram-node:focus-visible,
   place-items: center;
   overflow: hidden;
   border-radius: 5px;
-  background: #0a0d0b;
+  background: var(--option-img-bg);
   color: var(--muted);
 }
 
@@ -1656,7 +1821,7 @@ button.weapon-diagram-node:focus-visible,
   padding: 10px 14px;
   border: 1px dashed var(--panel-border);
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--price-box-bg);
 }
 
 .price-title {
@@ -1793,7 +1958,7 @@ button.weapon-diagram-node:focus-visible,
   height: 6px;
   overflow: hidden;
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--stat-bar-track-bg, rgba(255, 255, 255, 0.08));
 }
 
 .bar__gradient {
@@ -1865,7 +2030,7 @@ button.weapon-diagram-node:focus-visible,
   min-height: 90px;
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
-  background: rgba(8, 10, 9, 0.35);
+  background: var(--item-bg);
   padding: 10px;
   box-sizing: border-box;
   transition: border-color .16s ease, background .16s ease;
@@ -1896,7 +2061,7 @@ button.weapon-diagram-node:focus-visible,
   place-items: center;
   border: 1px solid var(--panel-border);
   border-radius: 6px;
-  background: #101310;
+  background: var(--option-img-bg);
   height: 70px;
   width: 70px;
   padding: 6px;
@@ -2058,7 +2223,7 @@ button.weapon-diagram-node:focus-visible,
   width: min(450px, 100vw);
   height: 100%;
   border-left: 1px solid var(--line);
-  background: rgba(20, 24, 22, 0.98);
+  background: var(--dialog-bg);
   box-shadow: var(--shadow-lg);
   padding: 18px;
   box-sizing: border-box;
@@ -2121,7 +2286,7 @@ button.weapon-diagram-node:focus-visible,
 }
 
 .home-page-panel {
-  background: rgba(20, 24, 22, 0.94);
+  background: var(--home-panel-bg);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -2129,8 +2294,8 @@ button.weapon-diagram-node:focus-visible,
 .weapon-card {
   position: relative;
   overflow: hidden;
-  background: rgba(16, 19, 17, 0.8);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  background: var(--weapon-card-bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   transition: border-color 0.16s ease, background-color 0.16s ease;
@@ -2138,7 +2303,7 @@ button.weapon-diagram-node:focus-visible,
 
 .weapon-card:hover {
   border-color: var(--panel-border-active);
-  background: rgba(20, 24, 22, 0.95);
+  background: var(--weapon-card-hover-bg);
 }
 
 .app > main > .glass-panel > div:first-child > h2 {
@@ -2169,7 +2334,7 @@ button.weapon-diagram-node:focus-visible,
 .input-field {
   width: 100%;
   padding: 0.75rem 1rem;
-  background: rgba(8, 10, 9, 0.7);
+  background: var(--input-bg);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
@@ -2236,8 +2401,8 @@ button.weapon-diagram-node:focus-visible,
   flex-direction: column;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
-  background: rgba(20, 24, 22, .99);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, .62);
+  background: var(--dialog-bg);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .25);
 }
 
 .home-filter-modal__header,
@@ -2287,7 +2452,7 @@ button.weapon-diagram-node:focus-visible,
   padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: var(--bg-darker);
+  background: var(--input-bg);
   color: var(--text);
 }
 
@@ -2384,8 +2549,14 @@ button.weapon-diagram-node:focus-visible,
     grid-template-columns: 1fr 1fr;
   }
 
-  .input-grid {
+  .input-grid,
+  .limit-fields {
     grid-template-columns: 1fr;
+  }
+
+  .limit-field {
+    grid-template-rows: auto auto;
+    height: auto;
   }
 
   .stat-row {
@@ -2475,6 +2646,88 @@ button.weapon-diagram-node:focus-visible,
   font: inherit;
   font-size: .78rem;
   font-weight: 700;
+}
+
+/* Settings Menu Dropdown */
+.settings-menu-container {
+  position: relative;
+}
+
+.settings-trigger {
+  gap: 6px;
+}
+
+.settings-trigger__icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.settings-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 100;
+  display: grid;
+  width: 220px;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--dialog-bg);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.25);
+}
+
+.settings-dropdown__section {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-dropdown__title {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.settings-dropdown__options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.settings-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--option-bg);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.settings-option:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+}
+
+.settings-option.is-active {
+  border-color: var(--gold);
+  background: var(--color-gold);
+  color: var(--btn-primary-text, #ffffff);
+  box-shadow: 0 0 8px rgba(199, 192, 154, 0.25);
+}
+
+@media (max-width: 520px) {
+  .settings-trigger__text {
+    display: none;
+  }
 }
 
 @media (max-width: 520px) {
@@ -2612,7 +2865,7 @@ button.weapon-diagram-node:focus-visible,
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(92, 214, 138, 0.05);
+  background: var(--save-build-bar-bg, rgba(92, 214, 138, 0.05));
 }
 
 .save-build-bar label {
@@ -2635,7 +2888,7 @@ button.weapon-diagram-node:focus-visible,
   padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: rgba(8, 10, 9, 0.7);
+  background: var(--input-bg);
   color: var(--text);
   outline: none;
 }
@@ -2661,7 +2914,7 @@ button.weapon-diagram-node:focus-visible,
 .builds-empty {
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(20, 24, 22, 0.9);
+  background: var(--panel-bg);
   box-shadow: var(--shadow-lg);
   backdrop-filter: var(--blur-amount);
   -webkit-backdrop-filter: var(--blur-amount);
@@ -2723,7 +2976,7 @@ button.weapon-diagram-node:focus-visible,
   padding: 12px 14px;
   border: 1px solid var(--gold-strong);
   border-radius: var(--radius);
-  background: rgba(154, 136, 102, 0.12);
+  background: var(--builds-notice-bg, rgba(154, 136, 102, 0.12));
   color: var(--text);
 }
 
@@ -2747,8 +3000,8 @@ button.weapon-diagram-node:focus-visible,
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(16, 19, 17, 0.8);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, .22);
+  background: var(--weapon-card-bg);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .08);
   cursor: pointer;
   transition: transform .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease;
 }
@@ -2757,8 +3010,8 @@ button.weapon-diagram-node:focus-visible,
 .build-card.is-selected {
   transform: translateY(-3px);
   border-color: var(--line-strong);
-  background: var(--surface-2);
-  box-shadow: 0 18px 38px rgba(0, 0, 0, .34);
+  background: var(--weapon-card-hover-bg);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, .14);
 }
 
 .build-card.is-selected {
@@ -2910,7 +3163,7 @@ button.weapon-diagram-node:focus-visible,
   padding: 8px;
   border: 1px solid var(--panel-border);
   border-radius: 6px;
-  background: rgba(0, 0, 0, .16);
+  background: var(--item-bg);
 }
 
 .build-card__stats small {
@@ -2971,8 +3224,8 @@ button.weapon-diagram-node:focus-visible,
   padding: 12px 14px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
-  background: rgba(20, 23, 20, .96);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, .55);
+  background: var(--dialog-bg);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, .25);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   transform: translateX(-50%);
@@ -3070,8 +3323,8 @@ button.weapon-diagram-node:focus-visible,
   padding: 22px;
   border: 1px solid rgba(205, 57, 68, .55);
   border-radius: var(--radius);
-  background: rgba(20, 24, 22, .98);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, .62);
+  background: var(--dialog-bg);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .25);
 }
 
 .delete-confirm__icon {
@@ -3135,8 +3388,8 @@ button.weapon-diagram-node:focus-visible,
   padding: 22px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
-  background: rgba(20, 24, 22, .99);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, .62);
+  background: var(--dialog-bg);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .25);
   outline: none;
 }
 
@@ -3170,7 +3423,7 @@ button.weapon-diagram-node:focus-visible,
   padding: 20px;
   border: 1px dashed var(--line-strong);
   border-radius: var(--radius);
-  background: rgba(0, 0, 0, .14);
+  background: var(--option-bg);
   color: var(--muted);
   text-align: center;
   transition: border-color .16s ease, background .16s ease;
@@ -3227,7 +3480,7 @@ button.weapon-diagram-node:focus-visible,
   border: 1px solid var(--line);
   border-left: 3px solid var(--green);
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, .15);
+  background: var(--option-bg);
 }
 
 .build-import-row.is-duplicate {
