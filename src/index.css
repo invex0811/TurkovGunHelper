@@ -873,8 +873,14 @@ a {
 
 .input-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.input-grid > div {
+  display: grid;
+  grid-template-rows: minmax(2.5em, auto) auto;
+  align-content: start;
 }
 
 input[type="number"], input[type="search"], select {
@@ -2512,6 +2518,10 @@ button.weapon-diagram-node:focus-visible,
     grid-template-columns: 1fr;
   }
 
+  .input-grid > div {
+    grid-template-rows: auto auto;
+  }
+
   .stat-row {
     grid-template-columns: 96px 1fr 52px;
   }
@@ -2599,6 +2609,88 @@ button.weapon-diagram-node:focus-visible,
   font: inherit;
   font-size: .78rem;
   font-weight: 700;
+}
+
+/* Settings Menu Dropdown */
+.settings-menu-container {
+  position: relative;
+}
+
+.settings-trigger {
+  gap: 6px;
+}
+
+.settings-trigger__icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.settings-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 100;
+  display: grid;
+  width: 220px;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--dialog-bg);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.25);
+}
+
+.settings-dropdown__section {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-dropdown__title {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.settings-dropdown__options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.settings-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--option-bg);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.settings-option:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+}
+
+.settings-option.is-active {
+  border-color: var(--gold);
+  background: var(--color-gold);
+  color: var(--btn-primary-text, #ffffff);
+  box-shadow: 0 0 8px rgba(199, 192, 154, 0.25);
+}
+
+@media (max-width: 520px) {
+  .settings-trigger__text {
+    display: none;
+  }
 }
 
 @media (max-width: 520px) {
