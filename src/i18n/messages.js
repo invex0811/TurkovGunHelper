@@ -79,7 +79,7 @@ export const messages = {
     'builds.description': 'Откройте карточку, чтобы продолжить работу, или добавьте сборку в сравнение.', 'builds.ofSaved': 'из 100 сохранённых',
     'builds.emptyDescription': 'Создайте и сохраните сборку оружия — она появится в этом браузере.', 'builds.savedLabel': 'Сохранённые сборки оружия',
     'builds.removeComparison': 'Удалить «{name}» из сравнения', 'builds.addComparison': 'Добавить «{name}» в сравнение', 'builds.weapon': 'Оружие',
-    'builds.ergo': 'Эрго', 'builds.verticalRecoil': 'Вертикальная отдача', 'builds.weight': 'Вес', 'builds.clear': 'Очистить',
+    'builds.ergo': 'Эрго', 'builds.verticalRecoil': 'В. отдача', 'builds.weight': 'Вес', 'builds.clear': 'Очистить',
     'builds.compareBuilds': 'Сравнить сборки', 'builds.comparison': 'Сравнение', 'builds.close': 'Закрыть', 'builds.metric': 'Показатель',
     'builds.deleteSaved': 'Удалить сохранённую сборку',
     'builds.metricErgonomics': 'Эргономика', 'builds.metricVerticalRecoil': 'Вертикальная отдача', 'builds.metricHorizontalRecoil': 'Горизонтальная отдача', 'builds.metricWeight': 'Вес', 'builds.metricPrice': 'Расчётная цена',
