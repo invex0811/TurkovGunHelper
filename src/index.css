@@ -897,12 +897,13 @@ a {
 .limit-field__label {
   display: block;
   align-self: start;
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  font-weight: 800;
+  margin: 0 0 8px 0;
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-family: var(--font-sans);
+  letter-spacing: 0.5px;
   line-height: 1.35;
 }
 

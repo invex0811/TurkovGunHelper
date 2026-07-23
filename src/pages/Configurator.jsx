@@ -2247,7 +2247,7 @@ function Configurator() {
         {targetType !== 'custom' && <section className="config__section">
           <div className="limit-fields">
             <label className="limit-field" htmlFor="maxWeight">
-              <span className="limit-field__label">{t('config.maxWeight')}</span>
+              <span className="field-label limit-field__label">{t('config.maxWeight')}</span>
               <input
                 id="maxWeight"
                 className="limit-field__control"
@@ -2264,7 +2264,7 @@ function Configurator() {
               />
             </label>
             <label className="limit-field" htmlFor="maxBudget">
-              <span className="limit-field__label">{t('config.maxBudget')}</span>
+              <span className="field-label limit-field__label">{t('config.maxBudget')}</span>
               <input
                 id="maxBudget"
                 className="limit-field__control"
