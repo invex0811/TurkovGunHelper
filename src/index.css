@@ -2401,8 +2401,8 @@ button.weapon-diagram-node:focus-visible,
   flex-direction: column;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
-  background: rgba(20, 24, 22, .99);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, .62);
+  background: var(--dialog-bg);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .25);
 }
 
 .home-filter-modal__header,
@@ -2452,7 +2452,7 @@ button.weapon-diagram-node:focus-visible,
   padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: var(--bg-darker);
+  background: var(--input-bg);
   color: var(--text);
 }
 
