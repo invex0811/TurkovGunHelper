@@ -2245,14 +2245,15 @@ function Configurator() {
         </section>
 
         {targetType !== 'custom' && <section className="config__section">
-          <div className="input-grid">
-            <div>
-              <label className="field-label" htmlFor="maxWeight">{t('config.maxWeight')}</label>
-              <input 
-                id="maxWeight" 
-                type="number" 
+          <div className="limit-fields">
+            <label className="limit-field" htmlFor="maxWeight">
+              <span className="limit-field__label">{t('config.maxWeight')}</span>
+              <input
+                id="maxWeight"
+                className="limit-field__control"
+                type="number"
                 placeholder={t('config.noLimit')}
-                min="0" 
+                min="0"
                 max={WEAPON_STAT_UI_RANGES.weight.max}
                 step="0.05"
                 value={maxWeight}
@@ -2261,14 +2262,15 @@ function Configurator() {
                   weight: e.target.value === '' ? 0 : Number(e.target.value),
                 }, weapon))}
               />
-            </div>
-            <div>
-              <label className="field-label" htmlFor="maxBudget">{t('config.maxBudget')}</label>
-              <input 
-                id="maxBudget" 
-                type="number" 
+            </label>
+            <label className="limit-field" htmlFor="maxBudget">
+              <span className="limit-field__label">{t('config.maxBudget')}</span>
+              <input
+                id="maxBudget"
+                className="limit-field__control"
+                type="number"
                 placeholder={t('config.noLimit')}
-                min="0" 
+                min="0"
                 max={WEAPON_STAT_UI_RANGES.price.max}
                 step="1000"
                 value={maxPrice}
@@ -2277,7 +2279,7 @@ function Configurator() {
                   price: e.target.value === '' ? 0 : Number(e.target.value),
                 }, weapon))}
               />
-            </div>
+            </label>
           </div>
         </section>}
 

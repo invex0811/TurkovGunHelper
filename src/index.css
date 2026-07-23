@@ -877,10 +877,41 @@ a {
   gap: 10px;
 }
 
-.input-grid > div {
+.limit-fields {
   display: grid;
-  grid-template-rows: minmax(2.5em, auto) auto;
-  align-content: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+
+.limit-field {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+
+.limit-field__label {
+  display: block;
+  align-self: start;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1.35;
+}
+
+.limit-field__control {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0;
 }
 
 input[type="number"], input[type="search"], select {
@@ -2514,12 +2545,14 @@ button.weapon-diagram-node:focus-visible,
     grid-template-columns: 1fr 1fr;
   }
 
-  .input-grid {
+  .input-grid,
+  .limit-fields {
     grid-template-columns: 1fr;
   }
 
-  .input-grid > div {
+  .limit-field {
     grid-template-rows: auto auto;
+    height: auto;
   }
 
   .stat-row {
