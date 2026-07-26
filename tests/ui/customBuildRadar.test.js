@@ -37,6 +37,22 @@ test('creates five clockwise axes starting at the top', () => {
   assert.ok(axes[4].x < 0 && axes[4].y < 0);
 });
 
+test('defines the constraint direction and symbol for every radar axis', () => {
+  assert.deepEqual(
+    Object.fromEntries(getCustomBuildRadarAxes(weapon).map(axis => [axis.key, {
+      constraint: axis.constraint,
+      constraintSymbol: axis.constraintSymbol,
+    }])),
+    {
+      weight: { constraint: 'maximum', constraintSymbol: '≤' },
+      verticalRecoil: { constraint: 'maximum', constraintSymbol: '≤' },
+      horizontalRecoil: { constraint: 'maximum', constraintSymbol: '≤' },
+      price: { constraint: 'maximum', constraintSymbol: '≤' },
+      ergonomics: { constraint: 'minimum', constraintSymbol: '≥' },
+    },
+  );
+});
+
 test('projects the pointer only onto its selected axis and clamps the result', () => {
   assert.equal(projectPointerToAxis({
     pointerX: 150,

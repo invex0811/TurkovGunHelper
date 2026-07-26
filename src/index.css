@@ -791,8 +791,16 @@ a {
 .custom-radar__label-value {
   fill: var(--text-primary);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
+}
+
+.custom-radar__label-direction {
+  fill: var(--text-muted);
+  font-size: 7px;
+  font-weight: 600;
+  opacity: .72;
+  text-transform: lowercase;
 }
 
 .segmented--three {
