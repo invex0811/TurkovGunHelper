@@ -9,11 +9,11 @@ export const CUSTOM_BUILD_DEFAULT_PROFILE = Object.freeze({
 });
 
 const AXIS_DEFINITIONS = Object.freeze([
-  Object.freeze({ key: 'weight', label: 'Weight', unit: 'kg', step: 0.05, allowNoLimit: true }),
-  Object.freeze({ key: 'verticalRecoil', label: 'Vertical recoil', unit: '', step: 1 }),
-  Object.freeze({ key: 'horizontalRecoil', label: 'Horizontal recoil', unit: '', step: 1 }),
-  Object.freeze({ key: 'price', label: 'Price', unit: 'RUB', step: 1_000, allowNoLimit: true }),
-  Object.freeze({ key: 'ergonomics', label: 'Ergonomics', unit: '', step: 1 }),
+  Object.freeze({ key: 'weight', label: 'Weight', unit: 'kg', step: 0.05, allowNoLimit: true, constraint: 'maximum', constraintSymbol: '≤' }),
+  Object.freeze({ key: 'verticalRecoil', label: 'Vertical recoil', unit: '', step: 1, constraint: 'maximum', constraintSymbol: '≤' }),
+  Object.freeze({ key: 'horizontalRecoil', label: 'Horizontal recoil', unit: '', step: 1, constraint: 'maximum', constraintSymbol: '≤' }),
+  Object.freeze({ key: 'price', label: 'Price', unit: 'RUB', step: 1_000, allowNoLimit: true, constraint: 'maximum', constraintSymbol: '≤' }),
+  Object.freeze({ key: 'ergonomics', label: 'Ergonomics', unit: '', step: 1, constraint: 'minimum', constraintSymbol: '≥' }),
 ]);
 
 function clamp(value, min, max) {

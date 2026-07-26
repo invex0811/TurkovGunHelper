@@ -292,6 +292,12 @@ export default function CustomBuildRadar({
           const point = valuePoints[index];
           const requirementPercent = Math.round(requirements[axis.key] * 100);
           const formattedValue = formatCustomBuildRadarValue(profile[axis.key], axis);
+          const constraint = t(`ui.radar.constraint.${axis.constraint}`);
+          const accessibleValue = t('ui.radar.valueWithConstraint', {
+            constraint,
+            symbol: axis.constraintSymbol,
+            value: formattedValue,
+          });
           return (
             <g
               key={axis.key}
@@ -303,7 +309,7 @@ export default function CustomBuildRadar({
               aria-valuemin="0"
               aria-valuemax="100"
               aria-valuenow={requirementPercent}
-              aria-valuetext={formattedValue}
+              aria-valuetext={accessibleValue}
               aria-orientation="vertical"
               onKeyDown={event => handleKeyDown(axis, event)}
               onFocus={() => setActiveAxisKey(axis.key)}
@@ -331,6 +337,12 @@ export default function CustomBuildRadar({
           const isLeftLabel = axis.vector.x < -0.25;
           const labelX = isRightLabel ? VIEW_BOX.width - 8 : isLeftLabel ? 8 : labelPoint.x;
           const anchor = isRightLabel ? 'end' : isLeftLabel ? 'start' : 'middle';
+          const constraint = t(`ui.radar.constraint.${axis.constraint}`);
+          const axisLabelKey = (
+            axis.key === 'verticalRecoil' || axis.key === 'horizontalRecoil'
+          )
+            ? `ui.radar.axisShort.${axis.key}`
+            : `ui.radar.axis.${axis.key}`;
           return (
             <text
               key={axis.key}
@@ -340,9 +352,12 @@ export default function CustomBuildRadar({
               textAnchor={anchor}
               aria-hidden="true"
             >
-              <tspan x={labelX}>{t(`ui.radar.axis.${axis.key}`)}</tspan>
+              <tspan x={labelX}>{t(axisLabelKey)}</tspan>
+              <tspan className="custom-radar__label-direction" x={labelX} dy="11">
+                {constraint}
+              </tspan>
               <tspan className="custom-radar__label-value" x={labelX} dy="14">
-                {formatCustomBuildRadarValue(profile[axis.key], axis)}
+                {axis.constraintSymbol} {formatCustomBuildRadarValue(profile[axis.key], axis)}
               </tspan>
             </text>
           );
