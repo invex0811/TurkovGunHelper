@@ -1368,6 +1368,7 @@ function Configurator() {
   const [activeSavedBuildId, setActiveSavedBuildId] = useState(requestedSavedBuildId);
   const [saveName, setSaveName] = useState(requestedSavedBuild?.name || '');
   const [saveFeedback, setSaveFeedback] = useState(null);
+  const [maxPriceDraft, setMaxPriceDraft] = useState(null);
   const maxWeight = customProfile.weight > 0 ? String(customProfile.weight) : '';
   const maxPrice = customProfile.price > 0 ? String(customProfile.price) : '';
   const calculatorWorkerRef = useRef(null);
@@ -2273,11 +2274,20 @@ function Configurator() {
                 min="0"
                 max={WEAPON_STAT_UI_RANGES.price.max}
                 step="1000"
-                value={maxPrice}
-                onChange={e => setCustomProfile(current => normalizeCustomBuildProfile({
-                  ...current,
-                  price: e.target.value === '' ? 0 : Number(e.target.value),
-                }, weapon))}
+                value={maxPriceDraft ?? maxPrice}
+                onFocus={e => setMaxPriceDraft(e.currentTarget.value)}
+                onChange={e => setMaxPriceDraft(e.currentTarget.value)}
+                onBlur={e => {
+                  const nextValue = e.currentTarget.value;
+                  setMaxPriceDraft(null);
+                  setCustomProfile(current => normalizeCustomBuildProfile({
+                    ...current,
+                    price: nextValue === '' ? 0 : Number(nextValue),
+                  }, weapon));
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') e.currentTarget.blur();
+                }}
               />
             </label>
           </div>
