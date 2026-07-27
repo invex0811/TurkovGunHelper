@@ -400,6 +400,61 @@ a {
   justify-self: start;
 }
 
+.topbar__primary {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  min-width: 0;
+}
+
+.price-mode-switch {
+  align-items: center;
+  background: var(--segmented-tabs-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 3px;
+}
+
+.price-mode-switch__button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 3px);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font: 700 0.75rem/1 var(--font-sans);
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 10px;
+  transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.price-mode-switch__button:hover {
+  color: var(--text-primary);
+}
+
+.price-mode-switch__button:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+}
+
+.price-mode-switch__button[aria-pressed="true"] {
+  background: var(--color-gold);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  color: var(--bg-darker);
+}
+
+.price-mode-switch__indicator {
+  display: none;
+}
+
+.price-mode-switch__button[aria-pressed="true"] .price-mode-switch__indicator {
+  display: inline;
+}
+
 .brand__mark {
   width: 44px;
   height: 44px;
@@ -2583,6 +2638,10 @@ button.weapon-diagram-node:focus-visible,
     grid-template-columns: 1fr;
   }
 
+  .topbar__primary {
+    justify-content: space-between;
+  }
+
   .topbar__actions, .parts-toolbar, .weapon__head {
     align-items: stretch;
     flex-direction: column;
@@ -3196,6 +3255,14 @@ button.weapon-diagram-node:focus-visible,
   gap: 10px;
   color: var(--muted);
   font-size: .75rem;
+}
+
+.build-card__price-mode {
+  border: 1px solid var(--panel-border-active);
+  border-radius: 999px;
+  color: var(--text-primary);
+  font-weight: 700;
+  padding: 2px 7px;
 }
 
 .build-card__stats {

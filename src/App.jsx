@@ -5,6 +5,8 @@ import I18nProvider from './i18n/I18nProvider.jsx';
 import { useI18n } from './i18n/useI18n.js';
 import InstallAppButton from './features/pwa/InstallAppButton.jsx';
 import PwaUpdatePrompt from './features/pwa/PwaUpdatePrompt.jsx';
+import PriceModeProvider from './features/priceMode/PriceModeProvider.jsx';
+import PriceModeSwitch from './features/priceMode/PriceModeSwitch.jsx';
 
 const Configurator = lazy(() => import('./pages/Configurator'));
 const Builds = lazy(() => import('./pages/Builds'));
@@ -146,18 +148,21 @@ function MainLayout() {
   return (
     <div className="app">
       <header className="topbar">
-        <Link to="/" className="brand" aria-label={t('app.openWeapons')}>
-          <img
-            className="brand__mark"
-            src={`${import.meta.env.BASE_URL}tgh-logo.png`}
-            alt=""
-            aria-hidden="true"
-          />
-          <div>
-            <h1>Tarkov Gun Helper</h1>
-            <p>{t('app.tagline')}</p>
-          </div>
-        </Link>
+        <div className="topbar__primary">
+          <Link to="/" className="brand" aria-label={t('app.openWeapons')}>
+            <img
+              className="brand__mark"
+              src={`${import.meta.env.BASE_URL}tgh-logo.png`}
+              alt=""
+              aria-hidden="true"
+            />
+            <div>
+              <h1>Tarkov Gun Helper</h1>
+              <p>{t('app.tagline')}</p>
+            </div>
+          </Link>
+          <PriceModeSwitch />
+        </div>
         <div className="topbar__actions">
           <Link to="/" className="btn btn--ghost">{t('app.weapons')}</Link>
           <Link to="/builds" className="btn btn--ghost">{t('app.builds')}</Link>
@@ -199,7 +204,11 @@ function MainLayout() {
 
 function App() {
   return (
-    <I18nProvider><Router><MainLayout /></Router></I18nProvider>
+    <I18nProvider>
+      <PriceModeProvider>
+        <Router><MainLayout /></Router>
+      </PriceModeProvider>
+    </I18nProvider>
   );
 }
 
