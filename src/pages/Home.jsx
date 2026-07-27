@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getWeapons, isAbortError } from '../data/tarkovApi';
+import { getCatalogStatus, getWeapons, isAbortError, subscribeToCatalogStatus } from '../data/tarkovApi';
 import { filterHomeWeapons, getHomeWeaponFilterOptions } from './homeWeaponFilters.js';
 import HomeFilterModal from '../ui/HomeFilterModal.jsx';
 import { useI18n } from '../i18n/useI18n.js';
 import AsyncImage from '../ui/AsyncImage.jsx';
+import CatalogStatus from '../features/dataStatus/CatalogStatus.jsx';
 
 function Home() {
   const { language, t } = useI18n();
@@ -15,19 +16,25 @@ function Home() {
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [catalogStatus, setCatalogStatus] = useState(null);
+
+  useEffect(() => subscribeToCatalogStatus(status => {
+    if (status.cacheKey.includes(`:${language}:`)) setCatalogStatus(status);
+  }), [language]);
 
   const loadWeapons = useCallback(async ({ signal, forceRefresh = false } = {}) => {
     setLoading(true);
     setError(null);
     // A catalog is localized as a whole. Do not keep the previous locale visible
     // while the replacement request is in flight or after it fails.
-    setWeapons([]);
+    if (!forceRefresh) setWeapons([]);
 
     try {
       const data = await getWeapons({ signal, forceRefresh, language });
 
       if (!signal?.aborted) {
         setWeapons(data);
+        setCatalogStatus(getCatalogStatus('regular', { language, priceMode: 'pvp' }));
       }
     } catch (loadError) {
       if (!signal?.aborted && !isAbortError(loadError)) {
@@ -58,7 +65,10 @@ function Home() {
         return getWeapons({ signal: controller.signal, language });
       })
       .then(data => {
-        if (data && !controller.signal.aborted) setWeapons(data);
+        if (data && !controller.signal.aborted) {
+          setWeapons(data);
+          setCatalogStatus(getCatalogStatus('regular', { language, priceMode: 'pvp' }));
+        }
       })
       .catch(loadError => {
         if (!controller.signal.aborted && !isAbortError(loadError)) {
@@ -134,6 +144,12 @@ function Home() {
           }}
         />
       )}
+
+      <CatalogStatus
+        status={catalogStatus}
+        isRefreshing={loading && weapons.length > 0}
+        onRefresh={() => loadWeapons({ forceRefresh: true })}
+      />
 
       {showInitialLoading ? (
         <p aria-live="polite" style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '3rem 0' }}>{t('home.loading')}</p>
