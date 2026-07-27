@@ -1,10 +1,12 @@
 import { uiMessages } from './uiMessages.js';
 import { configMessages } from './configMessages.js';
 import { pageMessages } from './pageMessages.js';
+import { settingsMessages } from './settingsMessages.js';
 
 export const messages = {
   en: {
     ...uiMessages.en,
+    ...settingsMessages.en,
     'app.title': 'Tarkov Gun Helper - Optimal Weapon Builds',
     'app.tagline': 'Optimal Weapon Builds', 'app.weapons': 'Weapons', 'app.builds': 'Builds',
     'app.openWeapons': 'Open weapon list', 'app.loadingConfigurator': 'Loading configurator...',
@@ -49,7 +51,7 @@ export const messages = {
     'config.accessories': 'Tactical Accessories', 'config.modules': 'Must Include Modules', 'config.noLimit': 'No limit',
     'config.searchModules': 'Search modules...', 'config.noRequiredModules': 'No required modules selected.', 'config.add': 'Add',
     'config.price': 'Est. Build Price', 'config.buildName': 'Build name', 'config.filterParts': 'Filter parts...',
-    'config.notFound': 'Weapon not found.', 'config.loadingFailed': 'Weapon loading failed', 'config.helpPrices': 'Use the lowest available price from the Flea Market or traders.',
+    'config.notFound': 'Weapon not found.', 'config.loadingFailed': 'Weapon loading failed', 'config.helpPrices': 'Use trader offers only when their loyalty level is available; otherwise use another offer or the Flea Market.',
     'config.required': 'Required', 'config.remove': 'Remove', 'config.generateBuild': 'Generate Build', 'config.calculating': 'Calculating...',
     'config.diagram': 'Build Diagram', 'config.clear': 'Clear', 'config.save': 'Save build', 'config.update': 'Update saved build',
     'config.parts': '{count} parts', 'config.close': 'Close', 'config.laser': 'Laser / TBL', 'config.flashlight': 'Flashlight',
@@ -107,7 +109,7 @@ export const messages = {
     'config.accessories': 'Тактические аксессуары', 'config.modules': 'Обязательные модули', 'config.noLimit': 'Без ограничения',
     'config.searchModules': 'Поиск модулей...', 'config.noRequiredModules': 'Обязательные модули не выбраны.', 'config.add': 'Добавить',
     'config.price': 'Расчётная цена сборки', 'config.buildName': 'Название сборки', 'config.filterParts': 'Фильтр деталей...',
-    'config.notFound': 'Оружие не найдено.', 'config.loadingFailed': 'Не удалось загрузить оружие', 'config.helpPrices': 'Использовать минимальную доступную цену на Барахолке или у торговцев.',
+    'config.notFound': 'Оружие не найдено.', 'config.loadingFailed': 'Не удалось загрузить оружие', 'config.helpPrices': 'Использовать предложения торговцев только при доступном уровне лояльности; иначе выбрать другое предложение или цену Барахолки.',
     'config.required': 'Обязательно', 'config.remove': 'Удалить', 'config.generateBuild': 'Создать сборку', 'config.calculating': 'Расчёт...',
     'config.diagram': 'Схема сборки', 'config.clear': 'Очистить', 'config.save': 'Сохранить сборку', 'config.update': 'Обновить сохранённую сборку',
     'config.parts': 'Деталей: {count}', 'config.close': 'Закрыть', 'config.laser': 'Лазер / TBL', 'config.flashlight': 'Фонарь',
@@ -118,5 +120,6 @@ export const messages = {
     'import.reading': 'Чтение и проверка файлов…', 'import.loading': 'Загрузка текущих каталогов предметов…', 'import.strategyDuplicate': 'Действие для дубликата', 'import.strategyImport': 'Действие импорта', 'import.skip': 'Пропустить', 'import.copy': 'Импортировать копию', 'import.replace': 'Заменить существующую сборку', 'import.complete': 'Импорт завершён', 'import.summary': 'Импортировано: {imported} · пропущено: {skipped} · ошибок: {failed}', 'import.importing': 'Импорт…', 'import.submit': 'Импортировать {count}', 'import.modules': 'Модулей: {count}',
     ...configMessages.ru,
     ...pageMessages.ru,
+    ...settingsMessages.ru,
   },
 };

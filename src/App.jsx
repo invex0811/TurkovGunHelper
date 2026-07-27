@@ -1,15 +1,16 @@
-import { lazy, Suspense, useState, useEffect, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import Home from './pages/Home';
 import I18nProvider from './i18n/I18nProvider.jsx';
 import { useI18n } from './i18n/useI18n.js';
-import InstallAppButton from './features/pwa/InstallAppButton.jsx';
 import PwaUpdatePrompt from './features/pwa/PwaUpdatePrompt.jsx';
 import PriceModeProvider from './features/priceMode/PriceModeProvider.jsx';
 import PriceModeSwitch from './features/priceMode/PriceModeSwitch.jsx';
+import TraderLevelsProvider from './features/traderLevels/TraderLevelsProvider.jsx';
 
 const Configurator = lazy(() => import('./pages/Configurator'));
 const Builds = lazy(() => import('./pages/Builds'));
+const Settings = lazy(() => import('./pages/Settings'));
 
 function useTheme() {
   const [theme, setTheme] = useState(() => {
@@ -24,43 +25,9 @@ function useTheme() {
   return [theme, setTheme];
 }
 
-function SettingsMenu({ theme, setTheme, language, setLanguage, t }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const containerRef = useRef(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleKeyDown = event => {
-      if (event.key === 'Escape') {
-        setIsOpen(false);
-      }
-    };
-
-    const handlePointerDown = event => {
-      if (containerRef.current && !containerRef.current.contains(event.target)) {
-        setIsOpen(false);
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('pointerdown', handlePointerDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('pointerdown', handlePointerDown);
-    };
-  }, [isOpen]);
-
+function SettingsLink({ t }) {
   return (
-    <div className="settings-menu-container" ref={containerRef}>
-      <button
-        type="button"
-        className="btn btn--ghost settings-trigger"
-        onClick={() => setIsOpen(prev => !prev)}
-        aria-label={t('settings.title')}
-        aria-haspopup="true"
-        aria-expanded={isOpen}
-      >
+    <Link to="/settings" className="btn btn--ghost settings-trigger" aria-label={t('settings.open')}>
         <svg
           className="settings-trigger__icon"
           viewBox="0 0 24 24"
@@ -75,55 +42,7 @@ function SettingsMenu({ theme, setTheme, language, setLanguage, t }) {
           <circle cx="12" cy="12" r="3" />
         </svg>
         <span className="settings-trigger__text">{t('settings.title')}</span>
-      </button>
-
-      {isOpen && (
-        <div className="settings-dropdown" role="dialog" aria-label={t('settings.title')}>
-          <section className="settings-dropdown__section">
-            <span className="settings-dropdown__title">{t('settings.language')}</span>
-            <div className="settings-dropdown__options">
-              <button
-                type="button"
-                className={`settings-option${language === 'en' ? ' is-active' : ''}`}
-                onClick={() => setLanguage('en')}
-              >
-                {t('language.en')}
-              </button>
-              <button
-                type="button"
-                className={`settings-option${language === 'ru' ? ' is-active' : ''}`}
-                onClick={() => setLanguage('ru')}
-              >
-                {t('language.ru')}
-              </button>
-            </div>
-          </section>
-
-          <section className="settings-dropdown__section">
-            <span className="settings-dropdown__title">{t('settings.theme')}</span>
-            <div className="settings-dropdown__options">
-              <button
-                type="button"
-                className={`settings-option${theme === 'light' ? ' is-active' : ''}`}
-                onClick={() => setTheme('light')}
-              >
-                ☀️ {t('settings.light')}
-              </button>
-              <button
-                type="button"
-                className={`settings-option${theme === 'dark' ? ' is-active' : ''}`}
-                onClick={() => setTheme('dark')}
-              >
-                🌙 {t('settings.dark')}
-              </button>
-            </div>
-          </section>
-          <section className="settings-dropdown__section">
-            <InstallAppButton />
-          </section>
-        </div>
-      )}
-    </div>
+    </Link>
   );
 }
 
@@ -142,7 +61,7 @@ function ConfiguratorLoading() {
 }
 
 function MainLayout() {
-  const { language, setLanguage, t } = useI18n();
+  const { t } = useI18n();
   const [theme, setTheme] = useTheme();
 
   return (
@@ -166,19 +85,21 @@ function MainLayout() {
         <div className="topbar__actions">
           <Link to="/" className="btn btn--ghost">{t('app.weapons')}</Link>
           <Link to="/builds" className="btn btn--ghost">{t('app.builds')}</Link>
-          <SettingsMenu
-            theme={theme}
-            setTheme={setTheme}
-            language={language}
-            setLanguage={setLanguage}
-            t={t}
-          />
+          <SettingsLink t={t} />
         </div>
       </header>
 
       <main>
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route
+            path="/settings"
+            element={(
+              <Suspense fallback={<ConfiguratorLoading />}>
+                <Settings theme={theme} setTheme={setTheme} />
+              </Suspense>
+            )}
+          />
           <Route
             path="/builds"
             element={(
@@ -206,7 +127,9 @@ function App() {
   return (
     <I18nProvider>
       <PriceModeProvider>
-        <Router><MainLayout /></Router>
+        <TraderLevelsProvider>
+          <Router><MainLayout /></Router>
+        </TraderLevelsProvider>
       </PriceModeProvider>
     </I18nProvider>
   );

@@ -128,6 +128,40 @@ function normalizeBaseItem(item, rawItemsById, categoryIndex, tradersById) {
   };
 }
 
+function normalizeTraders(tradersById, items) {
+  const requiredLevels = new Map();
+  for (const item of items) {
+    for (const offer of item.buyFor || []) {
+      const traderId = offer.vendor?.id;
+      if (!traderId) continue;
+      requiredLevels.set(traderId, Math.max(
+        requiredLevels.get(traderId) || 1,
+        Number(offer.vendor.minTraderLevel) || 1,
+      ));
+    }
+    for (const barter of item.bartersFor || []) {
+      const traderId = barter.trader?.id;
+      if (!traderId) continue;
+      requiredLevels.set(traderId, Math.max(
+        requiredLevels.get(traderId) || 1,
+        Number(barter.level) || 1,
+      ));
+    }
+  }
+
+  return [...requiredLevels].flatMap(([id, requiredLevel]) => {
+    const trader = tradersById[id];
+    if (!trader) return [];
+    const apiMaxLevel = Array.isArray(trader.levels) ? trader.levels.length : null;
+    return [{
+      id,
+      name: trader.name ?? id,
+      imageUrl: trader.imageLink ?? trader.image4xLink ?? null,
+      maxLevel: Math.max(apiMaxLevel || 4, requiredLevel),
+    }];
+  }).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function createRequiredItem(item) {
   if (!item) return null;
   return {
@@ -222,5 +256,6 @@ export function normalizeItemsCatalog(data, barters, tradersById, priceMode) {
     weapons,
     mods,
     modsById: Object.fromEntries(mods.map(item => [item.id, item])),
+    traders: normalizeTraders(tradersById, items),
   };
 }
