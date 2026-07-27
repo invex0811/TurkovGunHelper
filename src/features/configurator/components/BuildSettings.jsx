@@ -70,7 +70,6 @@ export default function BuildSettings(props) {
     onRequiredModuleSearchChange,
     onSightModeChange,
     onSightSelectOpenChange,
-    priceMode,
     requiredModuleSearch,
     selectedModules,
     setters,
@@ -150,19 +149,6 @@ export default function BuildSettings(props) {
           </section>
 
           <section className="config__section">
-            <label className="field-label">{t('config.priceMode')}</label>
-            <div className="segmented segmented--two">
-              {props.priceModeOptions.map(option => (
-                <button
-                  key={option.value}
-                  className={`segmented__btn ${priceMode === option.value ? 'is-active' : ''}`}
-                  type="button"
-                  onClick={() => setters.priceMode(option.value)}
-                >
-                  {t(`config.price.${option.value}`)}
-                </button>
-              ))}
-            </div>
             <div className="checks price-source-checks">
               <label className="check" htmlFor="includeTraderPrices">
                 <input

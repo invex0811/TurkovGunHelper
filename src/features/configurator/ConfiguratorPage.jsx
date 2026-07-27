@@ -1,18 +1,13 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useLayoutEffect, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import {
-  PRICE_CONFIDENCE,
-  PRICE_MODE_OPTIONS,
-} from '../../data/price/priceModes.js';
+import { PRICE_CONFIDENCE } from '../../data/price/priceModes.js';
 import {
   selectPurchasePrice,
   sumPurchasePrices,
 } from '../../data/price/priceMapper.js';
 import {
   loadIncludeTraderPricesPreference,
-  loadPriceModePreference,
   saveIncludeTraderPricesPreference,
-  savePriceModePreference,
   loadTargetTypePreference,
   normalizeTargetType,
   saveTargetTypePreference,
@@ -53,6 +48,7 @@ import AsyncImage from '../../ui/AsyncImage.jsx';
 import useBuildCalculation from './hooks/useBuildCalculation.js';
 import useConfiguratorCatalog from './hooks/useConfiguratorCatalog.js';
 import useSavedBuild from './hooks/useSavedBuild.js';
+import { usePriceMode } from '../priceMode/usePriceMode.js';
 import {
   ItemPrice,
 } from './components/PriceDisplay.jsx';
@@ -902,6 +898,7 @@ function getBuildResultWarningMessage(buildResult, language, t) {
 
 function Configurator() {
   const { language, t } = useI18n();
+  const { priceMode, setPriceMode } = usePriceMode();
   const { weaponId } = useParams();
   const [searchParams] = useSearchParams();
   const requestedSavedBuildId = searchParams.get('build');
@@ -915,9 +912,6 @@ function Configurator() {
   const [customProfile, setCustomProfile] = useState(CUSTOM_BUILD_DEFAULT_PROFILE);
   const [customExactTargets, setCustomExactTargets] = useState(DEFAULT_CUSTOM_EXACT_TARGETS);
   const [suppressorMode, setSuppressorMode] = useState('allow');
-  const [priceMode, setPriceMode] = useState(
-    () => requestedSavedBuild?.settings.priceMode || loadPriceModePreference(),
-  );
   const [includeTraderPrices, setIncludeTraderPrices] = useState(
     () => requestedSavedBuild?.settings.includeTraderPrices
       ?? loadIncludeTraderPricesPreference(),
@@ -941,10 +935,15 @@ function Configurator() {
   const [requiredModuleIds, setRequiredModuleIds] = useState([]);
   const [replacementError, setReplacementError] = useState(null);
   const [pricePolicyWarning, setPricePolicyWarning] = useState(null);
+  const [priceModeNotice, setPriceModeNotice] = useState(null);
   const [maxPriceDraft, setMaxPriceDraft] = useState(null);
   const maxWeight = customProfile.weight > 0 ? String(customProfile.weight) : '';
   const maxPrice = customProfile.price > 0 ? String(customProfile.price) : '';
-  const { latestCalculationRequestIdRef, runBuildCalculation } = useBuildCalculation();
+  const {
+    cancelPendingCalculations,
+    latestCalculationRequestIdRef,
+    runBuildCalculation,
+  } = useBuildCalculation();
   const {
     activeSavedBuildId,
     saveFeedback,
@@ -973,9 +972,16 @@ function Configurator() {
     },
     t,
   });
+  useLayoutEffect(() => {
+    if (requestedSavedBuild?.settings.priceMode
+      && requestedSavedBuild.settings.priceMode !== priceMode) {
+      setPriceMode(requestedSavedBuild.settings.priceMode);
+    }
+  }, [priceMode, requestedSavedBuild, setPriceMode]);
+
   useEffect(() => {
-    savePriceModePreference(priceMode);
-  }, [priceMode]);
+    cancelPendingCalculations();
+  }, [cancelPendingCalculations, priceMode]);
 
   useEffect(() => {
     saveIncludeTraderPricesPreference(includeTraderPrices);
@@ -990,13 +996,14 @@ function Configurator() {
     priceMode,
     savedBuildId: requestedSavedBuildId,
     language,
-    onLoading: () => {
-      setLoading(true);
+    onLoading: ({ isCatalogReload }) => {
+      if (!isCatalogReload) setLoading(true);
     },
     onLoaded: ({
       weapon: weaponData,
       allMods: modsData,
       isCatalogReload,
+      reloadReason,
       previousWeapon,
     }) => {
       setWeapon(weaponData);
@@ -1013,11 +1020,40 @@ function Configurator() {
             modsData,
           );
 
+          const recalculated = recalculateBuildStats(weaponData, localizedBuild, {
+            priceMode,
+            includeTraderPrices,
+          });
           return {
             ...current,
             build: localizedBuild,
+            stats: {
+              ...current.stats,
+              price: recalculated.stats.price,
+            },
           };
         });
+        if (reloadReason === 'price-mode') {
+          const budgetLimit = Number(maxPrice) || 0;
+          const currentBuild = buildResult?.build;
+          const localizedBuild = currentBuild
+            ? rebindBuildPartsToCatalog(previousWeapon, currentBuild, weaponData, modsData)
+            : null;
+          const nextPrice = localizedBuild
+            ? recalculateBuildStats(weaponData, localizedBuild, {
+              priceMode,
+              includeTraderPrices,
+            }).stats.price
+            : null;
+          setPricePolicyWarning(
+            budgetLimit > 0 && !isPositivePrice(nextPrice)
+              ? t('config.currentPriceUnavailable')
+              : budgetLimit > 0 && nextPrice > budgetLimit
+                ? t('config.currentBudgetExceeded', { price: budgetLimit })
+                : null,
+          );
+          if (currentBuild) setPriceModeNotice(t('priceMode.recalculateNotice'));
+        }
         setLoadError(null);
         setLoading(false);
         return;
@@ -1079,8 +1115,12 @@ function Configurator() {
       setSaveFeedback(null);
       setLoading(false);
     },
-    onError: error => {
+    onError: (error, { isCatalogReload }) => {
       console.error(error);
+      if (isCatalogReload) {
+        setPricePolicyWarning(t('priceMode.refreshFailed'));
+        return;
+      }
       setWeapon(null);
       setAllMods(null);
       setLoadError(t('config.error'));
@@ -1547,11 +1587,9 @@ function Configurator() {
         onRequiredModuleSearchChange={setRequiredModuleSearch}
         onSightModeChange={value => { setSightMode(value); setIsSightSelectOpen(false); }}
         onSightSelectOpenChange={setIsSightSelectOpen}
-        priceMode={priceMode}
-        priceModeOptions={PRICE_MODE_OPTIONS}
         requiredModuleSearch={requiredModuleSearch}
         selectedModules={selectedRequiredModuleViews}
-        setters={{ configTab: setConfigTab, customProfile: setCustomProfile, includeFlashlight: setIncludeFlashlight, includeLaser: setIncludeLaser, magazineCapacity: setMagazineCapacity, priceMode: setPriceMode, suppressorMode: setSuppressorMode, targetType: setTargetType }}
+        setters={{ configTab: setConfigTab, customProfile: setCustomProfile, includeFlashlight: setIncludeFlashlight, includeLaser: setIncludeLaser, magazineCapacity: setMagazineCapacity, suppressorMode: setSuppressorMode, targetType: setTargetType }}
         sightMode={sightMode}
         sightOptions={[{ value: 'none', label: t('config.sight.none') }, { value: 'any', label: t('config.sight.any') }, { value: 'reflex', label: t('config.sight.reflex') }, { value: 'scope', label: t('config.sight.scope') }]}
         suppressorMode={suppressorMode}
@@ -1619,6 +1657,12 @@ function Configurator() {
               priceWarnings={canShowBuildDetails ? priceDiagnostics.warningMessages : []}
               t={t}
             />
+            {priceModeNotice && (
+              <div className="inline-message inline-message--info" role="status">
+                <strong>{t('priceMode.changed')}</strong>
+                <span>{priceModeNotice}</span>
+              </div>
+            )}
 
             {/* Рендеринг сгруппированных деталей */}
             <BuildParts
