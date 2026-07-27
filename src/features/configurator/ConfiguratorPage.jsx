@@ -374,8 +374,8 @@ function findCompatibleAlternatives(
     // Для EXACT_ITEM для не-прицельных деталей мы сохраняем совместимость с детьми
     if (mode === 'EXACT_ITEM' && !targetIsSight && !targetIsMount) {
       for (const childNode of targetNode.children) {
-        const hasCompatibleSlot = (altItem.properties?.slots || []).some(s => 
-          s.name === childNode.slotName && 
+        const hasCompatibleSlot = (altItem.properties?.slots || []).some(s =>
+          s.name === childNode.slotName &&
           (s.filters?.allowedItems || []).some(a => a.id === childNode.item.id)
         );
         if (!hasCompatibleSlot) {
@@ -1413,7 +1413,7 @@ function Configurator() {
   const currentWeight = canShowBuildDetails ? `${buildResult.stats.weight} kg` : (weapon.weight ? `${weapon.weight} kg` : t('config.notAvailable'));
   const currentRecoilV = canShowBuildDetails ? buildResult.stats.recoilVertical : (weapon.properties?.recoilVertical ?? t('config.notAvailable'));
   const currentRecoilH = canShowBuildDetails ? buildResult.stats.recoilHorizontal : (weapon.properties?.recoilHorizontal ?? t('config.notAvailable'));
-  const currentPrice = canShowBuildDetails 
+  const currentPrice = canShowBuildDetails
     ? formatCurrency(buildResult.stats.price, 'RUB', t('config.notAvailable'))
     : formatCurrency(
       getSelectedPriceInfo(weapon, priceMode, includeTraderPrices).value,
@@ -1596,14 +1596,14 @@ function Configurator() {
           <section className="panel parts-panel">
             {/* Поле поиска */}
             <div className="parts-toolbar">
-              <input 
-                type="search" 
+              <input
+                type="search"
                 placeholder={t('config.filterParts')}
                 value={partsFilter}
                 onChange={e => setPartsFilter(e.target.value)}
               />
-              <button 
-                className="btn btn--ghost" 
+              <button
+                className="btn btn--ghost"
                 type="button"
                 onClick={() => setPartsFilter('')}
               >
@@ -1803,7 +1803,7 @@ function Configurator() {
                         const weightDiffText = weightDiff === 0 ? '0 kg' : weightDiff > 0 ? `+${parseFloat(weightDiff.toFixed(3))} kg` : `${parseFloat(weightDiff.toFixed(3))} kg`;
 
                         return (
-                          <div 
+                          <div
                             key={getAlternativeListKey(alt)}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1833,8 +1833,8 @@ function Configurator() {
                             <AsyncImage
                               src={
                                 (getAlternativeSight(alt) && (getAlternativeSight(alt).image512pxLink || getAlternativeSight(alt).iconLink))
-                                || alt.image512pxLink 
-                                || alt.iconLink 
+                                || alt.image512pxLink
+                                || alt.iconLink
                                 || 'https://via.placeholder.com/30'
                               }
                               alt=""
