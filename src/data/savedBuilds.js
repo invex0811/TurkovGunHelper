@@ -107,6 +107,10 @@ export function readSavedBuilds(storage = getDefaultStorage()) {
         settings: {
           ...build.settings,
           includeTraderPrices: build.settings.includeTraderPrices !== false,
+          traderLevelsSnapshot: build.settings.traderLevelsSnapshot
+            && typeof build.settings.traderLevelsSnapshot === 'object'
+            ? { ...build.settings.traderLevelsSnapshot }
+            : {},
           customExactTargets: normalizeCustomExactTargets(build.settings.customExactTargets),
         },
       }))
