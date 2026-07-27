@@ -3,6 +3,8 @@ import { HashRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import Home from './pages/Home';
 import I18nProvider from './i18n/I18nProvider.jsx';
 import { useI18n } from './i18n/useI18n.js';
+import InstallAppButton from './features/pwa/InstallAppButton.jsx';
+import PwaUpdatePrompt from './features/pwa/PwaUpdatePrompt.jsx';
 
 const Configurator = lazy(() => import('./pages/Configurator'));
 const Builds = lazy(() => import('./pages/Builds'));
@@ -114,6 +116,9 @@ function SettingsMenu({ theme, setTheme, language, setLanguage, t }) {
               </button>
             </div>
           </section>
+          <section className="settings-dropdown__section">
+            <InstallAppButton />
+          </section>
         </div>
       )}
     </div>
@@ -187,6 +192,7 @@ function MainLayout() {
           />
         </Routes>
       </main>
+      <PwaUpdatePrompt />
     </div>
   );
 }

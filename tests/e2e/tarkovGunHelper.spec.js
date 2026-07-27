@@ -50,6 +50,70 @@ test('creates a weapon build from the catalog', async ({ page }) => {
   await expect(page.getByText('Est. Build Price', { exact: true })).toBeVisible();
 });
 
+test('provides an installable manifest and restores the catalog offline', async ({ page, context, request }) => {
+  const manifestResponse = await request.get('/manifest.webmanifest');
+  expect(manifestResponse.ok()).toBeTruthy();
+  const manifest = await manifestResponse.json();
+  expect(manifest).toMatchObject({
+    name: 'Tarkov Gun Helper',
+    display: 'standalone',
+    start_url: './',
+    scope: './',
+  });
+  expect(manifest.icons).toEqual(expect.arrayContaining([
+    expect.objectContaining({ sizes: '192x192' }),
+    expect.objectContaining({ sizes: '512x512' }),
+  ]));
+
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'TW', exact: true })).toBeVisible();
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBeTruthy();
+  await page.evaluate(async () => {
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('tarkov-gun-helper', 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const transaction = database.transaction('catalogs', 'readwrite');
+    const store = transaction.objectStore('catalogs');
+    const records = await new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    records.forEach(record => store.put({ ...record, expiresAt: 0 }));
+    await new Promise((resolve, reject) => {
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+    });
+    database.close();
+  });
+  await expect.poll(() => page.evaluate(async () => {
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('tarkov-gun-helper', 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const transaction = database.transaction('catalogs', 'readonly');
+    const records = await new Promise((resolve, reject) => {
+      const request = transaction.objectStore('catalogs').getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    database.close();
+    return records.every(record => record.expiresAt === 0);
+  })).toBeTruthy();
+
+  await page.unroute('https://json.tarkov.dev/**');
+  await context.setOffline(true);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'TW', exact: true })).toBeVisible();
+  await expect(page.getByText(/Previously saved data is in use|Data may be outdated|Saved data is in use/)).toBeVisible();
+  await context.setOffline(false);
+});
+
 test('replaces a part, saves the build, and restores it', async ({ page }) => {
   await createBuild(page);
 
