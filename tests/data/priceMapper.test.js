@@ -35,6 +35,7 @@ function trader(priceRUB, overrides = {}) {
     currency: overrides.currency ?? 'RUB',
     vendor: {
       __typename: 'TraderOffer',
+      id: 'mechanic-id',
       name: 'Mechanic',
       normalizedName: 'mechanic',
       minTraderLevel: 3,
@@ -44,6 +45,49 @@ function trader(priceRUB, overrides = {}) {
     },
   };
 }
+
+test('filters trader offers above the current loyalty level and falls back to Flea', () => {
+  const item = itemWithOffers(flea(78_000), trader(35_000));
+  const locked = selectPurchasePrice(item, {
+    includeTraderPrices: true,
+    priceMode: PRICE_MODES.PVP,
+    traderLevels: { 'mechanic-id': 2 },
+  });
+  const unlocked = selectPurchasePrice(item, {
+    includeTraderPrices: true,
+    priceMode: PRICE_MODES.PVP,
+    traderLevels: { 'mechanic-id': 3 },
+  });
+
+  assert.equal(locked.value, 78_000);
+  assert.equal(locked.sourceType, PRICE_SOURCE_TYPE.FLEA_MARKET);
+  assert.equal(locked.unavailableTraderOffers[0].traderLevel, 3);
+  assert.equal(unlocked.value, 35_000);
+  assert.equal(unlocked.sourceType, PRICE_SOURCE_TYPE.TRADER);
+});
+
+test('uses another available trader and never turns an unavailable price into zero', () => {
+  const item = itemWithOffers(
+    trader(20_000),
+    trader(40_000, {
+      vendor: { id: 'prapor-id', name: 'Prapor', normalizedName: 'prapor', minTraderLevel: 1 },
+    }),
+  );
+  const selected = selectPurchasePrice(item, {
+    includeTraderPrices: true,
+    priceMode: PRICE_MODES.PVP,
+    traderLevels: { 'mechanic-id': 1, 'prapor-id': 1 },
+  });
+  const missing = selectPurchasePrice(itemWithOffers(trader(20_000)), {
+    includeTraderPrices: true,
+    priceMode: PRICE_MODES.PVP,
+    traderLevels: { 'mechanic-id': 1 },
+  });
+
+  assert.equal(selected.value, 40_000);
+  assert.equal(selected.vendorName, 'Prapor');
+  assert.equal(missing.value, null);
+});
 
 function itemWithOffers(...buyFor) {
   return normalizeItemPriceFields({

@@ -10,8 +10,12 @@ test.beforeEach(async ({ page }) => {
   await mockTarkovApi(page);
   await page.addInitScript(({ languageKey, priceModeKey, savedBuildsKey }) => {
     window.localStorage.removeItem(savedBuildsKey);
-    window.localStorage.setItem(languageKey, 'en');
-    window.localStorage.setItem(priceModeKey, 'pvp');
+    if (!window.localStorage.getItem(languageKey)) {
+      window.localStorage.setItem(languageKey, 'en');
+    }
+    if (!window.localStorage.getItem(priceModeKey)) {
+      window.localStorage.setItem(priceModeKey, 'pvp');
+    }
   }, {
     languageKey: LANGUAGE_KEY,
     priceModeKey: PRICE_MODE_KEY,
@@ -51,6 +55,37 @@ test('creates a weapon build from the catalog', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'TW', exact: true })).toBeVisible();
   await expect(page.getByText('Est. Build Price', { exact: true })).toBeVisible();
+});
+
+test('settings page persists interface and separate trader level profiles', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('link', { name: 'Open settings' }).click();
+  await expect(page).toHaveURL(/#\/settings$/);
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(page.getByText('Trader levels for PvP', { exact: true })).toBeVisible();
+
+  const praporLevel = page.getByRole('combobox', { name: 'Prapor: Loyalty level' });
+  await praporLevel.selectOption('3');
+  await page.locator('header').getByRole('group', { name: 'Price mode' })
+    .getByRole('button', { name: 'PvE', exact: true }).click();
+  await expect(page.getByText('Trader levels for PvE', { exact: true })).toBeVisible();
+  await expect(praporLevel).toHaveValue('1');
+
+  await page.getByRole('group', { name: 'Theme' })
+    .getByRole('button', { name: 'Light', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.getByRole('group', { name: 'Language' })
+    .getByRole('button', { name: 'RU', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Настройки', exact: true })).toBeVisible();
+
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(page.getByRole('heading', { name: 'Настройки', exact: true })).toBeVisible();
+  const storedProfiles = await page.evaluate(() => (
+    JSON.parse(localStorage.getItem('tarkovGunHelper.traderLevels')).profiles
+  ));
+  expect(storedProfiles.pvp['trader-1']).toBe(3);
+  expect(storedProfiles.pve['trader-1']).toBeUndefined();
 });
 
 test('header price switch persists without resetting Home or the current build', async ({ page }) => {

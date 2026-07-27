@@ -145,6 +145,23 @@ test('saved builds keep their own price mode', () => {
   assert.equal(getSavedBuild('pve-build', storage).settings.priceMode, 'pve');
 });
 
+test('saved builds preserve a trader level snapshot without changing global settings', () => {
+  const storage = createStorage();
+  saveBuildSnapshot(createSnapshot({
+    settings: {
+      targetType: 'meta',
+      priceMode: 'pvp',
+      includeTraderPrices: true,
+      traderLevelsSnapshot: { 'mechanic-id': 3 },
+    },
+  }), storage, { id: 'trader-snapshot' });
+
+  assert.deepEqual(
+    getSavedBuild('trader-snapshot', storage).settings.traderLevelsSnapshot,
+    { 'mechanic-id': 3 },
+  );
+});
+
 test('saved builds preserve the new Custom radar profile without a schema bump', () => {
   const storage = createStorage();
   const customProfile = {

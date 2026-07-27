@@ -28,6 +28,7 @@ function trader(priceRUB) {
     currency: 'RUB',
     vendor: {
       __typename: 'TraderOffer',
+      id: 'mechanic-id',
       name: 'Mechanic',
       normalizedName: 'mechanic',
       minTraderLevel: 3,
@@ -108,6 +109,44 @@ test('same assembly total changes when trader prices are toggled', () => {
   assert.equal(withTraders.stats.price, 15_000);
   assert.equal(fleaOnly.stats.price, 55_000);
   assert.deepEqual(withTraders.build, fleaOnly.build);
+});
+
+test('calculator uses available trader levels for price and budget without changing physical stats', () => {
+  const mod = createMod('level-mod', 50_000, 10_000);
+  const weapon = createWeapon([mod.id]);
+  const build = [{ slotName: 'Test Slot', item: mod }];
+  const ll2 = recalculateBuildStats(weapon, build, {
+    priceMode: PRICE_MODES.PVP,
+    includeTraderPrices: true,
+    traderLevels: { 'mechanic-id': 2 },
+  });
+  const ll3 = recalculateBuildStats(weapon, build, {
+    priceMode: PRICE_MODES.PVP,
+    includeTraderPrices: true,
+    traderLevels: { 'mechanic-id': 3 },
+  });
+
+  assert.equal(ll2.stats.price, 55_000);
+  assert.equal(ll3.stats.price, 15_000);
+  assert.equal(ll2.stats.ergonomics, ll3.stats.ergonomics);
+  assert.equal(ll2.stats.recoilVertical, ll3.stats.recoilVertical);
+  assert.equal(ll2.stats.recoilHorizontal, ll3.stats.recoilHorizontal);
+  assert.equal(ll2.stats.weight, ll3.stats.weight);
+
+  const constrained = calculateBestBuild(
+    weapon,
+    'meta',
+    0,
+    0,
+    { [mod.id]: mod },
+    {
+      priceMode: PRICE_MODES.PVP,
+      includeTraderPrices: true,
+      traderLevels: { 'mechanic-id': 2 },
+      maxPrice: 30_000,
+    },
+  );
+  assert.notEqual(constrained.stats.price, 15_000);
 });
 
 test('price-constrained Meta and Max Budget use the active purchase price policy', () => {
