@@ -43,15 +43,15 @@ test('writes and reads a normalized catalog with metadata', async () => {
 
 test('keeps language, game mode, and schema entries separate', async () => {
   const keys = [
-    createCatalogCacheKey('regular', 'en'),
-    createCatalogCacheKey('regular', 'ru'),
-    createCatalogCacheKey('pve', 'en'),
+    createCatalogCacheKey('regular', 'en', 'pvp'),
+    createCatalogCacheKey('regular', 'en', 'pve'),
+    createCatalogCacheKey('regular', 'ru', 'pvp'),
   ];
   await Promise.all(keys.map((cacheKey, index) => writeCachedCatalog(cacheKey, {
     ...catalog,
     weapons: [{ id: String(index) }],
   }, {
-    gameMode: cacheKey.includes(':pve:') ? 'pve' : 'regular',
+    gameMode: 'regular',
     language: cacheKey.includes(':ru:') ? 'ru' : 'en',
     priceMode: cacheKey.endsWith(':pve') ? 'pve' : 'pvp',
     fetchedAt: index,

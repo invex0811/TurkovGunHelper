@@ -4,9 +4,11 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_INCLUDE_TRADER_PRICES,
   loadIncludeTraderPricesPreference,
+  loadPriceModePreference,
   loadTargetTypePreference,
   normalizeTargetType,
   saveIncludeTraderPricesPreference,
+  savePriceModePreference,
   saveTargetTypePreference,
 } from '../../src/data/settings/buildPreferences.js';
 import {
@@ -38,6 +40,21 @@ function createStorage() {
 test('trader prices are enabled by default', () => {
   assert.equal(DEFAULT_INCLUDE_TRADER_PRICES, true);
   assert.equal(loadIncludeTraderPricesPreference(), true);
+});
+
+test('price mode defaults safely and persists both supported modes', () => {
+  const storage = createStorage();
+  withWindow(storage, () => {
+    assert.equal(loadPriceModePreference(), 'pvp');
+    storage.setItem('tarkovGunHelper.priceMode', 'invalid');
+    assert.equal(loadPriceModePreference(), 'pvp');
+    savePriceModePreference('pve');
+    assert.equal(loadPriceModePreference(), 'pve');
+    savePriceModePreference('pvp');
+    assert.equal(loadPriceModePreference(), 'pvp');
+    savePriceModePreference('invalid');
+    assert.equal(loadPriceModePreference(), 'pvp');
+  });
 });
 
 test('includeTraderPrices preference persists a safe serialized boolean', () => {

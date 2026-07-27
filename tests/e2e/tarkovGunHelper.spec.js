@@ -4,14 +4,17 @@ import { mockTarkovApi } from './fixtures/tarkovApi.js';
 
 const SAVED_BUILDS_KEY = 'tarkov-gun-helper:saved-builds';
 const LANGUAGE_KEY = 'tarkovGunHelper.language';
+const PRICE_MODE_KEY = 'tarkovGunHelper.priceMode';
 
 test.beforeEach(async ({ page }) => {
   await mockTarkovApi(page);
-  await page.addInitScript(({ languageKey, savedBuildsKey }) => {
+  await page.addInitScript(({ languageKey, priceModeKey, savedBuildsKey }) => {
     window.localStorage.removeItem(savedBuildsKey);
     window.localStorage.setItem(languageKey, 'en');
+    window.localStorage.setItem(priceModeKey, 'pvp');
   }, {
     languageKey: LANGUAGE_KEY,
+    priceModeKey: PRICE_MODE_KEY,
     savedBuildsKey: SAVED_BUILDS_KEY,
   });
 });
@@ -48,6 +51,43 @@ test('creates a weapon build from the catalog', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'TW', exact: true })).toBeVisible();
   await expect(page.getByText('Est. Build Price', { exact: true })).toBeVisible();
+});
+
+test('header price switch persists without resetting Home or the current build', async ({ page }) => {
+  let regularItemsRequests = 0;
+  page.on('request', request => {
+    if (request.url().endsWith('/regular/items')) regularItemsRequests += 1;
+  });
+  await page.goto('/');
+  const priceModeGroup = page.locator('header').getByRole('group', { name: 'Price mode' });
+  await expect(priceModeGroup.getByRole('button', { name: 'PvP', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('searchbox', { name: 'Search weapons' }).fill('TW');
+  const homeUrl = page.url();
+  const requestsBeforeSwitch = regularItemsRequests;
+  await priceModeGroup.getByRole('button', { name: 'PvE', exact: true }).click();
+  await expect(priceModeGroup.getByRole('button', { name: 'PvE', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('searchbox', { name: 'Search weapons' })).toHaveValue('TW');
+  await expect(page.getByRole('heading', { name: 'TW', exact: true })).toBeVisible();
+  expect(page.url()).toBe(homeUrl);
+  expect(regularItemsRequests).toBe(requestsBeforeSwitch);
+
+  await page.getByRole('link').filter({
+    has: page.getByRole('heading', { name: 'TW', exact: true }),
+  }).click();
+  await page.getByRole('button', { name: 'Generate Build', exact: true }).click();
+  await expect(page.locator('.part-card').filter({ hasText: 'Starter Grip' })).toBeVisible();
+  const priceBefore = await page.locator('.price-amount').innerText();
+  const statsBefore = await page.locator('.stat-compare').innerText();
+  await priceModeGroup.getByRole('button', { name: 'PvP', exact: true }).click();
+  await expect(page.getByText('Price mode changed', { exact: true })).toBeVisible();
+  await expect(page.locator('.part-card').filter({ hasText: 'Starter Grip' })).toBeVisible();
+  await expect(page.locator('.price-amount')).not.toHaveText(priceBefore);
+  expect(await page.locator('.stat-compare').innerText()).toBe(statsBefore);
+  await expect(page.locator('.config').getByText('Price Mode', { exact: true })).toHaveCount(0);
+
+  await page.reload();
+  await expect(priceModeGroup.getByRole('button', { name: 'PvP', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('heading', { name: 'TW', exact: true })).toBeVisible();
 });
 
 test('provides an installable manifest and restores the catalog offline', async ({ page, context, request }) => {

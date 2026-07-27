@@ -132,6 +132,19 @@ test('saved builds preserve includeTraderPrices and default old snapshots to tru
   assert.equal(getSavedBuild('legacy', oldStorage).settings.includeTraderPrices, true);
 });
 
+test('saved builds keep their own price mode', () => {
+  const storage = createStorage();
+  saveBuildSnapshot(createSnapshot({
+    settings: { targetType: 'meta', priceMode: 'pvp' },
+  }), storage, { id: 'pvp-build' });
+  saveBuildSnapshot(createSnapshot({
+    settings: { targetType: 'meta', priceMode: 'pve' },
+  }), storage, { id: 'pve-build' });
+
+  assert.equal(getSavedBuild('pvp-build', storage).settings.priceMode, 'pvp');
+  assert.equal(getSavedBuild('pve-build', storage).settings.priceMode, 'pve');
+});
+
 test('saved builds preserve the new Custom radar profile without a schema bump', () => {
   const storage = createStorage();
   const customProfile = {

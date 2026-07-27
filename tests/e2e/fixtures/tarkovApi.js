@@ -1,6 +1,6 @@
 import { createTarkovJsonFixture } from '../../fixtures/tarkovJson.js';
 
-function createCatalogResponses() {
+function createCatalogResponses(priceMultiplier = 1) {
   const fixture = createTarkovJsonFixture('en');
   const starterGrip = fixture.items.data.items['mod-1'];
 
@@ -28,6 +28,16 @@ function createCatalogResponses() {
     'mod-1',
     'mod-2',
   ];
+  Object.values(fixture.items.data.items).forEach(item => {
+    for (const field of ['avg24hPrice', 'lastLowPrice', 'low24hPrice', 'high24hPrice']) {
+      if (Number.isFinite(item[field])) item[field] *= priceMultiplier;
+    }
+    item.buyFromTrader?.forEach(offer => {
+      offer.price *= priceMultiplier;
+      offer.priceRUB *= priceMultiplier;
+    });
+  });
+  fixture.barters.data = [];
 
   return {
     items: fixture.items,
@@ -39,13 +49,16 @@ function createCatalogResponses() {
 }
 
 export async function mockTarkovApi(page) {
-  const responses = createCatalogResponses();
+  const responsesByMode = {
+    regular: createCatalogResponses(1),
+    pve: createCatalogResponses(10),
+  };
 
   await page.route('https://json.tarkov.dev/**', async route => {
-    const endpoint = new URL(route.request().url()).pathname
-      .replace(/^\/+/, '')
-      .replace(/^(regular|pve)\//, '');
-    const response = responses[endpoint];
+    const path = new URL(route.request().url()).pathname.replace(/^\/+/, '');
+    const mode = path.startsWith('pve/') ? 'pve' : 'regular';
+    const endpoint = path.replace(/^(regular|pve)\//, '');
+    const response = responsesByMode[mode][endpoint];
 
     if (!response) {
       await route.fulfill({
