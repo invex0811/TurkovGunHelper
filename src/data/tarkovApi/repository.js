@@ -3,11 +3,33 @@ import { getEffectivePriceMode, getTarkovDevGameMode } from '../price/priceProvi
 import { fetchTarkovJson, TarkovApiError } from './client.js';
 import { normalizeItemsCatalog } from './itemMapper.js';
 import { applyTarkovTranslations } from './translations.js';
+import { readCachedCatalog, writeCachedCatalog } from '../cache/catalogCache.js';
+import { createCatalogCacheKey } from '../cache/catalogCacheSchema.js';
 
 export const TARKOV_API_CACHE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_LANGUAGE = 'en';
 const SUPPORTED_LANGUAGES = new Set(['en', 'ru']);
 const cachedCatalogs = new Map();
+const catalogStatuses = new Map();
+const catalogStatusListeners = new Set();
+
+function publishCatalogStatus(cacheKey, status) {
+  const nextStatus = { cacheKey, ...status };
+  catalogStatuses.set(cacheKey, nextStatus);
+  for (const listener of catalogStatusListeners) listener(nextStatus);
+}
+
+export function getCatalogStatus(gameMode = 'regular', options = {}) {
+  const safeGameMode = gameMode === 'pve' ? 'pve' : 'regular';
+  const language = normalizeLanguage(options.language);
+  const priceMode = getEffectivePriceMode(options.priceMode);
+  return catalogStatuses.get(createCatalogCacheKey(safeGameMode, language, priceMode)) ?? null;
+}
+
+export function subscribeToCatalogStatus(listener) {
+  catalogStatusListeners.add(listener);
+  return () => catalogStatusListeners.delete(listener);
+}
 
 function normalizeLanguage(language) {
   return SUPPORTED_LANGUAGES.has(language) ? language : DEFAULT_LANGUAGE;
@@ -71,6 +93,7 @@ function getCachedCatalog(cacheKey, load, options) {
   const cachedEntry = cachedCatalogs.get(cacheKey);
   if (cachedEntry?.promise) return subscribeToRequest(cacheKey, cachedEntry, signal);
   if (!forceRefresh && cachedEntry?.expiresAt > Date.now()) {
+    options.onMemoryHit?.(cachedEntry);
     return awaitWithSignal(Promise.resolve(cachedEntry.value), signal);
   }
 
@@ -79,11 +102,12 @@ function getCachedCatalog(cacheKey, load, options) {
     .then(() => load(entry.controller.signal))
     .then(value => {
       if (cachedCatalogs.get(cacheKey) === entry) {
-        entry.value = value;
         entry.expiresAt = Date.now() + TARKOV_API_CACHE_TTL_MS;
+        entry.metadata = value.metadata;
+        entry.value = value.catalog;
         delete entry.promise;
       }
-      return value;
+      return value.catalog;
     }, error => {
       if (cachedCatalogs.get(cacheKey) === entry) cachedCatalogs.delete(cacheKey);
       throw error;
@@ -145,12 +169,96 @@ export function loadItemsCatalog(gameMode = 'regular', options = {}) {
   const safeGameMode = gameMode === 'pve' ? 'pve' : 'regular';
   const language = normalizeLanguage(options.language);
   const effectivePriceMode = getEffectivePriceMode(options.priceMode);
-  const cacheKey = `${safeGameMode}:${language}`;
+  const cacheKey = createCatalogCacheKey(safeGameMode, language, effectivePriceMode);
 
   return getCachedCatalog(cacheKey, async signal => {
-    const source = await fetchCatalog(safeGameMode, language, signal, options.timeoutMs);
-    return normalizeItemsCatalog(source.data, source.barters, source.traders, effectivePriceMode);
-  }, options);
+    let persistentRecord = null;
+    if (globalThis.indexedDB) {
+      try {
+        persistentRecord = await readCachedCatalog(cacheKey);
+      } catch (error) {
+        if (import.meta.env?.DEV) console.warn('Persistent catalog cache is unavailable.', error);
+      }
+    }
+
+    if (signal.aborted) throw createAbortedRequestError(signal.reason);
+
+    const now = Date.now();
+    if (persistentRecord && !options.forceRefresh && persistentRecord.expiresAt > now) {
+      const isOfflineFallback = globalThis.navigator?.onLine === false;
+      const metadata = {
+        source: 'persistent-cache',
+        fetchedAt: persistentRecord.fetchedAt,
+        isStale: isOfflineFallback,
+        isOfflineFallback,
+        refreshFailed: false,
+      };
+      publishCatalogStatus(cacheKey, metadata);
+      return { catalog: persistentRecord.catalog, metadata };
+    }
+
+    if (persistentRecord && !options.forceRefresh) {
+      const metadata = {
+        source: 'persistent-cache',
+        fetchedAt: persistentRecord.fetchedAt,
+        isStale: true,
+        isOfflineFallback: globalThis.navigator?.onLine === false,
+        refreshFailed: false,
+      };
+      publishCatalogStatus(cacheKey, metadata);
+      setTimeout(() => {
+        void loadItemsCatalog(safeGameMode, {
+          language,
+          priceMode: effectivePriceMode,
+          timeoutMs: options.timeoutMs,
+          forceRefresh: true,
+        }).catch(() => {});
+      }, 0);
+      return { catalog: persistentRecord.catalog, metadata };
+    }
+
+    try {
+      const source = await fetchCatalog(safeGameMode, language, signal, options.timeoutMs);
+      const catalog = normalizeItemsCatalog(source.data, source.barters, source.traders, effectivePriceMode);
+      const fetchedAt = Date.now();
+      const metadata = {
+        source: 'network',
+        fetchedAt,
+        isStale: false,
+        isOfflineFallback: false,
+        refreshFailed: false,
+      };
+      try {
+        await writeCachedCatalog(cacheKey, catalog, {
+          gameMode: safeGameMode,
+          language,
+          priceMode: effectivePriceMode,
+          fetchedAt,
+        });
+      } catch (error) {
+        if (import.meta.env?.DEV) console.warn('The catalog could not be persisted.', error);
+      }
+      publishCatalogStatus(cacheKey, metadata);
+      return { catalog, metadata };
+    } catch (error) {
+      if (!persistentRecord || error?.code === 'ABORTED') throw error;
+      const metadata = {
+        source: 'persistent-cache',
+        fetchedAt: persistentRecord.fetchedAt,
+        isStale: true,
+        isOfflineFallback: globalThis.navigator?.onLine === false,
+        refreshFailed: true,
+      };
+      publishCatalogStatus(cacheKey, metadata);
+      return { catalog: persistentRecord.catalog, metadata };
+    }
+  }, {
+    ...options,
+    onMemoryHit: entry => publishCatalogStatus(cacheKey, {
+      ...(entry.metadata ?? catalogStatuses.get(cacheKey)),
+      source: 'memory-cache',
+    }),
+  });
 }
 
 export async function getWeapons(options = {}) {
