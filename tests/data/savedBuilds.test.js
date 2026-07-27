@@ -132,6 +132,64 @@ test('saved builds preserve includeTraderPrices and default old snapshots to tru
   assert.equal(getSavedBuild('legacy', oldStorage).settings.includeTraderPrices, true);
 });
 
+test('saved builds preserve strictTraderLevels and default legacy snapshots to false', () => {
+  const storage = createStorage();
+  saveBuildSnapshot(createSnapshot({
+    settings: {
+      targetType: 'meta',
+      priceMode: 'pvp',
+      strictTraderLevels: true,
+    },
+  }), storage, { id: 'strict-levels' });
+
+  assert.equal(getSavedBuild('strict-levels', storage).settings.strictTraderLevels, true);
+
+  const oldStorage = createStorage();
+  saveBuildSnapshot(createSnapshot(), oldStorage, { id: 'legacy-levels' });
+  assert.equal(getSavedBuild('legacy-levels', oldStorage).settings.strictTraderLevels, false);
+});
+
+test('saved builds keep their own price mode', () => {
+  const storage = createStorage();
+  saveBuildSnapshot(createSnapshot({
+    settings: { targetType: 'meta', priceMode: 'pvp' },
+  }), storage, { id: 'pvp-build' });
+  saveBuildSnapshot(createSnapshot({
+    settings: { targetType: 'meta', priceMode: 'pve' },
+  }), storage, { id: 'pve-build' });
+
+  assert.equal(getSavedBuild('pvp-build', storage).settings.priceMode, 'pvp');
+  assert.equal(getSavedBuild('pve-build', storage).settings.priceMode, 'pve');
+});
+
+test('saved builds preserve a trader level snapshot without changing global settings', () => {
+  const storage = createStorage();
+  saveBuildSnapshot(createSnapshot({
+    settings: {
+      targetType: 'meta',
+      priceMode: 'pvp',
+      includeTraderPrices: true,
+      traderLevelsSnapshot: { 'mechanic-id': 3 },
+    },
+  }), storage, { id: 'trader-snapshot' });
+
+  assert.deepEqual(
+    getSavedBuild('trader-snapshot', storage).settings.traderLevelsSnapshot,
+    { 'mechanic-id': 3 },
+  );
+});
+
+test('saved builds preserve owned item occurrences independently', () => {
+  const storage = createStorage();
+  const ownedItems = [
+    { key: 'weapon:weapon-1', itemId: 'weapon-1' },
+    { key: 'weapon:weapon-1/slot:mod_mount_3A1/item:part-1', itemId: 'part-1' },
+  ];
+  saveBuildSnapshot(createSnapshot({ ownedItems }), storage, { id: 'owned-items' });
+
+  assert.deepEqual(getSavedBuild('owned-items', storage).ownedItems, ownedItems);
+});
+
 test('saved builds preserve the new Custom radar profile without a schema bump', () => {
   const storage = createStorage();
   const customProfile = {

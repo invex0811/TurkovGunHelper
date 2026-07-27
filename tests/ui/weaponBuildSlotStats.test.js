@@ -53,3 +53,32 @@ test('current module comparison is neutral', () => {
   assert.equal(comparison.priceDiffText, '0 ₽');
   assert.equal(comparison.priceTone, 'neutral');
 });
+
+test('slot prices respect strict trader levels without blocking the candidate', () => {
+  const lockedTraderItem = createItem({
+    purchaseOffers: {
+      mode: 'pvp',
+      fleaMarket: { value: 10_000 },
+      traderOffers: [{
+        value: 5_000,
+        traderId: 'mechanic',
+        traderLevel: 3,
+      }],
+    },
+  });
+  const currentItem = createItem({ price: { value: 8_000, mode: 'pvp' } });
+  const commonOptions = {
+    item: lockedTraderItem,
+    currentItem,
+    weapon: null,
+    priceMode: 'pvp',
+    includeTraderPrices: true,
+    traderLevels: { mechanic: 2 },
+  };
+
+  const informational = getSlotOptionComparison(commonOptions);
+  const strict = getSlotOptionComparison({ ...commonOptions, strictTraderLevels: true });
+
+  assert.equal(informational.priceDiff, -3_000);
+  assert.equal(strict.priceDiff, 2_000);
+});

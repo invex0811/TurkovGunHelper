@@ -18,6 +18,8 @@ const EXPORTED_SETTING_KEYS = [
   'customRecoil',
   'suppressorMode',
   'includeTraderPrices',
+  'strictTraderLevels',
+  'traderLevelsSnapshot',
   'maxWeight',
   'maxPrice',
   'magazineCapacity',
@@ -144,6 +146,9 @@ export function exportBuild(savedBuild, options = {}) {
     gameMode: getGameMode(savedBuild),
     weaponId: savedBuild.weapon.id,
     settings: copyExportedSettings(savedBuild.settings),
+    ownedItems: Array.isArray(savedBuild.ownedItems)
+      ? savedBuild.ownedItems.map(item => ({ key: item.key, itemId: item.itemId }))
+      : [],
     configuration: serializeConfiguration(savedBuild, options.catalog),
   };
 }

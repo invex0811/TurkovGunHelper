@@ -5,8 +5,10 @@ import {
 
 const PRICE_MODE_STORAGE_KEY = 'tarkovGunHelper.priceMode';
 const INCLUDE_TRADER_PRICES_STORAGE_KEY = 'tarkovGunHelper.includeTraderPrices';
+const STRICT_TRADER_LEVELS_STORAGE_KEY = 'tarkovGunHelper.strictTraderLevels';
 
 export const DEFAULT_INCLUDE_TRADER_PRICES = true;
+export const DEFAULT_STRICT_TRADER_LEVELS = false;
 
 export function loadPriceModePreference() {
   if (typeof window === 'undefined') {
@@ -90,6 +92,36 @@ export function saveIncludeTraderPricesPreference(includeTraderPrices) {
     window.localStorage.setItem(
       INCLUDE_TRADER_PRICES_STORAGE_KEY,
       String(includeTraderPrices),
+    );
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+export function loadStrictTraderLevelsPreference() {
+  if (typeof window === 'undefined') {
+    return DEFAULT_STRICT_TRADER_LEVELS;
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(STRICT_TRADER_LEVELS_STORAGE_KEY);
+    if (storedValue === 'true') return true;
+    if (storedValue === 'false') return false;
+    return DEFAULT_STRICT_TRADER_LEVELS;
+  } catch {
+    return DEFAULT_STRICT_TRADER_LEVELS;
+  }
+}
+
+export function saveStrictTraderLevelsPreference(strictTraderLevels) {
+  if (typeof window === 'undefined' || typeof strictTraderLevels !== 'boolean') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      STRICT_TRADER_LEVELS_STORAGE_KEY,
+      String(strictTraderLevels),
     );
   } catch {
     // Ignore storage errors.

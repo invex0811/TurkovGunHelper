@@ -116,5 +116,5 @@ export default function useBuildCalculation() {
     return { requestId, promise };
   }, [cancelPendingCalculations]);
 
-  return { latestCalculationRequestIdRef, runBuildCalculation };
+  return { cancelPendingCalculations, latestCalculationRequestIdRef, runBuildCalculation };
 }

@@ -9,6 +9,7 @@ export default function WeaponSummary({
   activeSavedBuildId,
   canSave,
   currentPrice,
+  marketPrice,
   onOpenDiagram,
   onSave,
   onSaveNameChange,
@@ -69,8 +70,13 @@ export default function WeaponSummary({
 
       <div className="weapon__actions">
         <div className="price-box">
-          <span className="price-title">{t('config.price')}</span>
+          <span className="price-title">{t('ownedItems.remainingTotal', { price: '' })}</span>
           <span className="price-amount">{currentPrice}</span>
+          {Number.isFinite(marketPrice) && (
+            <small>{t('ownedItems.marketTotal', {
+              price: `${Math.round(marketPrice).toLocaleString('en-US')} ₽`,
+            })}</small>
+          )}
         </div>
         {requiredModuleCount > 0 && (
           <div className="chip">

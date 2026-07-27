@@ -29,14 +29,16 @@ export default function useConfiguratorCatalog({
     const isCatalogReload = Boolean(
       previousRequest
       && previousRequest.weaponId === weaponId
-      && previousRequest.savedBuildId === savedBuildId
-      && previousRequest.priceMode === priceMode,
+      && previousRequest.savedBuildId === savedBuildId,
     );
+    const reloadReason = isCatalogReload && previousRequest.priceMode !== priceMode
+      ? 'price-mode'
+      : isCatalogReload ? 'catalog' : 'initial';
 
     Promise.resolve()
       .then(() => {
         if (cancelled) return null;
-        handlersRef.current.onLoading();
+        handlersRef.current.onLoading({ isCatalogReload, reloadReason });
         return Promise.all([
           getWeaponDetails(weaponId, priceMode, {
             signal: controller.signal,
@@ -56,6 +58,7 @@ export default function useConfiguratorCatalog({
           weapon,
           allMods,
           isCatalogReload,
+          reloadReason,
           previousWeapon: lastLoadedWeaponRef.current,
         });
         lastLoadedRequestRef.current = {
@@ -68,7 +71,7 @@ export default function useConfiguratorCatalog({
       })
       .catch(error => {
         if (cancelled || controller.signal.aborted || isAbortError(error)) return;
-        handlersRef.current.onError(error);
+        handlersRef.current.onError(error, { isCatalogReload, reloadReason });
       });
 
     return () => {

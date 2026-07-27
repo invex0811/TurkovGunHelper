@@ -263,6 +263,7 @@ function Builds() {
                   <h3 title={build.name}>{build.name}</h3>
                   <div className="build-card__meta">
                     <span>{t(build.settings.targetType === 'custom' ? 'page.builds.goalCustom' : 'page.builds.goalMeta')}</span>
+                    <span className="build-card__price-mode">{build.settings.priceMode === 'pve' ? 'PvE' : 'PvP'}</span>
                     <span>{t('builds.parts', { count: build.parts.length })}</span>
                   </div>
                   <div className="build-card__stats">

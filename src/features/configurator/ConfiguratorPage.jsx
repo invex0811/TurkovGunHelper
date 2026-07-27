@@ -1,18 +1,13 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useLayoutEffect, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import {
-  PRICE_CONFIDENCE,
-  PRICE_MODE_OPTIONS,
-} from '../../data/price/priceModes.js';
+import { PRICE_CONFIDENCE } from '../../data/price/priceModes.js';
 import {
   selectPurchasePrice,
   sumPurchasePrices,
 } from '../../data/price/priceMapper.js';
 import {
   loadIncludeTraderPricesPreference,
-  loadPriceModePreference,
   saveIncludeTraderPricesPreference,
-  savePriceModePreference,
   loadTargetTypePreference,
   normalizeTargetType,
   saveTargetTypePreference,
@@ -23,6 +18,12 @@ import {
   restoreBuildParts,
 } from '../../data/savedBuilds.js';
 import { recalculateBuildStats } from '../../domain/calculator.js';
+import {
+  calculateBuildCostSummary,
+  getBuildItemInstances,
+  reconcileOwnedItems,
+  toggleOwnedItem,
+} from '../../domain/ownedItems.js';
 import { categoryMatches, hasItemCategory } from '../../domain/itemCategories.js';
 import {
   buildWeaponAssemblyTree as buildAssemblyTree,
@@ -53,6 +54,8 @@ import AsyncImage from '../../ui/AsyncImage.jsx';
 import useBuildCalculation from './hooks/useBuildCalculation.js';
 import useConfiguratorCatalog from './hooks/useConfiguratorCatalog.js';
 import useSavedBuild from './hooks/useSavedBuild.js';
+import { usePriceMode } from '../priceMode/usePriceMode.js';
+import { useTraderLevels } from '../traderLevels/useTraderLevels.js';
 import {
   ItemPrice,
 } from './components/PriceDisplay.jsx';
@@ -125,6 +128,7 @@ function getBuildModuleDisplayItems(weapon, buildParts) {
       ...part,
       ...getModuleDisplayState(slot, part.item),
       key: `installed:${part.item.id}:${part.slotName}:${originalIndex}`,
+      ownershipKey: node?.instanceId || null,
       parentItem: node?.parent?.item || weapon,
       slot,
     };
@@ -138,6 +142,8 @@ function findCompatibleAlternatives(
   allMods,
   priceMode,
   includeTraderPrices,
+  traderLevels,
+  strictTraderLevels,
   sightMode,
   t,
   mode = 'EXACT_ITEM',
@@ -348,7 +354,13 @@ function findCompatibleAlternatives(
           if (currentSight && scopeItem.id === currentSight.id) continue;
           if (!isPackageCompatibleWithInstalled([altItem, scopeItem], remainingInstalledIds)) continue;
 
-          const score = scoreScope(scopeItem, priceMode, includeTraderPrices);
+          const score = scoreScope(
+            scopeItem,
+            priceMode,
+            includeTraderPrices,
+            traderLevels,
+            strictTraderLevels,
+          );
           if (score > bestScopeScore) {
             bestScopeScore = score;
             bestScope = scopeItem;
@@ -472,6 +484,8 @@ function findCompatibleAlternatives(
     targetNode,
     priceMode,
     includeTraderPrices,
+    traderLevels,
+    strictTraderLevels,
   });
 }
 
@@ -479,10 +493,18 @@ function getItemDisplayName(item, fallbackLabel = 'Item') {
   return item?.shortName || item?.name || fallbackLabel;
 }
 
-function getSelectedPriceInfo(item, selectedPriceMode, includeTraderPrices) {
+function getSelectedPriceInfo(
+  item,
+  selectedPriceMode,
+  includeTraderPrices,
+  traderLevels,
+  strictTraderLevels,
+) {
   const priceInfo = selectPurchasePrice(item, {
     priceMode: selectedPriceMode,
     includeTraderPrices,
+    traderLevels,
+    strictTraderLevels,
   });
 
   return {
@@ -497,10 +519,19 @@ function getSelectedPriceInfo(item, selectedPriceMode, includeTraderPrices) {
   };
 }
 
-function getPackagePriceInfo(items, selectedPriceMode, includeTraderPrices, t) {
+function getPackagePriceInfo(
+  items,
+  selectedPriceMode,
+  includeTraderPrices,
+  traderLevels,
+  strictTraderLevels,
+  t,
+) {
   const packagePrice = sumPurchasePrices(items, {
     priceMode: selectedPriceMode,
     includeTraderPrices,
+    traderLevels,
+    strictTraderLevels,
   });
   const sourceLabels = Array.from(new Set(
     packagePrice.priceInfos.map(priceInfo => formatPriceSource(priceInfo, t)).filter(Boolean),
@@ -532,26 +563,40 @@ function getPriceSummaryStatus(diagnostics, includeTraderPrices, t) {
   return includeTraderPrices ? t('config.price.fleaTrader') : t('config.price.fleaOnly');
 }
 
-function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode, includeTraderPrices, t) {
-  const entries = [
-    {
-      label: t('config.weapon'),
-      item: weapon,
-    },
-    ...buildResult.build.map(part => ({
-      label: getItemDisplayName(part.item, part.slotName),
-      item: part.item,
-    })),
-  ].map(entry => ({
-    ...entry,
-    priceInfo: getSelectedPriceInfo(entry.item, selectedPriceMode, includeTraderPrices),
+function collectBuildPriceDiagnostics(
+  weapon,
+  buildResult,
+  selectedPriceMode,
+  includeTraderPrices,
+  traderLevels,
+  strictTraderLevels,
+  ownedItems,
+  t,
+) {
+  const ownedKeys = new Set((ownedItems || []).map(item => item.key));
+  const entries = getBuildItemInstances(weapon, buildResult.build).map(instance => ({
+    label: instance.isWeapon
+      ? t('config.weapon')
+      : getItemDisplayName(instance.item, instance.buildPart?.slotName),
+    item: instance.item,
+    instanceKey: instance.key,
+    isOwned: ownedKeys.has(instance.key),
+    priceInfo: getSelectedPriceInfo(
+      instance.item,
+      selectedPriceMode,
+      includeTraderPrices,
+      traderLevels,
+      strictTraderLevels,
+    ),
   }));
 
   const fallbackEntries = entries.filter(entry => (
+    !entry.isOwned
+    &&
     entry.priceInfo.fallbackUsed
     && !entry.priceInfo.isMissing
   ));
-  const missingEntries = entries.filter(entry => entry.priceInfo.isMissing);
+  const missingEntries = entries.filter(entry => !entry.isOwned && entry.priceInfo.isMissing);
   const modeMismatchEntries = entries.filter(entry => entry.priceInfo.modeMismatch);
   const barterOnlyEntries = entries.filter(entry => entry.priceInfo.barterOnly);
   const sourceLabels = Array.from(new Set(
@@ -647,6 +692,9 @@ function getReplacementConstraintErrors({
   buildParts,
   priceMode,
   includeTraderPrices,
+  traderLevels,
+  strictTraderLevels,
+  ownedItems,
   maxWeight,
   maxPrice,
   requiredItemIds,
@@ -707,16 +755,29 @@ function getReplacementConstraintErrors({
   const stats = recalculateBuildStats(weapon, buildParts, {
     priceMode,
     includeTraderPrices,
+    traderLevels,
+    strictTraderLevels,
   });
   const parsedMaxWeight = Number(maxWeight) || 0;
   const parsedMaxPrice = Number(maxPrice) || 0;
+  const costSummary = calculateBuildCostSummary({
+    weapon,
+    buildParts,
+    ownedItems,
+    priceOptions: {
+      priceMode,
+      includeTraderPrices,
+      traderLevels,
+      strictTraderLevels,
+    },
+  });
 
   if (parsedMaxWeight > 0 && Number(stats.weight) > parsedMaxWeight + 0.0001) {
     errors.push(t('config.weightLimit', { weight: parsedMaxWeight }));
   }
-  if (parsedMaxPrice > 0 && !isPositivePrice(stats.price)) {
+  if (parsedMaxPrice > 0 && !isPositivePrice(costSummary.remainingTotal)) {
     errors.push(t('config.priceUnavailable'));
-  } else if (parsedMaxPrice > 0 && stats.price > parsedMaxPrice) {
+  } else if (parsedMaxPrice > 0 && costSummary.remainingTotal > parsedMaxPrice) {
     errors.push(t('config.budgetLimit', { price: parsedMaxPrice }));
   }
 
@@ -828,21 +889,32 @@ function getRequiredModuleSearchResults(allMods, query, selectedIds) {
 const SLOT_GROUP_NAME_MAPPINGS = {
   'reciever': 'config.slotGroup.receiver',
   'receiver': 'config.slotGroup.receiver',
+  'ств кор': 'config.slotGroup.receiver',
+  'ствольная коробка': 'config.slotGroup.receiver',
   'pistolgrip': 'config.slotGroup.pistolGrip',
   'pistol grip': 'config.slotGroup.pistolGrip',
   'grip': 'config.slotGroup.pistolGrip',
   'gasblock': 'config.slotGroup.gasBlock',
+  'gas block': 'config.slotGroup.gasBlock',
+  'газ кам': 'config.slotGroup.gasBlock',
+  'газовая камера': 'config.slotGroup.gasBlock',
   'front sight': 'config.slotGroup.frontSight',
   'rear sight': 'config.slotGroup.rearSight',
   'ubgl': 'config.slotGroup.underbarrelLauncher',
   'tactical': 'config.slotGroup.tacticalDevice',
   'foregrip': 'config.slotGroup.foregrip',
+  'front grip': 'config.slotGroup.foregrip',
+  'перед рук': 'config.slotGroup.foregrip',
+  'передняя рукоятка': 'config.slotGroup.foregrip',
   'bipod': 'config.slotGroup.bipod',
   'launcher': 'config.slotGroup.launcher',
   'scope': 'config.slotGroup.scope',
   'mount': 'config.slotGroup.mount',
   'charge': 'config.slotGroup.chargingHandle',
   'charging handle': 'config.slotGroup.chargingHandle',
+  'рук затв': 'config.slotGroup.chargingHandle',
+  'рукоятка затвора': 'config.slotGroup.chargingHandle',
+  'рукоятка взведения': 'config.slotGroup.chargingHandle',
   'dustcover': 'config.slotGroup.dustCover',
   'dust cover': 'config.slotGroup.dustCover',
   'barrel': 'config.slotGroup.barrel',
@@ -858,7 +930,7 @@ function getReadableSlotGroupName(slotName, t) {
   if (name.startsWith('mod_')) {
     name = name.substring(4);
   }
-  name = name.replace(/[\s_-]+/g, ' ');
+  name = name.replace(/[.\s_-]+/g, ' ').trim();
   if (SLOT_GROUP_NAME_MAPPINGS[name]) {
     return t(SLOT_GROUP_NAME_MAPPINGS[name]);
   }
@@ -902,6 +974,15 @@ function getBuildResultWarningMessage(buildResult, language, t) {
 
 function Configurator() {
   const { language, t } = useI18n();
+  const { priceMode, setPriceMode } = usePriceMode();
+  const {
+    traderLevels,
+    strictTraderLevels,
+  } = useTraderLevels();
+  const activeTraderLevels = useMemo(
+    () => traderLevels.profiles?.[priceMode] || {},
+    [priceMode, traderLevels],
+  );
   const { weaponId } = useParams();
   const [searchParams] = useSearchParams();
   const requestedSavedBuildId = searchParams.get('build');
@@ -915,9 +996,6 @@ function Configurator() {
   const [customProfile, setCustomProfile] = useState(CUSTOM_BUILD_DEFAULT_PROFILE);
   const [customExactTargets, setCustomExactTargets] = useState(DEFAULT_CUSTOM_EXACT_TARGETS);
   const [suppressorMode, setSuppressorMode] = useState('allow');
-  const [priceMode, setPriceMode] = useState(
-    () => requestedSavedBuild?.settings.priceMode || loadPriceModePreference(),
-  );
   const [includeTraderPrices, setIncludeTraderPrices] = useState(
     () => requestedSavedBuild?.settings.includeTraderPrices
       ?? loadIncludeTraderPricesPreference(),
@@ -927,6 +1005,15 @@ function Configurator() {
   const [magazineCapacity, setMagazineCapacity] = useState(30);
   const [allMods, setAllMods] = useState(null);
   const [buildResult, setBuildResult] = useState(null);
+  const [ownedItems, setOwnedItems] = useState(
+    () => requestedSavedBuild?.ownedItems || [],
+  );
+  const reconciledOwnedItems = useMemo(
+    () => weapon && buildResult?.build
+      ? reconcileOwnedItems(ownedItems, weapon, buildResult.build)
+      : [],
+    [buildResult, ownedItems, weapon],
+  );
   const [loadError, setLoadError] = useState(null);
   const [generationError, setGenerationError] = useState(null);
   const [generating, setGenerating] = useState(false);
@@ -941,10 +1028,15 @@ function Configurator() {
   const [requiredModuleIds, setRequiredModuleIds] = useState([]);
   const [replacementError, setReplacementError] = useState(null);
   const [pricePolicyWarning, setPricePolicyWarning] = useState(null);
+  const [priceModeNotice, setPriceModeNotice] = useState(null);
   const [maxPriceDraft, setMaxPriceDraft] = useState(null);
   const maxWeight = customProfile.weight > 0 ? String(customProfile.weight) : '';
   const maxPrice = customProfile.price > 0 ? String(customProfile.price) : '';
-  const { latestCalculationRequestIdRef, runBuildCalculation } = useBuildCalculation();
+  const {
+    cancelPendingCalculations,
+    latestCalculationRequestIdRef,
+    runBuildCalculation,
+  } = useBuildCalculation();
   const {
     activeSavedBuildId,
     saveFeedback,
@@ -958,6 +1050,7 @@ function Configurator() {
     requestedSavedBuildId,
     weapon,
     buildResult,
+    ownedItems: reconciledOwnedItems,
     settings: {
       targetType,
       customProfile,
@@ -965,6 +1058,8 @@ function Configurator() {
       suppressorMode,
       priceMode,
       includeTraderPrices,
+      strictTraderLevels,
+      traderLevelsSnapshot: activeTraderLevels,
       magazineCapacity,
       includeLaser,
       includeFlashlight,
@@ -973,9 +1068,17 @@ function Configurator() {
     },
     t,
   });
+
+  useLayoutEffect(() => {
+    if (requestedSavedBuild?.settings.priceMode
+      && requestedSavedBuild.settings.priceMode !== priceMode) {
+      setPriceMode(requestedSavedBuild.settings.priceMode);
+    }
+  }, [priceMode, requestedSavedBuild, setPriceMode]);
+
   useEffect(() => {
-    savePriceModePreference(priceMode);
-  }, [priceMode]);
+    cancelPendingCalculations();
+  }, [cancelPendingCalculations, priceMode]);
 
   useEffect(() => {
     saveIncludeTraderPricesPreference(includeTraderPrices);
@@ -990,13 +1093,14 @@ function Configurator() {
     priceMode,
     savedBuildId: requestedSavedBuildId,
     language,
-    onLoading: () => {
-      setLoading(true);
+    onLoading: ({ isCatalogReload }) => {
+      if (!isCatalogReload) setLoading(true);
     },
     onLoaded: ({
       weapon: weaponData,
       allMods: modsData,
       isCatalogReload,
+      reloadReason,
       previousWeapon,
     }) => {
       setWeapon(weaponData);
@@ -1013,11 +1117,49 @@ function Configurator() {
             modsData,
           );
 
+          const recalculated = recalculateBuildStats(weaponData, localizedBuild, {
+            priceMode,
+            includeTraderPrices,
+            traderLevels: activeTraderLevels,
+            strictTraderLevels,
+          });
           return {
             ...current,
             build: localizedBuild,
+            stats: {
+              ...current.stats,
+              price: recalculated.stats.price,
+            },
           };
         });
+        if (reloadReason === 'price-mode') {
+          const budgetLimit = Number(maxPrice) || 0;
+          const currentBuild = buildResult?.build;
+          const localizedBuild = currentBuild
+            ? rebindBuildPartsToCatalog(previousWeapon, currentBuild, weaponData, modsData)
+            : null;
+          const nextPrice = localizedBuild
+            ? calculateBuildCostSummary({
+              weapon: weaponData,
+              buildParts: localizedBuild,
+              ownedItems,
+              priceOptions: {
+                priceMode,
+                includeTraderPrices,
+                traderLevels: activeTraderLevels,
+                strictTraderLevels,
+              },
+            }).remainingTotal
+            : null;
+          setPricePolicyWarning(
+            budgetLimit > 0 && !isPositivePrice(nextPrice)
+              ? t('config.currentPriceUnavailable')
+              : budgetLimit > 0 && nextPrice > budgetLimit
+                ? t('config.currentBudgetExceeded', { price: budgetLimit })
+                : null,
+          );
+          if (currentBuild) setPriceModeNotice(t('priceMode.recalculateNotice'));
+        }
         setLoadError(null);
         setLoading(false);
         return;
@@ -1038,6 +1180,8 @@ function Configurator() {
         const restoredResult = recalculateBuildStats(weaponData, restored.build, {
           priceMode,
           includeTraderPrices: restoredIncludeTraderPrices,
+          traderLevels: activeTraderLevels,
+          strictTraderLevels,
         });
 
         setBuildResult({
@@ -1047,6 +1191,7 @@ function Configurator() {
             ? t('config.savedModulesSkipped', { count: restored.missingItemIds.length })
             : undefined,
         });
+        setOwnedItems(requestedSavedBuild.ownedItems || []);
         setTargetType(normalizeTargetType(settings.targetType));
         setCustomProfile(createCustomBuildProfileFromSettings(settings, weaponData));
         setCustomExactTargets(normalizeCustomExactTargets(settings.customExactTargets));
@@ -1063,6 +1208,7 @@ function Configurator() {
         setSaveName(requestedSavedBuild.name);
       } else {
         setBuildResult(null);
+        setOwnedItems([]);
         setCustomExactTargets(DEFAULT_CUSTOM_EXACT_TARGETS);
         setRequiredModuleIds([]);
         setActiveSavedBuildId(null);
@@ -1079,8 +1225,12 @@ function Configurator() {
       setSaveFeedback(null);
       setLoading(false);
     },
-    onError: error => {
+    onError: (error, { isCatalogReload }) => {
       console.error(error);
+      if (isCatalogReload) {
+        setPricePolicyWarning(t('priceMode.refreshFailed'));
+        return;
+      }
       setWeapon(null);
       setAllMods(null);
       setLoadError(t('config.error'));
@@ -1107,6 +1257,9 @@ function Configurator() {
       buildParts: updatedBuild,
       priceMode,
       includeTraderPrices,
+      traderLevels: activeTraderLevels,
+      strictTraderLevels,
+      ownedItems: reconciledOwnedItems,
       maxWeight,
       maxPrice,
       requiredItemIds: requiredModuleIds,
@@ -1122,6 +1275,7 @@ function Configurator() {
     }
 
     setReplacementError(null);
+    setOwnedItems(current => reconcileOwnedItems(current, weapon, updatedBuild));
     setBuildResult(stats);
     setActiveReplacePartId(null);
   };
@@ -1155,6 +1309,9 @@ function Configurator() {
       buildParts: nextBuildParts,
       priceMode,
       includeTraderPrices,
+      traderLevels: activeTraderLevels,
+      strictTraderLevels,
+      ownedItems: reconciledOwnedItems,
       maxWeight,
       maxPrice,
       requiredItemIds: requiredModuleIds,
@@ -1166,6 +1323,7 @@ function Configurator() {
     if (errors.length > 0) return errors;
 
     setReplacementError(null);
+    setOwnedItems(current => reconcileOwnedItems(current, weapon, nextBuildParts));
     setBuildResult(current => current ? {
       ...current,
       ...recalculatedResult,
@@ -1173,11 +1331,14 @@ function Configurator() {
     } : current);
     return [];
   }, [
+    activeTraderLevels,
     buildResult,
     includeTraderPrices,
+    strictTraderLevels,
     maxPrice,
     maxWeight,
     priceMode,
+    reconciledOwnedItems,
     requiredModuleIds,
     sightMode,
     suppressorMode,
@@ -1205,17 +1366,30 @@ function Configurator() {
     const recalculated = recalculateBuildStats(weapon, buildResult.build, {
       priceMode,
       includeTraderPrices: nextValue,
+      traderLevels: activeTraderLevels,
+      strictTraderLevels,
     });
     const budgetLimit = Number(maxPrice) || 0;
+    const remainingTotal = calculateBuildCostSummary({
+      weapon,
+      buildParts: buildResult.build,
+      ownedItems,
+      priceOptions: {
+        priceMode,
+        includeTraderPrices: nextValue,
+        traderLevels: activeTraderLevels,
+        strictTraderLevels,
+      },
+    }).remainingTotal;
 
     setBuildResult(current => current ? {
       ...current,
       stats: recalculated.stats,
     } : current);
     setPricePolicyWarning(
-      budgetLimit > 0 && !isPositivePrice(recalculated.stats.price)
+      budgetLimit > 0 && !isPositivePrice(remainingTotal)
         ? t('config.currentPriceUnavailable')
-        : budgetLimit > 0 && recalculated.stats.price > budgetLimit
+        : budgetLimit > 0 && remainingTotal > budgetLimit
           ? t('config.currentBudgetExceeded', { price: budgetLimit })
           : null,
     );
@@ -1238,6 +1412,8 @@ function Configurator() {
         magazineCapacity: Number(magazineCapacity) || 30,
         priceMode,
         includeTraderPrices,
+        traderLevels: activeTraderLevels,
+        strictTraderLevels,
         includeLaser,
         includeFlashlight,
         sightMode,
@@ -1268,6 +1444,7 @@ function Configurator() {
       }
     }
   }, [
+    activeTraderLevels,
     allMods,
     customExactTargets,
     customProfile,
@@ -1280,6 +1457,7 @@ function Configurator() {
     requiredModuleIds,
     runBuildCalculation,
     sightMode,
+    strictTraderLevels,
     suppressorMode,
     t,
     targetType,
@@ -1289,6 +1467,31 @@ function Configurator() {
   const hasCalculationError = buildResult ? Boolean(buildResult.error) : false;
   const hasBuildParts = buildResult ? (Array.isArray(buildResult.build) && buildResult.build.length > 0) : false;
   const canShowBuildDetails = Boolean(buildResult && !hasCalculationError && hasBuildParts);
+  const buildCostSummary = useMemo(
+    () => canShowBuildDetails
+      ? calculateBuildCostSummary({
+        weapon,
+        buildParts: buildResult.build,
+        ownedItems: reconciledOwnedItems,
+        priceOptions: {
+          priceMode,
+          includeTraderPrices,
+          traderLevels: activeTraderLevels,
+          strictTraderLevels,
+        },
+      })
+      : null,
+    [
+      activeTraderLevels,
+      buildResult,
+      canShowBuildDetails,
+      includeTraderPrices,
+      reconciledOwnedItems,
+      priceMode,
+      strictTraderLevels,
+      weapon,
+    ],
+  );
   const availableCapacities = useMemo(
     () => getAvailableCapacities(weapon, allMods),
     [weapon, allMods],
@@ -1306,7 +1509,13 @@ function Configurator() {
     [allMods, requiredModuleSearch, requiredModuleIds],
   );
   const toModuleView = item => {
-    const priceInfo = getSelectedPriceInfo(item, priceMode, includeTraderPrices);
+    const priceInfo = getSelectedPriceInfo(
+      item,
+      priceMode,
+      includeTraderPrices,
+      activeTraderLevels,
+      strictTraderLevels,
+    );
     return {
       item,
       name: formatPartName(item.shortName || item.name),
@@ -1368,12 +1577,14 @@ function Configurator() {
         allMods,
         priceMode,
         includeTraderPrices,
+        activeTraderLevels,
+        strictTraderLevels,
         sightMode,
         t,
         replaceMode,
       ),
     };
-  }, [weapon, buildResult, hasBuildParts, activeReplacePartId, allMods, priceMode, includeTraderPrices, sightMode, t, replaceMode]);
+  }, [weapon, buildResult, hasBuildParts, activeReplacePartId, allMods, priceMode, includeTraderPrices, activeTraderLevels, strictTraderLevels, sightMode, t, replaceMode]);
 
   const isLoading = loading || (weapon && weapon.id !== weaponId);
 
@@ -1392,7 +1603,16 @@ function Configurator() {
   }
 
   const priceDiagnostics = canShowBuildDetails
-    ? collectBuildPriceDiagnostics(weapon, buildResult, priceMode, includeTraderPrices, t)
+    ? collectBuildPriceDiagnostics(
+      weapon,
+      buildResult,
+      priceMode,
+      includeTraderPrices,
+      activeTraderLevels,
+      strictTraderLevels,
+      reconciledOwnedItems,
+      t,
+    )
     : {
       summaryLabel: `${t(`config.price.${priceMode}Short`)} · tarkov.dev · ${includeTraderPrices ? t('config.price.fleaTrader') : t('config.price.fleaOnly')}`,
       summaryStatus: includeTraderPrices ? t('config.price.fleaTrader') : t('config.price.fleaOnly'),
@@ -1408,9 +1628,17 @@ function Configurator() {
   const currentRecoilV = canShowBuildDetails ? buildResult.stats.recoilVertical : (weapon.properties?.recoilVertical ?? t('config.notAvailable'));
   const currentRecoilH = canShowBuildDetails ? buildResult.stats.recoilHorizontal : (weapon.properties?.recoilHorizontal ?? t('config.notAvailable'));
   const currentPrice = canShowBuildDetails
-    ? formatCurrency(buildResult.stats.price, 'RUB', t('config.notAvailable'))
+    ? buildCostSummary?.remainingTotal === 0
+      ? t('ownedItems.allPurchased')
+      : formatCurrency(buildCostSummary?.remainingTotal, 'RUB', t('config.notAvailable'))
     : formatCurrency(
-      getSelectedPriceInfo(weapon, priceMode, includeTraderPrices).value,
+      getSelectedPriceInfo(
+        weapon,
+        priceMode,
+        includeTraderPrices,
+        activeTraderLevels,
+        strictTraderLevels,
+      ).value,
       'RUB',
       t('config.notAvailable'),
     );
@@ -1486,6 +1714,7 @@ function Configurator() {
   }
 
   // Фильтрация групп деталей для рендеринга
+  const weaponInstance = buildCostSummary?.instances.find(instance => instance.isWeapon) || null;
   const renderedGroups = partsGroups.map(group => {
     const filteredParts = sortModuleDisplayItems(group.parts)
       .filter(part => {
@@ -1496,16 +1725,25 @@ function Configurator() {
         const slot = (part.slotName || '').toLowerCase();
         const parentName = (part.parentItem?.name || part.parentItem?.shortName || '').toLowerCase();
         const groupName = group.rootSlotName.toLowerCase();
+        const itemId = (part.item?.id || '').toLowerCase();
         return name.includes(q)
           || shortName.includes(q)
+          || itemId.includes(q)
           || slot.includes(q)
           || parentName.includes(q)
           || groupName.includes(q);
       })
       .map(part => ({
         ...part,
+        isOwned: reconciledOwnedItems.some(item => item.key === part.ownershipKey),
         priceInfo: part.item
-          ? getSelectedPriceInfo(part.item, priceMode, includeTraderPrices)
+          ? getSelectedPriceInfo(
+            part.item,
+            priceMode,
+            includeTraderPrices,
+            activeTraderLevels,
+            strictTraderLevels,
+          )
           : null,
       }));
     return {
@@ -1513,6 +1751,43 @@ function Configurator() {
       parts: filteredParts
     };
   }).filter(group => group.parts.length > 0);
+  const baseWeaponGroup = weaponInstance && (
+    !partsFilter.trim()
+    || [
+      weapon.name,
+      weapon.shortName,
+      weapon.id,
+      t('ownedItems.baseWeapon'),
+    ].some(value => value?.toLowerCase().includes(partsFilter.trim().toLowerCase()))
+  )
+    ? {
+      displayRank: -1,
+      rootSlotName: t('ownedItems.baseWeapon'),
+      parts: [{
+        key: weaponInstance.key,
+        ownershipKey: weaponInstance.key,
+        item: weapon,
+        isWeapon: true,
+        isOwned: reconciledOwnedItems.some(item => item.key === weaponInstance.key),
+        priceInfo: getSelectedPriceInfo(
+          weapon,
+          priceMode,
+          includeTraderPrices,
+          activeTraderLevels,
+          strictTraderLevels,
+        ),
+      }],
+    }
+    : null;
+  const displayGroups = baseWeaponGroup
+    ? [baseWeaponGroup, ...renderedGroups]
+    : renderedGroups;
+  const handleOwnedToggle = instance => {
+    setOwnedItems(current => toggleOwnedItem(
+      reconcileOwnedItems(current, weapon, buildResult?.build || []),
+      instance,
+    ));
+  };
 
   return (
     <div className="layout">
@@ -1527,6 +1802,7 @@ function Configurator() {
         includeFlashlight={includeFlashlight}
         includeLaser={includeLaser}
         includeTraderPrices={includeTraderPrices}
+        strictTraderLevels={strictTraderLevels}
         isSightSelectOpen={isSightSelectOpen}
         magazineCapacity={magazineCapacity}
         maxPrice={maxPrice}
@@ -1547,11 +1823,9 @@ function Configurator() {
         onRequiredModuleSearchChange={setRequiredModuleSearch}
         onSightModeChange={value => { setSightMode(value); setIsSightSelectOpen(false); }}
         onSightSelectOpenChange={setIsSightSelectOpen}
-        priceMode={priceMode}
-        priceModeOptions={PRICE_MODE_OPTIONS}
         requiredModuleSearch={requiredModuleSearch}
         selectedModules={selectedRequiredModuleViews}
-        setters={{ configTab: setConfigTab, customProfile: setCustomProfile, includeFlashlight: setIncludeFlashlight, includeLaser: setIncludeLaser, magazineCapacity: setMagazineCapacity, priceMode: setPriceMode, suppressorMode: setSuppressorMode, targetType: setTargetType }}
+        setters={{ configTab: setConfigTab, customProfile: setCustomProfile, includeFlashlight: setIncludeFlashlight, includeLaser: setIncludeLaser, magazineCapacity: setMagazineCapacity, suppressorMode: setSuppressorMode, targetType: setTargetType }}
         sightMode={sightMode}
         sightOptions={[{ value: 'none', label: t('config.sight.none') }, { value: 'any', label: t('config.sight.any') }, { value: 'reflex', label: t('config.sight.reflex') }, { value: 'scope', label: t('config.sight.scope') }]}
         suppressorMode={suppressorMode}
@@ -1570,6 +1844,7 @@ function Configurator() {
             activeSavedBuildId={activeSavedBuildId}
             canSave={canShowBuildDetails}
             currentPrice={currentPrice}
+            marketPrice={buildCostSummary?.marketTotal}
             onOpenDiagram={() => setIsBuildDiagramOpen(true)}
             onSave={handleSaveBuild}
             onSaveNameChange={value => {
@@ -1603,6 +1878,29 @@ function Configurator() {
               >
                 {t('config.clear')}
               </button>
+              {canShowBuildDetails && (
+                <>
+                  <button
+                    className="btn btn--ghost"
+                    type="button"
+                    onClick={() => setOwnedItems(
+                      buildCostSummary.instances.map(instance => ({
+                        key: instance.key,
+                        itemId: instance.itemId,
+                      })),
+                    )}
+                  >
+                    {t('ownedItems.markAll')}
+                  </button>
+                  <button
+                    className="btn btn--ghost"
+                    type="button"
+                    onClick={() => setOwnedItems([])}
+                  >
+                    {t('ownedItems.clearAll')}
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Вывод ошибок при расчете сборки */}
@@ -1619,6 +1917,12 @@ function Configurator() {
               priceWarnings={canShowBuildDetails ? priceDiagnostics.warningMessages : []}
               t={t}
             />
+            {priceModeNotice && (
+              <div className="inline-message inline-message--info" role="status">
+                <strong>{t('priceMode.changed')}</strong>
+                <span>{priceModeNotice}</span>
+              </div>
+            )}
 
             {/* Рендеринг сгруппированных деталей */}
             <BuildParts
@@ -1626,8 +1930,12 @@ function Configurator() {
               buildExists={Boolean(buildResult)}
               canShowBuildDetails={canShowBuildDetails}
               generating={generating}
-              groups={renderedGroups}
+              groups={displayGroups}
               onOpenReplacement={handleOpenReplaceDrawer}
+              onToggleOwned={part => handleOwnedToggle({
+                key: part.ownershipKey,
+                itemId: part.item.id,
+              })}
               formatPartName={formatPartName}
               t={t}
             />
@@ -1643,6 +1951,8 @@ function Configurator() {
           stats={statMeters}
           priceMode={priceMode}
           includeTraderPrices={includeTraderPrices}
+          traderLevels={activeTraderLevels}
+          strictTraderLevels={strictTraderLevels}
           onBuildChange={handleDiagramBuildChange}
           onClose={handleCloseBuildDiagram}
         />
@@ -1661,6 +1971,8 @@ function Configurator() {
           activePart.item,
           priceMode,
           includeTraderPrices,
+          activeTraderLevels,
+          strictTraderLevels,
         );
 
         return (
@@ -1734,6 +2046,8 @@ function Configurator() {
                           altPackageItems,
                           priceMode,
                           includeTraderPrices,
+                          activeTraderLevels,
+                          strictTraderLevels,
                           t,
                         );
                         const altPriceValue = altPriceInfo.value;
@@ -1757,6 +2071,8 @@ function Configurator() {
                           baselineParts,
                           priceMode,
                           includeTraderPrices,
+                          activeTraderLevels,
+                          strictTraderLevels,
                           t,
                         );
                         const baselinePrice = baselinePriceInfo.value;

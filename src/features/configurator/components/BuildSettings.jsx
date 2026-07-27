@@ -1,5 +1,6 @@
 import AsyncImage from '../../../ui/AsyncImage.jsx';
 import CustomBuildRadar from '../../../ui/CustomBuildRadar.jsx';
+import { Link } from 'react-router-dom';
 import { PriceSource } from './PriceDisplay.jsx';
 
 function ModuleRow({ view, action, actionLabel, onAction }) {
@@ -52,6 +53,7 @@ export default function BuildSettings(props) {
     includeFlashlight,
     includeLaser,
     includeTraderPrices,
+    strictTraderLevels,
     isSightSelectOpen,
     magazineCapacity,
     maxPrice,
@@ -70,7 +72,6 @@ export default function BuildSettings(props) {
     onRequiredModuleSearchChange,
     onSightModeChange,
     onSightSelectOpenChange,
-    priceMode,
     requiredModuleSearch,
     selectedModules,
     setters,
@@ -150,19 +151,6 @@ export default function BuildSettings(props) {
           </section>
 
           <section className="config__section">
-            <label className="field-label">{t('config.priceMode')}</label>
-            <div className="segmented segmented--two">
-              {props.priceModeOptions.map(option => (
-                <button
-                  key={option.value}
-                  className={`segmented__btn ${priceMode === option.value ? 'is-active' : ''}`}
-                  type="button"
-                  onClick={() => setters.priceMode(option.value)}
-                >
-                  {t(`config.price.${option.value}`)}
-                </button>
-              ))}
-            </div>
             <div className="checks price-source-checks">
               <label className="check" htmlFor="includeTraderPrices">
                 <input
@@ -175,6 +163,12 @@ export default function BuildSettings(props) {
                 <span>{t('config.includeTraders')}</span>
               </label>
               <span id="includeTraderPricesHelp" className="field-help">{t('config.helpPrices')}</span>
+              {includeTraderPrices && strictTraderLevels && (
+                <Link className="strict-trader-badge" to="/settings#traders">
+                  <span>{t('traders.strictLevelsActive')}</span>
+                  <small>{t('traders.manageLevels')}</small>
+                </Link>
+              )}
             </div>
           </section>
 

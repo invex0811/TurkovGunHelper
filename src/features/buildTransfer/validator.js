@@ -81,6 +81,23 @@ function copySettings(settings) {
   return structuredClone(settings);
 }
 
+function copyOwnedItems(ownedItems) {
+  if (ownedItems === undefined) return [];
+  if (!Array.isArray(ownedItems)) fail('Owned items must be an array.', 'INVALID_OWNED_ITEMS');
+  return ownedItems.map(item => {
+    if (
+      !isRecord(item)
+      || typeof item.key !== 'string'
+      || !item.key
+      || typeof item.itemId !== 'string'
+      || !item.itemId
+    ) {
+      fail('Every owned item must contain a non-empty key and itemId.', 'INVALID_OWNED_ITEM');
+    }
+    return { key: item.key, itemId: item.itemId };
+  });
+}
+
 export function parseVersion1BuildExport(data) {
   if (!Array.isArray(data.builds)) fail('The file must contain a builds array.', 'MISSING_BUILDS');
   if (data.builds.length > BUILD_IMPORT_LIMITS.maxBuilds) {
@@ -109,6 +126,7 @@ export function parseVersion1BuildExport(data) {
       gameMode: build.gameMode,
       weaponId: build.weaponId,
       settings: copySettings(build.settings),
+      ownedItems: copyOwnedItems(build.ownedItems),
       configuration: copyNode(build.configuration),
     };
   });
