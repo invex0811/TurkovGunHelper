@@ -4,44 +4,7 @@ import { getWeapons, isAbortError } from '../data/tarkovApi';
 import { filterHomeWeapons, getHomeWeaponFilterOptions } from './homeWeaponFilters.js';
 import HomeFilterModal from '../ui/HomeFilterModal.jsx';
 import { useI18n } from '../i18n/useI18n.js';
-
-function ImageWithLoader({ src, alt, style, containerStyle, unavailableLabel }) {
-  const [imageState, setImageState] = useState(src ? 'loading' : 'error');
-  const isLoading = Boolean(src) && imageState === 'loading';
-  const canDisplayImage = Boolean(src) && imageState !== 'error';
-
-  return (
-    <div style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', ...containerStyle }}>
-      {isLoading && (
-        <div className="shimmer" style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          borderRadius: 'var(--radius-sm)',
-        }} />
-      )}
-      {canDisplayImage ? (
-        <img
-          src={src}
-          alt={alt}
-          loading="lazy"
-          decoding="async"
-          onLoad={() => setImageState('loaded')}
-          onError={() => setImageState('error')}
-          style={{
-            ...style,
-            opacity: imageState === 'loaded' ? 1 : 0,
-            transition: 'opacity 0.3s ease-in-out',
-          }}
-        />
-      ) : (
-        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>{unavailableLabel}</span>
-      )}
-    </div>
-  );
-}
+import AsyncImage from '../ui/AsyncImage.jsx';
 
 function Home() {
   const { language, t } = useI18n();
@@ -218,11 +181,13 @@ function Home() {
                     justifyContent: 'space-between',
                   }}>
                     <div>
-                      <ImageWithLoader
+                      <AsyncImage
                         key={weapon.properties?.defaultPreset?.image512pxLink || weapon.image512pxLink || `${weapon.id}-missing-image`}
                         src={weapon.properties?.defaultPreset?.image512pxLink || weapon.image512pxLink}
                         alt={weapon.shortName}
                         unavailableLabel={t('image.unavailable')}
+                        unavailableStyle={{ fontSize: '0.8rem' }}
+                        shimmerBorderRadius="var(--radius-sm)"
                         style={{ maxWidth: '100%', maxHeight: '100px', objectFit: 'contain' }}
                         containerStyle={{ height: '100px' }}
                       />
