@@ -38,4 +38,3 @@ export default function TraderLevelsProvider({ children }) {
     </TraderLevelsContext.Provider>
   );
 }
-

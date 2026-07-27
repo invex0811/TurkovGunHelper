@@ -76,4 +76,3 @@ test('new traders implicitly receive LL1', () => {
   }, [...traders, { id: 'new-id', name: 'New trader', maxLevel: 4 }]);
   assert.equal(getTraderLevel('new-id', 'pvp', levels), 1);
 });
-

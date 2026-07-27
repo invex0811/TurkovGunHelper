@@ -25,4 +25,3 @@ export function getCatalogTraders(catalog) {
 
   return [...traders.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
-

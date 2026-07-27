@@ -6,4 +6,3 @@ export function useTraderLevels() {
   if (!context) throw new Error('useTraderLevels must be used inside TraderLevelsProvider.');
   return context;
 }
-
