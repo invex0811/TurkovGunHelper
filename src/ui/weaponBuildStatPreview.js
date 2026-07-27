@@ -20,6 +20,7 @@ export function getProjectedBuildMeters({
   nextItem,
   priceMode,
   includeTraderPrices,
+  traderLevels,
   meters,
 }) {
   const plan = planBuildSlotChange({
@@ -30,12 +31,14 @@ export function getProjectedBuildMeters({
     nextItem,
     priceMode,
     includeTraderPrices,
+    traderLevels,
   });
   if (plan.errors?.length > 0 || plan.changed === false) return null;
 
   const projectedStats = recalculateBuildStats(weapon, plan.buildParts, {
     priceMode,
     includeTraderPrices,
+    traderLevels,
   }).stats;
   const weight = Number(projectedStats.weight);
 

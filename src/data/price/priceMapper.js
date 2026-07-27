@@ -5,6 +5,7 @@ import {
   PRICE_SOURCE,
   PRICE_SOURCE_TYPE,
 } from './priceModes.js';
+import { getEffectiveTraderLevel } from '../../domain/traderLevels.js';
 
 function isPositiveNumber(value) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
@@ -71,6 +72,7 @@ function normalizeBuyOffer(offer) {
     sourceType,
     vendorName: offer.vendor.name ?? null,
     vendorNormalizedName: offer.vendor.normalizedName ?? null,
+    traderId: sourceType === PRICE_SOURCE_TYPE.TRADER ? offer.vendor.id ?? null : null,
     traderLevel,
     questRequired,
     originalCurrency: offer.currency ?? null,
@@ -167,6 +169,7 @@ function normalizeBarterOffer(item, barter) {
     sourceType: PRICE_SOURCE_TYPE.TRADER,
     vendorName: barter.trader.name ?? null,
     vendorNormalizedName: barter.trader.normalizedName ?? null,
+    traderId: barter.trader.id ?? null,
     traderLevel: isPositiveNumber(barter.level) ? barter.level : null,
     questRequired: Boolean(barter.taskUnlock),
     originalCurrency: null,
@@ -209,6 +212,7 @@ function createMissingPrice(mode, item, offers = null) {
     sourceType: PRICE_SOURCE_TYPE.MISSING,
     vendorName: null,
     vendorNormalizedName: null,
+    traderId: null,
     traderLevel: null,
     questRequired: false,
     field: null,
@@ -243,6 +247,7 @@ export function selectPurchasePrice(item, options = {}) {
           ?? (sourceType === PRICE_SOURCE_TYPE.FLEA_MARKET ? 'Flea Market' : null),
         vendorNormalizedName: item.price.vendorNormalizedName
           ?? (sourceType === PRICE_SOURCE_TYPE.FLEA_MARKET ? 'flea-market' : null),
+        traderId: item.price.traderId ?? null,
         traderLevel: item.price.traderLevel ?? null,
         questRequired: Boolean(item.price.questRequired),
         field: item.price.field ?? null,
@@ -268,12 +273,27 @@ export function selectPurchasePrice(item, options = {}) {
     offers = normalizePurchaseOffers(item, mode);
   }
 
+  const traderOffers = offers.traderOffers || [];
+  const unavailableTraderOffers = includeTraderPrices && options.traderLevels
+    ? traderOffers.filter(offer => {
+      if (!offer.traderId || !Number.isFinite(offer.traderLevel)) return false;
+      return getEffectiveTraderLevel(offer.traderId, options.traderLevels, mode)
+        < offer.traderLevel;
+    })
+    : [];
   const candidates = [offers.fleaMarket];
-  if (includeTraderPrices) candidates.push(...offers.traderOffers);
+  if (includeTraderPrices) {
+    candidates.push(...traderOffers.filter(offer => !unavailableTraderOffers.includes(offer)));
+  }
 
   const selectedOffer = selectCheapestOffer(candidates);
 
-  if (!selectedOffer) return createMissingPrice(mode, item, offers);
+  if (!selectedOffer) {
+    return {
+      ...createMissingPrice(mode, item, offers),
+      unavailableTraderOffers,
+    };
+  }
 
   return {
     value: selectedOffer.value,
@@ -283,6 +303,7 @@ export function selectPurchasePrice(item, options = {}) {
     sourceType: selectedOffer.sourceType,
     vendorName: selectedOffer.vendorName,
     vendorNormalizedName: selectedOffer.vendorNormalizedName,
+    traderId: selectedOffer.traderId ?? null,
     traderLevel: selectedOffer.traderLevel,
     questRequired: selectedOffer.questRequired,
     field: selectedOffer.field ?? 'buyFor',
@@ -293,6 +314,7 @@ export function selectPurchasePrice(item, options = {}) {
     isBarter: Boolean(selectedOffer.isBarter),
     barterOnly: Boolean(selectedOffer.barterOnly),
     requiredItems: selectedOffer.requiredItems ?? null,
+    unavailableTraderOffers,
     offers,
   };
 }

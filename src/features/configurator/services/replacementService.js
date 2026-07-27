@@ -56,7 +56,7 @@ export function getAlternativeDisplayName(item) {
     : formatPartName(item.shortName);
 }
 
-function getItemsMetrics(items, priceMode, includeTraderPrices) {
+function getItemsMetrics(items, priceMode, includeTraderPrices, traderLevels) {
   return items.reduce((metrics, item) => ({
     ergonomics: metrics.ergonomics + (item.ergonomicsModifier || 0),
     recoil: metrics.recoil + (item.recoilModifier || 0),
@@ -64,6 +64,7 @@ function getItemsMetrics(items, priceMode, includeTraderPrices) {
     price: metrics.price + getPurchasePriceValue(item, {
       priceMode,
       includeTraderPrices,
+      traderLevels,
     }, MISSING_PRICE_COMPARISON_VALUE),
   }), {
     ergonomics: 0,
@@ -73,7 +74,7 @@ function getItemsMetrics(items, priceMode, includeTraderPrices) {
   });
 }
 
-function getNodeMetrics(node, priceMode, includeTraderPrices) {
+function getNodeMetrics(node, priceMode, includeTraderPrices, traderLevels) {
   const items = [];
   function collect(currentNode) {
     if (!currentNode?.item) return;
@@ -81,14 +82,21 @@ function getNodeMetrics(node, priceMode, includeTraderPrices) {
     currentNode.children.forEach(collect);
   }
   collect(node);
-  return getItemsMetrics(items, priceMode, includeTraderPrices);
+  return getItemsMetrics(items, priceMode, includeTraderPrices, traderLevels);
 }
 
-function getSimilarityDistance(referenceMetrics, item, priceMode, includeTraderPrices) {
+function getSimilarityDistance(
+  referenceMetrics,
+  item,
+  priceMode,
+  includeTraderPrices,
+  traderLevels,
+) {
   const candidateMetrics = getItemsMetrics(
     getAlternativePackageItems(item),
     priceMode,
     includeTraderPrices,
+    traderLevels,
   );
   return (Math.abs(referenceMetrics.ergonomics - candidateMetrics.ergonomics) * 1.5)
     + (Math.abs(referenceMetrics.recoil - candidateMetrics.recoil) * 4)
@@ -127,13 +135,14 @@ export function isValidSightForMode(item, sightMode) {
   return true;
 }
 
-export function scoreScope(item, priceMode, includeTraderPrices) {
+export function scoreScope(item, priceMode, includeTraderPrices, traderLevels) {
   const ergonomics = item.ergonomicsModifier || 0;
   const recoil = item.recoilModifier || 0;
   const weight = item.weight || 0;
   const price = getPurchasePriceValue(item, {
     priceMode,
     includeTraderPrices,
+    traderLevels,
   }, MISSING_PRICE_COMPARISON_VALUE);
   return ergonomics - recoil * 5 - weight * 10 - (price > 0 ? price * 0.0001 : 0);
 }
@@ -193,6 +202,7 @@ export function selectReplacementCandidates({
   targetNode,
   priceMode,
   includeTraderPrices,
+  traderLevels,
 }) {
   const uniqueAlternatives = new Map();
   const referenceMetricsByNode = new Map();
@@ -208,7 +218,12 @@ export function selectReplacementCandidates({
       : targetNode;
     let referenceMetrics = referenceMetricsByNode.get(distanceNode);
     if (!referenceMetrics) {
-      referenceMetrics = getNodeMetrics(distanceNode, priceMode, includeTraderPrices);
+      referenceMetrics = getNodeMetrics(
+        distanceNode,
+        priceMode,
+        includeTraderPrices,
+        traderLevels,
+      );
       referenceMetricsByNode.set(distanceNode, referenceMetrics);
     }
 
@@ -217,6 +232,7 @@ export function selectReplacementCandidates({
       alternative,
       priceMode,
       includeTraderPrices,
+      traderLevels,
     );
     distanceByAlternative.set(alternative, distance);
     return distance;

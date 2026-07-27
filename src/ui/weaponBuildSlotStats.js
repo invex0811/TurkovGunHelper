@@ -36,6 +36,7 @@ export function getSlotOptionComparison({
   weapon,
   priceMode,
   includeTraderPrices,
+  traderLevels,
 }) {
   const ergonomicsDiff = toFiniteNumber(item?.ergonomicsModifier)
     - toFiniteNumber(currentItem?.ergonomicsModifier);
@@ -44,13 +45,13 @@ export function getSlotOptionComparison({
   const weightDiff = toFiniteNumber(item?.weight) - toFiniteNumber(currentItem?.weight);
   const itemPrice = getPurchasePriceValue(
     item,
-    { priceMode, includeTraderPrices },
+    { priceMode, includeTraderPrices, traderLevels },
     null,
   );
   const currentPrice = currentItem
     ? getPurchasePriceValue(
       currentItem,
-      { priceMode, includeTraderPrices },
+      { priceMode, includeTraderPrices, traderLevels },
       null,
     )
     : 0;

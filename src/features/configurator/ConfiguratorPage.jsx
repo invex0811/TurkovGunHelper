@@ -49,6 +49,7 @@ import useBuildCalculation from './hooks/useBuildCalculation.js';
 import useConfiguratorCatalog from './hooks/useConfiguratorCatalog.js';
 import useSavedBuild from './hooks/useSavedBuild.js';
 import { usePriceMode } from '../priceMode/usePriceMode.js';
+import { useTraderLevels } from '../traderLevels/useTraderLevels.js';
 import {
   ItemPrice,
 } from './components/PriceDisplay.jsx';
@@ -134,6 +135,7 @@ function findCompatibleAlternatives(
   allMods,
   priceMode,
   includeTraderPrices,
+  traderLevels,
   sightMode,
   t,
   mode = 'EXACT_ITEM',
@@ -344,7 +346,7 @@ function findCompatibleAlternatives(
           if (currentSight && scopeItem.id === currentSight.id) continue;
           if (!isPackageCompatibleWithInstalled([altItem, scopeItem], remainingInstalledIds)) continue;
 
-          const score = scoreScope(scopeItem, priceMode, includeTraderPrices);
+          const score = scoreScope(scopeItem, priceMode, includeTraderPrices, traderLevels);
           if (score > bestScopeScore) {
             bestScopeScore = score;
             bestScope = scopeItem;
@@ -475,10 +477,11 @@ function getItemDisplayName(item, fallbackLabel = 'Item') {
   return item?.shortName || item?.name || fallbackLabel;
 }
 
-function getSelectedPriceInfo(item, selectedPriceMode, includeTraderPrices) {
+function getSelectedPriceInfo(item, selectedPriceMode, includeTraderPrices, traderLevels) {
   const priceInfo = selectPurchasePrice(item, {
     priceMode: selectedPriceMode,
     includeTraderPrices,
+    traderLevels,
   });
 
   return {
@@ -493,10 +496,11 @@ function getSelectedPriceInfo(item, selectedPriceMode, includeTraderPrices) {
   };
 }
 
-function getPackagePriceInfo(items, selectedPriceMode, includeTraderPrices, t) {
+function getPackagePriceInfo(items, selectedPriceMode, includeTraderPrices, traderLevels, t) {
   const packagePrice = sumPurchasePrices(items, {
     priceMode: selectedPriceMode,
     includeTraderPrices,
+    traderLevels,
   });
   const sourceLabels = Array.from(new Set(
     packagePrice.priceInfos.map(priceInfo => formatPriceSource(priceInfo, t)).filter(Boolean),
@@ -528,7 +532,14 @@ function getPriceSummaryStatus(diagnostics, includeTraderPrices, t) {
   return includeTraderPrices ? t('config.price.fleaTrader') : t('config.price.fleaOnly');
 }
 
-function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode, includeTraderPrices, t) {
+function collectBuildPriceDiagnostics(
+  weapon,
+  buildResult,
+  selectedPriceMode,
+  includeTraderPrices,
+  traderLevels,
+  t,
+) {
   const entries = [
     {
       label: t('config.weapon'),
@@ -540,7 +551,12 @@ function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode, in
     })),
   ].map(entry => ({
     ...entry,
-    priceInfo: getSelectedPriceInfo(entry.item, selectedPriceMode, includeTraderPrices),
+    priceInfo: getSelectedPriceInfo(
+      entry.item,
+      selectedPriceMode,
+      includeTraderPrices,
+      traderLevels,
+    ),
   }));
 
   const fallbackEntries = entries.filter(entry => (
@@ -550,6 +566,9 @@ function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode, in
   const missingEntries = entries.filter(entry => entry.priceInfo.isMissing);
   const modeMismatchEntries = entries.filter(entry => entry.priceInfo.modeMismatch);
   const barterOnlyEntries = entries.filter(entry => entry.priceInfo.barterOnly);
+  const unavailableTraderEntries = entries.filter(entry => (
+    entry.priceInfo.unavailableTraderOffers?.length > 0
+  ));
   const sourceLabels = Array.from(new Set(
     entries
       .filter(entry => !entry.priceInfo.isMissing)
@@ -583,6 +602,14 @@ function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode, in
     );
   }
 
+  if (unavailableTraderEntries.length > 0) {
+    warningMessages.push(
+      t('config.price.traderUnavailable', {
+        items: formatDiagnosticsList(unavailableTraderEntries, t),
+      }),
+    );
+  }
+
   if (sourceLabels.length > 1) {
     warningMessages.push(t('config.price.mixedSources', { sources: sourceLabels.join(', ') }));
   }
@@ -600,6 +627,7 @@ function collectBuildPriceDiagnostics(weapon, buildResult, selectedPriceMode, in
     missingEntries,
     modeMismatchEntries,
     barterOnlyEntries,
+    unavailableTraderEntries,
     sourceLabels,
     warningMessages,
     summaryStatus,
@@ -643,6 +671,7 @@ function getReplacementConstraintErrors({
   buildParts,
   priceMode,
   includeTraderPrices,
+  traderLevels,
   maxWeight,
   maxPrice,
   requiredItemIds,
@@ -703,6 +732,7 @@ function getReplacementConstraintErrors({
   const stats = recalculateBuildStats(weapon, buildParts, {
     priceMode,
     includeTraderPrices,
+    traderLevels,
   });
   const parsedMaxWeight = Number(maxWeight) || 0;
   const parsedMaxPrice = Number(maxPrice) || 0;
@@ -899,6 +929,11 @@ function getBuildResultWarningMessage(buildResult, language, t) {
 function Configurator() {
   const { language, t } = useI18n();
   const { priceMode, setPriceMode } = usePriceMode();
+  const { traderLevels } = useTraderLevels();
+  const activeTraderLevels = useMemo(
+    () => traderLevels.profiles?.[priceMode] || {},
+    [priceMode, traderLevels],
+  );
   const { weaponId } = useParams();
   const [searchParams] = useSearchParams();
   const requestedSavedBuildId = searchParams.get('build');
@@ -964,6 +999,7 @@ function Configurator() {
       suppressorMode,
       priceMode,
       includeTraderPrices,
+      traderLevelsSnapshot: activeTraderLevels,
       magazineCapacity,
       includeLaser,
       includeFlashlight,
@@ -1023,6 +1059,7 @@ function Configurator() {
           const recalculated = recalculateBuildStats(weaponData, localizedBuild, {
             priceMode,
             includeTraderPrices,
+            traderLevels: activeTraderLevels,
           });
           return {
             ...current,
@@ -1043,6 +1080,7 @@ function Configurator() {
             ? recalculateBuildStats(weaponData, localizedBuild, {
               priceMode,
               includeTraderPrices,
+              traderLevels: activeTraderLevels,
             }).stats.price
             : null;
           setPricePolicyWarning(
@@ -1074,6 +1112,7 @@ function Configurator() {
         const restoredResult = recalculateBuildStats(weaponData, restored.build, {
           priceMode,
           includeTraderPrices: restoredIncludeTraderPrices,
+          traderLevels: activeTraderLevels,
         });
 
         setBuildResult({
@@ -1147,6 +1186,7 @@ function Configurator() {
       buildParts: updatedBuild,
       priceMode,
       includeTraderPrices,
+      traderLevels: activeTraderLevels,
       maxWeight,
       maxPrice,
       requiredItemIds: requiredModuleIds,
@@ -1195,6 +1235,7 @@ function Configurator() {
       buildParts: nextBuildParts,
       priceMode,
       includeTraderPrices,
+      traderLevels: activeTraderLevels,
       maxWeight,
       maxPrice,
       requiredItemIds: requiredModuleIds,
@@ -1213,6 +1254,7 @@ function Configurator() {
     } : current);
     return [];
   }, [
+    activeTraderLevels,
     buildResult,
     includeTraderPrices,
     maxPrice,
@@ -1245,6 +1287,7 @@ function Configurator() {
     const recalculated = recalculateBuildStats(weapon, buildResult.build, {
       priceMode,
       includeTraderPrices: nextValue,
+      traderLevels: activeTraderLevels,
     });
     const budgetLimit = Number(maxPrice) || 0;
 
@@ -1278,6 +1321,7 @@ function Configurator() {
         magazineCapacity: Number(magazineCapacity) || 30,
         priceMode,
         includeTraderPrices,
+        traderLevels: activeTraderLevels,
         includeLaser,
         includeFlashlight,
         sightMode,
@@ -1308,6 +1352,7 @@ function Configurator() {
       }
     }
   }, [
+    activeTraderLevels,
     allMods,
     customExactTargets,
     customProfile,
@@ -1346,7 +1391,12 @@ function Configurator() {
     [allMods, requiredModuleSearch, requiredModuleIds],
   );
   const toModuleView = item => {
-    const priceInfo = getSelectedPriceInfo(item, priceMode, includeTraderPrices);
+    const priceInfo = getSelectedPriceInfo(
+      item,
+      priceMode,
+      includeTraderPrices,
+      activeTraderLevels,
+    );
     return {
       item,
       name: formatPartName(item.shortName || item.name),
@@ -1408,12 +1458,13 @@ function Configurator() {
         allMods,
         priceMode,
         includeTraderPrices,
+        activeTraderLevels,
         sightMode,
         t,
         replaceMode,
       ),
     };
-  }, [weapon, buildResult, hasBuildParts, activeReplacePartId, allMods, priceMode, includeTraderPrices, sightMode, t, replaceMode]);
+  }, [weapon, buildResult, hasBuildParts, activeReplacePartId, allMods, priceMode, includeTraderPrices, activeTraderLevels, sightMode, t, replaceMode]);
 
   const isLoading = loading || (weapon && weapon.id !== weaponId);
 
@@ -1432,7 +1483,14 @@ function Configurator() {
   }
 
   const priceDiagnostics = canShowBuildDetails
-    ? collectBuildPriceDiagnostics(weapon, buildResult, priceMode, includeTraderPrices, t)
+    ? collectBuildPriceDiagnostics(
+      weapon,
+      buildResult,
+      priceMode,
+      includeTraderPrices,
+      activeTraderLevels,
+      t,
+    )
     : {
       summaryLabel: `${t(`config.price.${priceMode}Short`)} · tarkov.dev · ${includeTraderPrices ? t('config.price.fleaTrader') : t('config.price.fleaOnly')}`,
       summaryStatus: includeTraderPrices ? t('config.price.fleaTrader') : t('config.price.fleaOnly'),
@@ -1450,7 +1508,7 @@ function Configurator() {
   const currentPrice = canShowBuildDetails
     ? formatCurrency(buildResult.stats.price, 'RUB', t('config.notAvailable'))
     : formatCurrency(
-      getSelectedPriceInfo(weapon, priceMode, includeTraderPrices).value,
+      getSelectedPriceInfo(weapon, priceMode, includeTraderPrices, activeTraderLevels).value,
       'RUB',
       t('config.notAvailable'),
     );
@@ -1545,7 +1603,12 @@ function Configurator() {
       .map(part => ({
         ...part,
         priceInfo: part.item
-          ? getSelectedPriceInfo(part.item, priceMode, includeTraderPrices)
+          ? getSelectedPriceInfo(
+            part.item,
+            priceMode,
+            includeTraderPrices,
+            activeTraderLevels,
+          )
           : null,
       }));
     return {
@@ -1687,6 +1750,7 @@ function Configurator() {
           stats={statMeters}
           priceMode={priceMode}
           includeTraderPrices={includeTraderPrices}
+          traderLevels={activeTraderLevels}
           onBuildChange={handleDiagramBuildChange}
           onClose={handleCloseBuildDiagram}
         />
@@ -1705,6 +1769,7 @@ function Configurator() {
           activePart.item,
           priceMode,
           includeTraderPrices,
+          activeTraderLevels,
         );
 
         return (
@@ -1778,6 +1843,7 @@ function Configurator() {
                           altPackageItems,
                           priceMode,
                           includeTraderPrices,
+                          activeTraderLevels,
                           t,
                         );
                         const altPriceValue = altPriceInfo.value;
@@ -1801,6 +1867,7 @@ function Configurator() {
                           baselineParts,
                           priceMode,
                           includeTraderPrices,
+                          activeTraderLevels,
                           t,
                         );
                         const baselinePrice = baselinePriceInfo.value;
