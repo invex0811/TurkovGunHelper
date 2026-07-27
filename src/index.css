@@ -1138,7 +1138,7 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
 
 .price-source-checks {
   gap: 2px;
-  margin-top: 8px;
+  margin-block: 8px;
 }
 
 .field-help {
@@ -1177,8 +1177,9 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
 }
 
 .part-card--owned {
-  border-style: double;
-  box-shadow: inset 3px 0 0 var(--color-accent-gold);
+  border-color: var(--color-accent-green);
+  background: color-mix(in srgb, var(--color-accent-green) 7%, var(--item-bg));
+  box-shadow: inset 3px 0 0 var(--color-accent-green);
 }
 
 .owned-item-toggle {
@@ -1188,16 +1189,17 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
 }
 
 .owned-item-toggle:focus-within {
-  border-color: var(--color-accent-gold);
-  outline: 2px solid color-mix(in srgb, var(--color-accent-gold) 35%, transparent);
-  outline-offset: 2px;
+  border-color: transparent;
+  outline: none;
 }
 
-.owned-item-payable {
-  color: var(--color-text-muted);
-  display: block;
-  font-size: 0.7rem;
-  font-weight: 700;
+.owned-item-toggle input {
+  accent-color: var(--color-accent-green);
+}
+
+.owned-item-toggle input:focus-visible {
+  outline: 2px solid var(--color-accent-green);
+  outline-offset: 2px;
 }
 
 .advanced-builder {
@@ -2151,9 +2153,9 @@ button.weapon-diagram-node:focus-visible,
 
 .part-card {
   display: grid;
-  grid-template-columns: 70px minmax(0, 1fr);
+  grid-template-columns: 90px minmax(0, 1fr);
   gap: 10px;
-  align-items: center;
+  align-items: stretch;
   min-height: 90px;
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
@@ -2168,12 +2170,23 @@ button.weapon-diagram-node:focus-visible,
   background: rgba(199, 192, 154, 0.06);
 }
 
+.part-card--owned:hover {
+  border-color: var(--color-accent-green);
+  background: color-mix(in srgb, var(--color-accent-green) 10%, var(--item-bg));
+}
+
 .part-card--critical {
   border-left: 3px solid #c96a39;
   padding-left: 8px;
 }
 
+.part-card--critical.part-card--owned {
+  border-left-color: var(--color-accent-green);
+}
+
 .part-card--empty-critical {
+  grid-template-columns: 70px minmax(0, 1fr);
+  min-height: 90px;
   border-color: rgba(201, 105, 57, .42);
   border-left-color: #d8713d;
   background: rgba(201, 105, 57, .035);
@@ -2183,14 +2196,54 @@ button.weapon-diagram-node:focus-visible,
   display: none;
 }
 
+.part-card__left {
+  display: grid;
+  align-items: center;
+  justify-items: start;
+  min-width: 0;
+  padding-right: 10px;
+  border-right: 1px solid var(--panel-border);
+}
+
+.part-card__details-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+  gap: 6px;
+  min-width: 0;
+}
+
+.part-card__price-wrap {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.part-card__details-row .owned-item-toggle {
+  min-height: 24px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.part-card .item-price__source {
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
 .part-card__media {
   display: grid;
   place-items: center;
   border: 1px solid var(--panel-border);
   border-radius: 6px;
   background: var(--option-img-bg);
+  min-height: 70px;
   height: 70px;
   width: 70px;
+  justify-self: center;
   padding: 6px;
   box-sizing: border-box;
   overflow: hidden; /* Prevent vertical overflow of images */
@@ -2214,9 +2267,9 @@ button.weapon-diagram-node:focus-visible,
 }
 
 .part-card__topline {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: 8px;
 }
 
@@ -2306,6 +2359,7 @@ button.weapon-diagram-node:focus-visible,
 }
 
 .replace-btn {
+  width: 100%;
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-sm);
   background: rgba(199, 192, 154, 0.03);
@@ -2890,8 +2944,8 @@ button.weapon-diagram-node:focus-visible,
   }
 
   .part-card {
-    grid-template-columns: 60px minmax(0, 1fr);
-    min-height: 82px;
+    grid-template-columns: 68px minmax(0, 1fr);
+    min-height: 76px;
     padding: 8px;
   }
 
@@ -2899,9 +2953,19 @@ button.weapon-diagram-node:focus-visible,
     padding-left: 7px;
   }
 
+  .part-card--empty-critical {
+    grid-template-columns: 60px minmax(0, 1fr);
+    min-height: 82px;
+  }
+
+  .part-card__left {
+    padding-right: 7px;
+  }
+
   .part-card__media {
-    width: 60px;
+    min-height: 60px;
     height: 60px;
+    width: 60px;
   }
 
   .part-card__body {
@@ -2909,7 +2973,14 @@ button.weapon-diagram-node:focus-visible,
   }
 
   .part-card__topline {
+    grid-template-columns: 1fr;
     gap: 5px;
+  }
+
+  .part-card__price-wrap,
+  .part-card__price-wrap .item-price {
+    justify-items: start;
+    text-align: left;
   }
 
   .critical-module-badge {
@@ -3403,6 +3474,7 @@ button.weapon-diagram-node:focus-visible,
   color: var(--color-text);
   display: inline-flex;
   gap: 0.45rem;
+  justify-content: center;
   padding: 0.35rem 0.6rem;
   text-decoration: none;
   white-space: nowrap;

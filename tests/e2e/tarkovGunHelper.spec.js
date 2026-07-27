@@ -53,7 +53,7 @@ async function openSavedBuild(page, name) {
 test('creates a weapon build from the catalog', async ({ page }) => {
   await createBuild(page);
 
-  await expect(page.getByRole('heading', { name: 'TW', exact: true })).toBeVisible();
+  await expect(page.locator('.weapon').getByRole('heading', { name: 'TW', exact: true })).toBeVisible();
   await expect(page.getByText(/^Remaining to buy/)).toBeVisible();
 });
 
@@ -61,26 +61,46 @@ test('owned items update costs, support mass actions, and persist with a saved b
   await createBuild(page);
 
   const remainingPrice = page.locator('.price-box .price-amount');
+  const baseWeaponGroup = page.locator('.parts-group').filter({
+    has: page.getByRole('heading', { name: 'Base weapon', exact: true }),
+  });
+  const baseWeaponCard = baseWeaponGroup.locator('.part-card');
   const partOwned = page.locator('.part-card').filter({ hasText: 'Starter Grip' })
     .getByRole('checkbox', { name: 'Mark Starter Grip as owned', exact: true });
-  const weaponOwned = page.getByRole('checkbox', {
+  const weaponOwned = baseWeaponCard.getByRole('checkbox', {
     name: 'Mark Test weapon as owned',
     exact: true,
   });
   const initialRemainingPrice = await remainingPrice.innerText();
 
   await expect(page.getByText(/^Remaining to buy/)).toBeVisible();
-  await expect(page.getByText(/^Build market value: .+ ₽$/)).toBeVisible();
+  await expect(page.getByText(/^Market value:/)).toBeVisible();
+  await expect(baseWeaponGroup).toBeVisible();
+  await expect(baseWeaponCard.getByText('TW', { exact: true })).toBeVisible();
+  await expect(baseWeaponCard.locator('.item-price')).toBeVisible();
+  await expect(page.locator('.weapon').getByRole('checkbox', {
+    name: 'Mark Test weapon as owned',
+  })).toHaveCount(0);
+  await expect(page.getByText(/^Owned total:/)).toHaveCount(0);
   await expect(partOwned).not.toBeChecked();
   await expect(weaponOwned).not.toBeChecked();
 
+  await weaponOwned.check();
+  await expect(weaponOwned).toBeChecked();
+  await expect(baseWeaponCard).toHaveClass(/part-card--owned/);
+  await expect(remainingPrice).not.toHaveText(initialRemainingPrice);
+  await expect(page.getByText(/^Market value:/)).toBeVisible();
+
   await partOwned.check();
   await expect(partOwned).toBeChecked();
-  await expect(remainingPrice).not.toHaveText(initialRemainingPrice);
+  await expect(page.locator('.part-card').filter({ hasText: 'Starter Grip' }))
+    .toHaveClass(/part-card--owned/);
+  await expect(page.getByText(/^To pay:/)).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Mark all owned', exact: true }).click();
   await expect(partOwned).toBeChecked();
   await expect(weaponOwned).toBeChecked();
+  await expect(remainingPrice).toHaveText('All purchased');
 
   await page.getByRole('button', { name: 'Clear all', exact: true }).click();
   await expect(partOwned).not.toBeChecked();
@@ -88,6 +108,7 @@ test('owned items update costs, support mass actions, and persist with a saved b
   await expect(remainingPrice).toHaveText(initialRemainingPrice);
 
   await partOwned.check();
+  await weaponOwned.check();
   await saveBuild(page, 'Owned parts build');
   await openSavedBuild(page, 'Owned parts build');
   await expect(page.locator('.part-card').filter({ hasText: 'Starter Grip' })
@@ -95,10 +116,16 @@ test('owned items update costs, support mass actions, and persist with a saved b
       name: 'Mark Starter Grip as owned',
       exact: true,
     })).toBeChecked();
-  await expect(page.getByRole('checkbox', {
+  await expect(page.locator('.parts-group').filter({
+    has: page.getByRole('heading', { name: 'Base weapon', exact: true }),
+  }).getByRole('checkbox', {
     name: 'Mark Test weapon as owned',
     exact: true,
-  })).not.toBeChecked();
+  })).toBeChecked();
+
+  await page.setViewportSize({ width: 360, height: 800 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true);
 });
 
 test('strict trader settings expand, persist, and appear once in Configurator', async ({ page }) => {

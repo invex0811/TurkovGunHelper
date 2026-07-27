@@ -889,21 +889,32 @@ function getRequiredModuleSearchResults(allMods, query, selectedIds) {
 const SLOT_GROUP_NAME_MAPPINGS = {
   'reciever': 'config.slotGroup.receiver',
   'receiver': 'config.slotGroup.receiver',
+  'ств кор': 'config.slotGroup.receiver',
+  'ствольная коробка': 'config.slotGroup.receiver',
   'pistolgrip': 'config.slotGroup.pistolGrip',
   'pistol grip': 'config.slotGroup.pistolGrip',
   'grip': 'config.slotGroup.pistolGrip',
   'gasblock': 'config.slotGroup.gasBlock',
+  'gas block': 'config.slotGroup.gasBlock',
+  'газ кам': 'config.slotGroup.gasBlock',
+  'газовая камера': 'config.slotGroup.gasBlock',
   'front sight': 'config.slotGroup.frontSight',
   'rear sight': 'config.slotGroup.rearSight',
   'ubgl': 'config.slotGroup.underbarrelLauncher',
   'tactical': 'config.slotGroup.tacticalDevice',
   'foregrip': 'config.slotGroup.foregrip',
+  'front grip': 'config.slotGroup.foregrip',
+  'перед рук': 'config.slotGroup.foregrip',
+  'передняя рукоятка': 'config.slotGroup.foregrip',
   'bipod': 'config.slotGroup.bipod',
   'launcher': 'config.slotGroup.launcher',
   'scope': 'config.slotGroup.scope',
   'mount': 'config.slotGroup.mount',
   'charge': 'config.slotGroup.chargingHandle',
   'charging handle': 'config.slotGroup.chargingHandle',
+  'рук затв': 'config.slotGroup.chargingHandle',
+  'рукоятка затвора': 'config.slotGroup.chargingHandle',
+  'рукоятка взведения': 'config.slotGroup.chargingHandle',
   'dustcover': 'config.slotGroup.dustCover',
   'dust cover': 'config.slotGroup.dustCover',
   'barrel': 'config.slotGroup.barrel',
@@ -919,7 +930,7 @@ function getReadableSlotGroupName(slotName, t) {
   if (name.startsWith('mod_')) {
     name = name.substring(4);
   }
-  name = name.replace(/[\s_-]+/g, ' ');
+  name = name.replace(/[.\s_-]+/g, ' ').trim();
   if (SLOT_GROUP_NAME_MAPPINGS[name]) {
     return t(SLOT_GROUP_NAME_MAPPINGS[name]);
   }
@@ -1617,7 +1628,9 @@ function Configurator() {
   const currentRecoilV = canShowBuildDetails ? buildResult.stats.recoilVertical : (weapon.properties?.recoilVertical ?? t('config.notAvailable'));
   const currentRecoilH = canShowBuildDetails ? buildResult.stats.recoilHorizontal : (weapon.properties?.recoilHorizontal ?? t('config.notAvailable'));
   const currentPrice = canShowBuildDetails
-    ? formatCurrency(buildCostSummary?.remainingTotal, 'RUB', t('config.notAvailable'))
+    ? buildCostSummary?.remainingTotal === 0
+      ? t('ownedItems.allPurchased')
+      : formatCurrency(buildCostSummary?.remainingTotal, 'RUB', t('config.notAvailable'))
     : formatCurrency(
       getSelectedPriceInfo(
         weapon,
@@ -1701,6 +1714,7 @@ function Configurator() {
   }
 
   // Фильтрация групп деталей для рендеринга
+  const weaponInstance = buildCostSummary?.instances.find(instance => instance.isWeapon) || null;
   const renderedGroups = partsGroups.map(group => {
     const filteredParts = sortModuleDisplayItems(group.parts)
       .filter(part => {
@@ -1711,8 +1725,10 @@ function Configurator() {
         const slot = (part.slotName || '').toLowerCase();
         const parentName = (part.parentItem?.name || part.parentItem?.shortName || '').toLowerCase();
         const groupName = group.rootSlotName.toLowerCase();
+        const itemId = (part.item?.id || '').toLowerCase();
         return name.includes(q)
           || shortName.includes(q)
+          || itemId.includes(q)
           || slot.includes(q)
           || parentName.includes(q)
           || groupName.includes(q);
@@ -1735,7 +1751,37 @@ function Configurator() {
       parts: filteredParts
     };
   }).filter(group => group.parts.length > 0);
-  const weaponInstance = buildCostSummary?.instances.find(instance => instance.isWeapon) || null;
+  const baseWeaponGroup = weaponInstance && (
+    !partsFilter.trim()
+    || [
+      weapon.name,
+      weapon.shortName,
+      weapon.id,
+      t('ownedItems.baseWeapon'),
+    ].some(value => value?.toLowerCase().includes(partsFilter.trim().toLowerCase()))
+  )
+    ? {
+      displayRank: -1,
+      rootSlotName: t('ownedItems.baseWeapon'),
+      parts: [{
+        key: weaponInstance.key,
+        ownershipKey: weaponInstance.key,
+        item: weapon,
+        isWeapon: true,
+        isOwned: reconciledOwnedItems.some(item => item.key === weaponInstance.key),
+        priceInfo: getSelectedPriceInfo(
+          weapon,
+          priceMode,
+          includeTraderPrices,
+          activeTraderLevels,
+          strictTraderLevels,
+        ),
+      }],
+    }
+    : null;
+  const displayGroups = baseWeaponGroup
+    ? [baseWeaponGroup, ...renderedGroups]
+    : renderedGroups;
   const handleOwnedToggle = instance => {
     setOwnedItems(current => toggleOwnedItem(
       reconcileOwnedItems(current, weapon, buildResult?.build || []),
@@ -1799,12 +1845,6 @@ function Configurator() {
             canSave={canShowBuildDetails}
             currentPrice={currentPrice}
             marketPrice={buildCostSummary?.marketTotal}
-            ownedValue={buildCostSummary?.ownedValue}
-            isWeaponOwned={Boolean(
-              weaponInstance
-              && reconciledOwnedItems.some(item => item.key === weaponInstance.key)
-            )}
-            onToggleWeaponOwned={() => handleOwnedToggle(weaponInstance)}
             onOpenDiagram={() => setIsBuildDiagramOpen(true)}
             onSave={handleSaveBuild}
             onSaveNameChange={value => {
@@ -1890,7 +1930,7 @@ function Configurator() {
               buildExists={Boolean(buildResult)}
               canShowBuildDetails={canShowBuildDetails}
               generating={generating}
-              groups={renderedGroups}
+              groups={displayGroups}
               onOpenReplacement={handleOpenReplaceDrawer}
               onToggleOwned={part => handleOwnedToggle({
                 key: part.ownershipKey,

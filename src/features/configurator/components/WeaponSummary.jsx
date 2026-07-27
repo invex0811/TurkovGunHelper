@@ -10,9 +10,6 @@ export default function WeaponSummary({
   canSave,
   currentPrice,
   marketPrice,
-  ownedValue,
-  isWeaponOwned,
-  onToggleWeaponOwned,
   onOpenDiagram,
   onSave,
   onSaveNameChange,
@@ -80,24 +77,7 @@ export default function WeaponSummary({
               price: `${Math.round(marketPrice).toLocaleString('en-US')} ₽`,
             })}</small>
           )}
-          {ownedValue > 0 && (
-            <small>{t('ownedItems.ownedTotal', {
-              price: `${Math.round(ownedValue).toLocaleString('en-US')} ₽`,
-            })}</small>
-          )}
         </div>
-        <label className="check owned-item-toggle">
-          <input
-            type="checkbox"
-            checked={isWeaponOwned}
-            aria-label={t('ownedItems.toggle', {
-              item: weapon.name || weapon.shortName,
-            })}
-            onClick={event => event.stopPropagation()}
-            onChange={onToggleWeaponOwned}
-          />
-          <span>{t('ownedItems.weaponOwned')}</span>
-        </label>
         {requiredModuleCount > 0 && (
           <div className="chip">
             {t('config.required')}
