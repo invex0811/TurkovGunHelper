@@ -215,6 +215,7 @@ export function createImportedBuildSnapshot(importedBuild, catalog) {
       includeTraderPrices,
       strictTraderLevels,
     },
+    ownedItems: Array.isArray(importedBuild.ownedItems) ? importedBuild.ownedItems : [],
   });
   return { ...restored, snapshot };
 }

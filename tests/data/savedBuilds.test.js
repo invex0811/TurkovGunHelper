@@ -179,6 +179,17 @@ test('saved builds preserve a trader level snapshot without changing global sett
   );
 });
 
+test('saved builds preserve owned item occurrences independently', () => {
+  const storage = createStorage();
+  const ownedItems = [
+    { key: 'weapon:weapon-1', itemId: 'weapon-1' },
+    { key: 'weapon:weapon-1/slot:mod_mount_3A1/item:part-1', itemId: 'part-1' },
+  ];
+  saveBuildSnapshot(createSnapshot({ ownedItems }), storage, { id: 'owned-items' });
+
+  assert.deepEqual(getSavedBuild('owned-items', storage).ownedItems, ownedItems);
+});
+
 test('saved builds preserve the new Custom radar profile without a schema bump', () => {
   const storage = createStorage();
   const customProfile = {

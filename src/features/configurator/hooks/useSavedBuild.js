@@ -10,6 +10,7 @@ export default function useSavedBuild({
   weapon,
   buildResult,
   settings,
+  ownedItems,
   t,
 }) {
   const [activeSavedBuildId, setActiveSavedBuildId] = useState(requestedSavedBuildId);
@@ -48,6 +49,7 @@ export default function useSavedBuild({
           maxWeight: settings.customProfile.weight,
           maxPrice: settings.customProfile.price,
         },
+        ownedItems,
       }));
 
       setActiveSavedBuildId(savedBuild.id);
@@ -62,7 +64,7 @@ export default function useSavedBuild({
         message: t('config.saveFailed'),
       });
     }
-  }, [activeSavedBuildId, buildResult, saveName, settings, t, weapon]);
+  }, [activeSavedBuildId, buildResult, ownedItems, saveName, settings, t, weapon]);
 
   return {
     activeSavedBuildId,

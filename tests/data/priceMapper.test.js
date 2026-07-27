@@ -46,7 +46,7 @@ function trader(priceRUB, overrides = {}) {
   };
 }
 
-test('informational trader levels preserve locked-offer warnings without filtering prices', () => {
+test('non-strict trader levels do not evaluate availability or filter prices', () => {
   const item = itemWithOffers(flea(78_000), trader(35_000));
   const selected = selectPurchasePrice(item, {
     includeTraderPrices: true,
@@ -58,19 +58,18 @@ test('informational trader levels preserve locked-offer warnings without filteri
   assert.equal(selected.sourceType, PRICE_SOURCE_TYPE.TRADER);
   assert.equal(selected.traderId, 'mechanic-id');
   assert.equal(selected.traderLevel, 3);
-  assert.equal(selected.unavailableTraderOffers.length, 1);
-  assert.equal(selected.unavailableTraderOffers[0].value, 35_000);
+  assert.deepEqual(selected.unavailableTraderOffers, []);
   assert.deepEqual(selected.traderAvailability, {
-    evaluated: true,
+    evaluated: false,
     strict: false,
-    unavailableOfferCount: 1,
-    selectedOfferUnavailable: true,
+    unavailableOfferCount: 0,
+    selectedOfferUnavailable: false,
     fallbackUsed: false,
   });
   assert.equal(selected.traderFallbackUsed, false);
 });
 
-test('informational trader levels report an available selected offer without a warning', () => {
+test('non-strict trader levels remain unevaluated when the selected offer is available', () => {
   const selected = selectPurchasePrice(itemWithOffers(flea(78_000), trader(35_000)), {
     includeTraderPrices: true,
     priceMode: PRICE_MODES.PVP,
@@ -80,7 +79,7 @@ test('informational trader levels report an available selected offer without a w
   assert.equal(selected.value, 35_000);
   assert.deepEqual(selected.unavailableTraderOffers, []);
   assert.deepEqual(selected.traderAvailability, {
-    evaluated: true,
+    evaluated: false,
     strict: false,
     unavailableOfferCount: 0,
     selectedOfferUnavailable: false,

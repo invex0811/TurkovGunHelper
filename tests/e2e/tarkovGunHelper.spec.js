@@ -54,7 +54,51 @@ test('creates a weapon build from the catalog', async ({ page }) => {
   await createBuild(page);
 
   await expect(page.getByRole('heading', { name: 'TW', exact: true })).toBeVisible();
-  await expect(page.getByText('Est. Build Price', { exact: true })).toBeVisible();
+  await expect(page.getByText(/^Remaining to buy/)).toBeVisible();
+});
+
+test('owned items update costs, support mass actions, and persist with a saved build', async ({ page }) => {
+  await createBuild(page);
+
+  const remainingPrice = page.locator('.price-box .price-amount');
+  const partOwned = page.locator('.part-card').filter({ hasText: 'Starter Grip' })
+    .getByRole('checkbox', { name: 'Mark Starter Grip as owned', exact: true });
+  const weaponOwned = page.getByRole('checkbox', {
+    name: 'Mark Test weapon as owned',
+    exact: true,
+  });
+  const initialRemainingPrice = await remainingPrice.innerText();
+
+  await expect(page.getByText(/^Remaining to buy/)).toBeVisible();
+  await expect(page.getByText(/^Build market value: .+ ₽$/)).toBeVisible();
+  await expect(partOwned).not.toBeChecked();
+  await expect(weaponOwned).not.toBeChecked();
+
+  await partOwned.check();
+  await expect(partOwned).toBeChecked();
+  await expect(remainingPrice).not.toHaveText(initialRemainingPrice);
+
+  await page.getByRole('button', { name: 'Mark all owned', exact: true }).click();
+  await expect(partOwned).toBeChecked();
+  await expect(weaponOwned).toBeChecked();
+
+  await page.getByRole('button', { name: 'Clear all', exact: true }).click();
+  await expect(partOwned).not.toBeChecked();
+  await expect(weaponOwned).not.toBeChecked();
+  await expect(remainingPrice).toHaveText(initialRemainingPrice);
+
+  await partOwned.check();
+  await saveBuild(page, 'Owned parts build');
+  await openSavedBuild(page, 'Owned parts build');
+  await expect(page.locator('.part-card').filter({ hasText: 'Starter Grip' })
+    .getByRole('checkbox', {
+      name: 'Mark Starter Grip as owned',
+      exact: true,
+    })).toBeChecked();
+  await expect(page.getByRole('checkbox', {
+    name: 'Mark Test weapon as owned',
+    exact: true,
+  })).not.toBeChecked();
 });
 
 test('strict trader settings expand, persist, and appear once in Configurator', async ({ page }) => {
@@ -101,6 +145,7 @@ test('strict trader settings expand, persist, and appear once in Configurator', 
   await expect(strictBadgeLink).toBeVisible();
   await expect(strictBadgeLink).toHaveAttribute('href', '#/settings#traders');
   await expect(page.locator('.part-card').filter({ hasText: 'Starter Grip' })).toBeVisible();
+  await expect(page.getByText('Trader offer unavailable', { exact: true })).toHaveCount(0);
 });
 
 test('settings page persists interface and separate trader level profiles', async ({ page }) => {
@@ -242,10 +287,19 @@ test('replaces a part, saves the build, and restores it', async ({ page }) => {
   await createBuild(page);
 
   const starterPart = page.locator('.part-card').filter({ hasText: 'Starter Grip' });
+  await starterPart.getByRole('checkbox', {
+    name: 'Mark Starter Grip as owned',
+    exact: true,
+  }).check();
   await starterPart.getByRole('button', { name: 'Replace', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Replace Part', exact: true })).toBeVisible();
   await page.getByText('Alternative Grip', { exact: true }).click();
-  await expect(page.locator('.part-card').filter({ hasText: 'Alternative Grip' })).toBeVisible();
+  const alternativePart = page.locator('.part-card').filter({ hasText: 'Alternative Grip' });
+  await expect(alternativePart).toBeVisible();
+  await expect(alternativePart.getByRole('checkbox', {
+    name: 'Mark Alternative Grip as owned',
+    exact: true,
+  })).not.toBeChecked();
 
   await saveBuild(page, 'Replacement build');
   await openSavedBuild(page, 'Replacement build');

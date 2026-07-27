@@ -18,6 +18,12 @@ import {
   restoreBuildParts,
 } from '../../data/savedBuilds.js';
 import { recalculateBuildStats } from '../../domain/calculator.js';
+import {
+  calculateBuildCostSummary,
+  getBuildItemInstances,
+  reconcileOwnedItems,
+  toggleOwnedItem,
+} from '../../domain/ownedItems.js';
 import { categoryMatches, hasItemCategory } from '../../domain/itemCategories.js';
 import {
   buildWeaponAssemblyTree as buildAssemblyTree,
@@ -122,6 +128,7 @@ function getBuildModuleDisplayItems(weapon, buildParts) {
       ...part,
       ...getModuleDisplayState(slot, part.item),
       key: `installed:${part.item.id}:${part.slotName}:${originalIndex}`,
+      ownershipKey: node?.instanceId || null,
       parentItem: node?.parent?.item || weapon,
       slot,
     };
@@ -563,21 +570,19 @@ function collectBuildPriceDiagnostics(
   includeTraderPrices,
   traderLevels,
   strictTraderLevels,
+  ownedItems,
   t,
 ) {
-  const entries = [
-    {
-      label: t('config.weapon'),
-      item: weapon,
-    },
-    ...buildResult.build.map(part => ({
-      label: getItemDisplayName(part.item, part.slotName),
-      item: part.item,
-    })),
-  ].map(entry => ({
-    ...entry,
+  const ownedKeys = new Set((ownedItems || []).map(item => item.key));
+  const entries = getBuildItemInstances(weapon, buildResult.build).map(instance => ({
+    label: instance.isWeapon
+      ? t('config.weapon')
+      : getItemDisplayName(instance.item, instance.buildPart?.slotName),
+    item: instance.item,
+    instanceKey: instance.key,
+    isOwned: ownedKeys.has(instance.key),
     priceInfo: getSelectedPriceInfo(
-      entry.item,
+      instance.item,
       selectedPriceMode,
       includeTraderPrices,
       traderLevels,
@@ -586,15 +591,14 @@ function collectBuildPriceDiagnostics(
   }));
 
   const fallbackEntries = entries.filter(entry => (
+    !entry.isOwned
+    &&
     entry.priceInfo.fallbackUsed
     && !entry.priceInfo.isMissing
   ));
-  const missingEntries = entries.filter(entry => entry.priceInfo.isMissing);
+  const missingEntries = entries.filter(entry => !entry.isOwned && entry.priceInfo.isMissing);
   const modeMismatchEntries = entries.filter(entry => entry.priceInfo.modeMismatch);
   const barterOnlyEntries = entries.filter(entry => entry.priceInfo.barterOnly);
-  const unavailableTraderEntries = entries.filter(entry => (
-    entry.priceInfo.unavailableTraderOffers?.length > 0
-  ));
   const sourceLabels = Array.from(new Set(
     entries
       .filter(entry => !entry.priceInfo.isMissing)
@@ -628,16 +632,6 @@ function collectBuildPriceDiagnostics(
     );
   }
 
-  if (unavailableTraderEntries.length > 0) {
-    warningMessages.push(
-      t(strictTraderLevels
-        ? 'config.price.traderUnavailable'
-        : 'config.price.traderLevelInformational', {
-        items: formatDiagnosticsList(unavailableTraderEntries, t),
-      }),
-    );
-  }
-
   if (sourceLabels.length > 1) {
     warningMessages.push(t('config.price.mixedSources', { sources: sourceLabels.join(', ') }));
   }
@@ -655,7 +649,6 @@ function collectBuildPriceDiagnostics(
     missingEntries,
     modeMismatchEntries,
     barterOnlyEntries,
-    unavailableTraderEntries,
     sourceLabels,
     warningMessages,
     summaryStatus,
@@ -701,6 +694,7 @@ function getReplacementConstraintErrors({
   includeTraderPrices,
   traderLevels,
   strictTraderLevels,
+  ownedItems,
   maxWeight,
   maxPrice,
   requiredItemIds,
@@ -766,13 +760,24 @@ function getReplacementConstraintErrors({
   });
   const parsedMaxWeight = Number(maxWeight) || 0;
   const parsedMaxPrice = Number(maxPrice) || 0;
+  const costSummary = calculateBuildCostSummary({
+    weapon,
+    buildParts,
+    ownedItems,
+    priceOptions: {
+      priceMode,
+      includeTraderPrices,
+      traderLevels,
+      strictTraderLevels,
+    },
+  });
 
   if (parsedMaxWeight > 0 && Number(stats.weight) > parsedMaxWeight + 0.0001) {
     errors.push(t('config.weightLimit', { weight: parsedMaxWeight }));
   }
-  if (parsedMaxPrice > 0 && !isPositivePrice(stats.price)) {
+  if (parsedMaxPrice > 0 && !isPositivePrice(costSummary.remainingTotal)) {
     errors.push(t('config.priceUnavailable'));
-  } else if (parsedMaxPrice > 0 && stats.price > parsedMaxPrice) {
+  } else if (parsedMaxPrice > 0 && costSummary.remainingTotal > parsedMaxPrice) {
     errors.push(t('config.budgetLimit', { price: parsedMaxPrice }));
   }
 
@@ -989,6 +994,15 @@ function Configurator() {
   const [magazineCapacity, setMagazineCapacity] = useState(30);
   const [allMods, setAllMods] = useState(null);
   const [buildResult, setBuildResult] = useState(null);
+  const [ownedItems, setOwnedItems] = useState(
+    () => requestedSavedBuild?.ownedItems || [],
+  );
+  const reconciledOwnedItems = useMemo(
+    () => weapon && buildResult?.build
+      ? reconcileOwnedItems(ownedItems, weapon, buildResult.build)
+      : [],
+    [buildResult, ownedItems, weapon],
+  );
   const [loadError, setLoadError] = useState(null);
   const [generationError, setGenerationError] = useState(null);
   const [generating, setGenerating] = useState(false);
@@ -1025,6 +1039,7 @@ function Configurator() {
     requestedSavedBuildId,
     weapon,
     buildResult,
+    ownedItems: reconciledOwnedItems,
     settings: {
       targetType,
       customProfile,
@@ -1042,6 +1057,7 @@ function Configurator() {
     },
     t,
   });
+
   useLayoutEffect(() => {
     if (requestedSavedBuild?.settings.priceMode
       && requestedSavedBuild.settings.priceMode !== priceMode) {
@@ -1112,12 +1128,17 @@ function Configurator() {
             ? rebindBuildPartsToCatalog(previousWeapon, currentBuild, weaponData, modsData)
             : null;
           const nextPrice = localizedBuild
-            ? recalculateBuildStats(weaponData, localizedBuild, {
-              priceMode,
-              includeTraderPrices,
-              traderLevels: activeTraderLevels,
-              strictTraderLevels,
-            }).stats.price
+            ? calculateBuildCostSummary({
+              weapon: weaponData,
+              buildParts: localizedBuild,
+              ownedItems,
+              priceOptions: {
+                priceMode,
+                includeTraderPrices,
+                traderLevels: activeTraderLevels,
+                strictTraderLevels,
+              },
+            }).remainingTotal
             : null;
           setPricePolicyWarning(
             budgetLimit > 0 && !isPositivePrice(nextPrice)
@@ -1159,6 +1180,7 @@ function Configurator() {
             ? t('config.savedModulesSkipped', { count: restored.missingItemIds.length })
             : undefined,
         });
+        setOwnedItems(requestedSavedBuild.ownedItems || []);
         setTargetType(normalizeTargetType(settings.targetType));
         setCustomProfile(createCustomBuildProfileFromSettings(settings, weaponData));
         setCustomExactTargets(normalizeCustomExactTargets(settings.customExactTargets));
@@ -1175,6 +1197,7 @@ function Configurator() {
         setSaveName(requestedSavedBuild.name);
       } else {
         setBuildResult(null);
+        setOwnedItems([]);
         setCustomExactTargets(DEFAULT_CUSTOM_EXACT_TARGETS);
         setRequiredModuleIds([]);
         setActiveSavedBuildId(null);
@@ -1225,6 +1248,7 @@ function Configurator() {
       includeTraderPrices,
       traderLevels: activeTraderLevels,
       strictTraderLevels,
+      ownedItems: reconciledOwnedItems,
       maxWeight,
       maxPrice,
       requiredItemIds: requiredModuleIds,
@@ -1240,6 +1264,7 @@ function Configurator() {
     }
 
     setReplacementError(null);
+    setOwnedItems(current => reconcileOwnedItems(current, weapon, updatedBuild));
     setBuildResult(stats);
     setActiveReplacePartId(null);
   };
@@ -1275,6 +1300,7 @@ function Configurator() {
       includeTraderPrices,
       traderLevels: activeTraderLevels,
       strictTraderLevels,
+      ownedItems: reconciledOwnedItems,
       maxWeight,
       maxPrice,
       requiredItemIds: requiredModuleIds,
@@ -1286,6 +1312,7 @@ function Configurator() {
     if (errors.length > 0) return errors;
 
     setReplacementError(null);
+    setOwnedItems(current => reconcileOwnedItems(current, weapon, nextBuildParts));
     setBuildResult(current => current ? {
       ...current,
       ...recalculatedResult,
@@ -1300,6 +1327,7 @@ function Configurator() {
     maxPrice,
     maxWeight,
     priceMode,
+    reconciledOwnedItems,
     requiredModuleIds,
     sightMode,
     suppressorMode,
@@ -1331,15 +1359,26 @@ function Configurator() {
       strictTraderLevels,
     });
     const budgetLimit = Number(maxPrice) || 0;
+    const remainingTotal = calculateBuildCostSummary({
+      weapon,
+      buildParts: buildResult.build,
+      ownedItems,
+      priceOptions: {
+        priceMode,
+        includeTraderPrices: nextValue,
+        traderLevels: activeTraderLevels,
+        strictTraderLevels,
+      },
+    }).remainingTotal;
 
     setBuildResult(current => current ? {
       ...current,
       stats: recalculated.stats,
     } : current);
     setPricePolicyWarning(
-      budgetLimit > 0 && !isPositivePrice(recalculated.stats.price)
+      budgetLimit > 0 && !isPositivePrice(remainingTotal)
         ? t('config.currentPriceUnavailable')
-        : budgetLimit > 0 && recalculated.stats.price > budgetLimit
+        : budgetLimit > 0 && remainingTotal > budgetLimit
           ? t('config.currentBudgetExceeded', { price: budgetLimit })
           : null,
     );
@@ -1417,6 +1456,31 @@ function Configurator() {
   const hasCalculationError = buildResult ? Boolean(buildResult.error) : false;
   const hasBuildParts = buildResult ? (Array.isArray(buildResult.build) && buildResult.build.length > 0) : false;
   const canShowBuildDetails = Boolean(buildResult && !hasCalculationError && hasBuildParts);
+  const buildCostSummary = useMemo(
+    () => canShowBuildDetails
+      ? calculateBuildCostSummary({
+        weapon,
+        buildParts: buildResult.build,
+        ownedItems: reconciledOwnedItems,
+        priceOptions: {
+          priceMode,
+          includeTraderPrices,
+          traderLevels: activeTraderLevels,
+          strictTraderLevels,
+        },
+      })
+      : null,
+    [
+      activeTraderLevels,
+      buildResult,
+      canShowBuildDetails,
+      includeTraderPrices,
+      reconciledOwnedItems,
+      priceMode,
+      strictTraderLevels,
+      weapon,
+    ],
+  );
   const availableCapacities = useMemo(
     () => getAvailableCapacities(weapon, allMods),
     [weapon, allMods],
@@ -1535,6 +1599,7 @@ function Configurator() {
       includeTraderPrices,
       activeTraderLevels,
       strictTraderLevels,
+      reconciledOwnedItems,
       t,
     )
     : {
@@ -1552,7 +1617,7 @@ function Configurator() {
   const currentRecoilV = canShowBuildDetails ? buildResult.stats.recoilVertical : (weapon.properties?.recoilVertical ?? t('config.notAvailable'));
   const currentRecoilH = canShowBuildDetails ? buildResult.stats.recoilHorizontal : (weapon.properties?.recoilHorizontal ?? t('config.notAvailable'));
   const currentPrice = canShowBuildDetails
-    ? formatCurrency(buildResult.stats.price, 'RUB', t('config.notAvailable'))
+    ? formatCurrency(buildCostSummary?.remainingTotal, 'RUB', t('config.notAvailable'))
     : formatCurrency(
       getSelectedPriceInfo(
         weapon,
@@ -1654,6 +1719,7 @@ function Configurator() {
       })
       .map(part => ({
         ...part,
+        isOwned: reconciledOwnedItems.some(item => item.key === part.ownershipKey),
         priceInfo: part.item
           ? getSelectedPriceInfo(
             part.item,
@@ -1669,6 +1735,13 @@ function Configurator() {
       parts: filteredParts
     };
   }).filter(group => group.parts.length > 0);
+  const weaponInstance = buildCostSummary?.instances.find(instance => instance.isWeapon) || null;
+  const handleOwnedToggle = instance => {
+    setOwnedItems(current => toggleOwnedItem(
+      reconcileOwnedItems(current, weapon, buildResult?.build || []),
+      instance,
+    ));
+  };
 
   return (
     <div className="layout">
@@ -1725,6 +1798,13 @@ function Configurator() {
             activeSavedBuildId={activeSavedBuildId}
             canSave={canShowBuildDetails}
             currentPrice={currentPrice}
+            marketPrice={buildCostSummary?.marketTotal}
+            ownedValue={buildCostSummary?.ownedValue}
+            isWeaponOwned={Boolean(
+              weaponInstance
+              && reconciledOwnedItems.some(item => item.key === weaponInstance.key)
+            )}
+            onToggleWeaponOwned={() => handleOwnedToggle(weaponInstance)}
             onOpenDiagram={() => setIsBuildDiagramOpen(true)}
             onSave={handleSaveBuild}
             onSaveNameChange={value => {
@@ -1758,6 +1838,29 @@ function Configurator() {
               >
                 {t('config.clear')}
               </button>
+              {canShowBuildDetails && (
+                <>
+                  <button
+                    className="btn btn--ghost"
+                    type="button"
+                    onClick={() => setOwnedItems(
+                      buildCostSummary.instances.map(instance => ({
+                        key: instance.key,
+                        itemId: instance.itemId,
+                      })),
+                    )}
+                  >
+                    {t('ownedItems.markAll')}
+                  </button>
+                  <button
+                    className="btn btn--ghost"
+                    type="button"
+                    onClick={() => setOwnedItems([])}
+                  >
+                    {t('ownedItems.clearAll')}
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Вывод ошибок при расчете сборки */}
@@ -1789,6 +1892,10 @@ function Configurator() {
               generating={generating}
               groups={renderedGroups}
               onOpenReplacement={handleOpenReplaceDrawer}
+              onToggleOwned={part => handleOwnedToggle({
+                key: part.ownershipKey,
+                itemId: part.item.id,
+              })}
               formatPartName={formatPartName}
               t={t}
             />

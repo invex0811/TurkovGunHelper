@@ -104,6 +104,13 @@ export function readSavedBuilds(storage = getDefaultStorage()) {
       .filter(isValidSavedBuild)
       .map(build => ({
         ...build,
+        ownedItems: Array.isArray(build.ownedItems)
+          ? build.ownedItems.filter(item => (
+            item
+            && typeof item.key === 'string'
+            && typeof item.itemId === 'string'
+          )).map(item => ({ key: item.key, itemId: item.itemId }))
+          : [],
         settings: {
           ...build.settings,
           includeTraderPrices: build.settings.includeTraderPrices !== false,
@@ -229,6 +236,7 @@ export function createBuildSnapshot({
   weapon,
   buildResult,
   settings,
+  ownedItems = [],
 }) {
   const contextualParts = contextualizeBuildParts(weapon, buildResult.build);
   return {
@@ -254,6 +262,7 @@ export function createBuildSnapshot({
       parentItemId: part.parentItemId,
       parentInstanceId: part.parentInstanceId,
     })),
+    ownedItems: ownedItems.map(item => ({ key: item.key, itemId: item.itemId })),
     stats: {
       ergonomics: buildResult.stats.ergonomics,
       recoilVertical: buildResult.stats.recoilVertical,

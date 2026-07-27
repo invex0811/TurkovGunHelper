@@ -169,6 +169,27 @@ test('serialize then parse preserves the normalized tree', () => {
   assert.deepEqual(parsed.builds[0].configuration, payload.builds[0].configuration);
 });
 
+test('serialize, parse, and import preserve owned item occurrences', () => {
+  const catalog = createCatalog();
+  const build = savedBuild(catalog);
+  build.ownedItems = [
+    { key: `weapon:${catalog.weapon.id}`, itemId: catalog.weapon.id },
+    {
+      key: build.parts[0].slotInstanceId.replace(
+        /\/slot:[^/]+$/,
+        `/slot:slot-stock_3A0/item:${catalog.stock.id}`,
+      ),
+      itemId: catalog.stock.id,
+    },
+  ];
+
+  const parsed = parseBuildImport(JSON.stringify(exportBuilds([build])));
+  const imported = createImportedBuildSnapshot(parsed.builds[0], catalog);
+
+  assert.deepEqual(parsed.builds[0].ownedItems, build.ownedItems);
+  assert.deepEqual(imported.snapshot.ownedItems, build.ownedItems);
+});
+
 test('invalid JSON is rejected', () => {
   assert.throws(() => parseBuildImport('{bad'), error => error.code === 'INVALID_JSON');
 });

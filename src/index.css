@@ -1176,6 +1176,30 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   white-space: normal;
 }
 
+.part-card--owned {
+  border-style: double;
+  box-shadow: inset 3px 0 0 var(--color-accent-gold);
+}
+
+.owned-item-toggle {
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0.2rem 0.35rem;
+}
+
+.owned-item-toggle:focus-within {
+  border-color: var(--color-accent-gold);
+  outline: 2px solid color-mix(in srgb, var(--color-accent-gold) 35%, transparent);
+  outline-offset: 2px;
+}
+
+.owned-item-payable {
+  color: var(--color-text-muted);
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
 .advanced-builder {
   display: grid;
   gap: 12px;

@@ -12,6 +12,7 @@ export default function BuildParts({
   generating,
   groups,
   onOpenReplacement,
+  onToggleOwned,
   formatPartName,
   t,
 }) {
@@ -53,7 +54,7 @@ export default function BuildParts({
               return (
                 <article
                   key={part.key}
-                  className={`part-card ${part.isCritical ? 'part-card--critical' : ''}`}
+                  className={`part-card ${part.isCritical ? 'part-card--critical' : ''} ${part.isOwned ? 'part-card--owned' : ''}`}
                 >
                   <div className="part-card__media">
                     <AsyncImage
@@ -79,6 +80,11 @@ export default function BuildParts({
                         )}
                       </div>
                       <ItemPrice priceInfo={part.priceInfo} />
+                      {part.isOwned && (
+                        <span className="owned-item-payable">
+                          {t('ownedItems.payablePrice', { price: '0 ₽' })}
+                        </span>
+                      )}
                     </div>
                     <button
                       className={`replace-btn ${activeReplacePartId === part.item.id ? 'active' : ''}`}
@@ -90,6 +96,18 @@ export default function BuildParts({
                     >
                       {t('config.replace')}
                     </button>
+                    <label className="check owned-item-toggle">
+                      <input
+                        type="checkbox"
+                        checked={part.isOwned}
+                        aria-label={t('ownedItems.toggle', {
+                          item: part.item.name || part.item.shortName,
+                        })}
+                        onClick={event => event.stopPropagation()}
+                        onChange={() => onToggleOwned(part)}
+                      />
+                      <span>{t('ownedItems.owned')}</span>
+                    </label>
                   </div>
                 </article>
               );

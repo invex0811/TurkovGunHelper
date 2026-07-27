@@ -274,10 +274,12 @@ export function selectPurchasePrice(item, options = {}) {
   }
 
   const traderOffers = offers.traderOffers || [];
-  const evaluatesTraderAvailability = Boolean(includeTraderPrices && options.traderLevels);
-  const enforcesTraderAvailability = Boolean(
-    evaluatesTraderAvailability && options.strictTraderLevels,
+  const evaluatesTraderAvailability = Boolean(
+    includeTraderPrices
+    && options.strictTraderLevels === true
+    && options.traderLevels,
   );
+  const enforcesTraderAvailability = evaluatesTraderAvailability;
   const unavailableTraderOffers = evaluatesTraderAvailability
     ? traderOffers.filter(offer => {
       if (!offer.traderId || !Number.isFinite(offer.traderLevel)) return false;
