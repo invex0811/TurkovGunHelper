@@ -18,6 +18,7 @@ const EXPORTED_SETTING_KEYS = [
   'customRecoil',
   'suppressorMode',
   'includeTraderPrices',
+  'strictTraderLevels',
   'traderLevelsSnapshot',
   'maxWeight',
   'maxPrice',

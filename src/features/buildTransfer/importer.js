@@ -200,6 +200,7 @@ export function createImportedBuildSnapshot(importedBuild, catalog) {
 
   const priceMode = importedBuild.gameMode === 'pve' ? 'pve' : 'pvp';
   const includeTraderPrices = importedBuild.settings.includeTraderPrices !== false;
+  const strictTraderLevels = importedBuild.settings.strictTraderLevels === true;
   const recalculated = recalculateBuildStats(restored.weapon, restored.buildParts, {
     priceMode,
     includeTraderPrices,
@@ -212,6 +213,7 @@ export function createImportedBuildSnapshot(importedBuild, catalog) {
       ...importedBuild.settings,
       priceMode,
       includeTraderPrices,
+      strictTraderLevels,
     },
   });
   return { ...restored, snapshot };

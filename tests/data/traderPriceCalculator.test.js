@@ -119,11 +119,13 @@ test('calculator uses available trader levels for price and budget without chang
     priceMode: PRICE_MODES.PVP,
     includeTraderPrices: true,
     traderLevels: { 'mechanic-id': 2 },
+    strictTraderLevels: true,
   });
   const ll3 = recalculateBuildStats(weapon, build, {
     priceMode: PRICE_MODES.PVP,
     includeTraderPrices: true,
     traderLevels: { 'mechanic-id': 3 },
+    strictTraderLevels: true,
   });
 
   assert.equal(ll2.stats.price, 55_000);
@@ -143,6 +145,7 @@ test('calculator uses available trader levels for price and budget without chang
       priceMode: PRICE_MODES.PVP,
       includeTraderPrices: true,
       traderLevels: { 'mechanic-id': 2 },
+      strictTraderLevels: true,
       maxPrice: 30_000,
     },
   );

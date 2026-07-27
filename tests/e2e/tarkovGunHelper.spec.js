@@ -57,6 +57,52 @@ test('creates a weapon build from the catalog', async ({ page }) => {
   await expect(page.getByText('Est. Build Price', { exact: true })).toBeVisible();
 });
 
+test('strict trader settings expand, persist, and appear once in Configurator', async ({ page }) => {
+  await page.goto('/#/settings#traders');
+
+  const strictTraderLevels = page.getByRole('checkbox', {
+    name: /Strict(?:ly enforce)? trader levels/,
+  });
+  const traderLevelSettings = page.locator('#trader-level-settings');
+  const praporLevel = page.getByRole('combobox', { name: 'Prapor: Loyalty level' });
+
+  await expect(strictTraderLevels).not.toBeChecked();
+  await expect(strictTraderLevels).toHaveAttribute('aria-expanded', 'false');
+  await expect(traderLevelSettings).toHaveAttribute('aria-hidden', 'true');
+  await expect(praporLevel).toBeHidden();
+
+  await strictTraderLevels.check();
+  await expect(strictTraderLevels).toHaveAttribute('aria-expanded', 'true');
+  await expect(traderLevelSettings).toHaveAttribute('aria-hidden', 'false');
+  await expect(praporLevel).toBeVisible();
+  await praporLevel.selectOption('3');
+
+  await strictTraderLevels.uncheck();
+  await expect(strictTraderLevels).toHaveAttribute('aria-expanded', 'false');
+  await expect(praporLevel).toBeHidden();
+  await strictTraderLevels.check();
+  await expect(praporLevel).toBeVisible();
+  await expect(praporLevel).toHaveValue('3');
+
+  await page.reload();
+  await expect(page.getByRole('checkbox', {
+    name: /Strict(?:ly enforce)? trader levels/,
+  })).toBeChecked();
+  await expect(page.locator('#trader-level-settings')).toHaveAttribute('aria-hidden', 'false');
+  await expect(page.getByRole('combobox', { name: 'Prapor: Loyalty level' })).toHaveValue('3');
+
+  await createBuild(page);
+  await expect(page.getByRole('checkbox', {
+    name: /Strict(?:ly enforce)? trader levels/,
+  })).toHaveCount(0);
+  const strictBadgeLink = page.getByRole('link', {
+    name: /Strict trader levels (?:active|enabled).*?(?:Manage in settings|Configure)/,
+  });
+  await expect(strictBadgeLink).toBeVisible();
+  await expect(strictBadgeLink).toHaveAttribute('href', '#/settings#traders');
+  await expect(page.locator('.part-card').filter({ hasText: 'Starter Grip' })).toBeVisible();
+});
+
 test('settings page persists interface and separate trader level profiles', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('link', { name: 'Open settings' }).click();
@@ -64,6 +110,9 @@ test('settings page persists interface and separate trader level profiles', asyn
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
   await expect(page.getByText('Trader levels for PvP', { exact: true })).toBeVisible();
 
+  await page.getByRole('checkbox', {
+    name: /Strict(?:ly enforce)? trader levels/,
+  }).check();
   const praporLevel = page.getByRole('combobox', { name: 'Prapor: Loyalty level' });
   await praporLevel.selectOption('3');
   await page.locator('header').getByRole('group', { name: 'Price mode' })

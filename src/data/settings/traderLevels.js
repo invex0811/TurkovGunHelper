@@ -101,3 +101,19 @@ export function resetTraderLevels(priceMode = DEFAULT_PRICE_MODE, levels, trader
   normalized.profiles[priceMode] = {};
   return normalized;
 }
+
+export function initializeTraderLevels(
+  priceMode = DEFAULT_PRICE_MODE,
+  levels,
+  traders = [],
+) {
+  const normalized = normalizeTraderLevels(levels, traders);
+  const profile = normalized.profiles[priceMode];
+  if (!profile || Object.keys(profile).length > 0) return normalized;
+
+  for (const trader of traders) {
+    if (!trader?.id) continue;
+    profile[trader.id] = DEFAULT_TRADER_LEVEL;
+  }
+  return normalized;
+}

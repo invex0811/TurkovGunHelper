@@ -274,7 +274,11 @@ export function selectPurchasePrice(item, options = {}) {
   }
 
   const traderOffers = offers.traderOffers || [];
-  const unavailableTraderOffers = includeTraderPrices && options.traderLevels
+  const evaluatesTraderAvailability = Boolean(includeTraderPrices && options.traderLevels);
+  const enforcesTraderAvailability = Boolean(
+    evaluatesTraderAvailability && options.strictTraderLevels,
+  );
+  const unavailableTraderOffers = evaluatesTraderAvailability
     ? traderOffers.filter(offer => {
       if (!offer.traderId || !Number.isFinite(offer.traderLevel)) return false;
       return getEffectiveTraderLevel(offer.traderId, options.traderLevels, mode)
@@ -283,15 +287,38 @@ export function selectPurchasePrice(item, options = {}) {
     : [];
   const candidates = [offers.fleaMarket];
   if (includeTraderPrices) {
-    candidates.push(...traderOffers.filter(offer => !unavailableTraderOffers.includes(offer)));
+    candidates.push(...traderOffers.filter(offer => (
+      !enforcesTraderAvailability || !unavailableTraderOffers.includes(offer)
+    )));
   }
 
   const selectedOffer = selectCheapestOffer(candidates);
+  const unrestrictedSelectedOffer = includeTraderPrices
+    ? selectCheapestOffer([offers.fleaMarket, ...traderOffers])
+    : null;
+  const traderFallbackUsed = Boolean(
+    enforcesTraderAvailability
+    && selectedOffer
+    && unrestrictedSelectedOffer
+    && selectedOffer !== unrestrictedSelectedOffer
+    && unavailableTraderOffers.includes(unrestrictedSelectedOffer),
+  );
+  const traderAvailability = {
+    evaluated: evaluatesTraderAvailability,
+    strict: enforcesTraderAvailability,
+    unavailableOfferCount: unavailableTraderOffers.length,
+    selectedOfferUnavailable: Boolean(
+      selectedOffer && unavailableTraderOffers.includes(selectedOffer),
+    ),
+    fallbackUsed: traderFallbackUsed,
+  };
 
   if (!selectedOffer) {
     return {
       ...createMissingPrice(mode, item, offers),
       unavailableTraderOffers,
+      traderAvailability,
+      traderFallbackUsed,
     };
   }
 
@@ -315,6 +342,8 @@ export function selectPurchasePrice(item, options = {}) {
     barterOnly: Boolean(selectedOffer.barterOnly),
     requiredItems: selectedOffer.requiredItems ?? null,
     unavailableTraderOffers,
+    traderAvailability,
+    traderFallbackUsed,
     offers,
   };
 }

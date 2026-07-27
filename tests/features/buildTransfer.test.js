@@ -143,6 +143,12 @@ test('export multiple builds preserves every build in order', () => {
   assert.deepEqual(exportBuilds([first, second]).builds.map(build => build.name), [first.name, second.name]);
 });
 
+test('export preserves strict trader level policy', () => {
+  const build = savedBuild();
+  build.settings.strictTraderLevels = true;
+  assert.equal(exportBuild(build).settings.strictTraderLevels, true);
+});
+
 test('export excludes dynamic stats, images, prices and full item objects', () => {
   const serialized = JSON.stringify(exportBuild(savedBuild()));
   assert.equal(serialized.includes('stats'), false);
@@ -310,6 +316,21 @@ test('catalog validation does not mutate imported JSON', () => {
   const before = JSON.stringify(build);
   createImportedBuildSnapshot(build, catalog);
   assert.equal(JSON.stringify(build), before);
+});
+
+test('import preserves strictTraderLevels and defaults legacy files to false', () => {
+  const catalog = createCatalog();
+  const strictBuild = importedBuild(catalog);
+  strictBuild.settings.strictTraderLevels = true;
+
+  assert.equal(
+    createImportedBuildSnapshot(strictBuild, catalog).snapshot.settings.strictTraderLevels,
+    true,
+  );
+  assert.equal(
+    createImportedBuildSnapshot(importedBuild(catalog), catalog).snapshot.settings.strictTraderLevels,
+    false,
+  );
 });
 
 test('one invalid build does not hide other preview results', () => {

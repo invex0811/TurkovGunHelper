@@ -46,27 +46,92 @@ function trader(priceRUB, overrides = {}) {
   };
 }
 
-test('filters trader offers above the current loyalty level and falls back to Flea', () => {
+test('informational trader levels preserve locked-offer warnings without filtering prices', () => {
   const item = itemWithOffers(flea(78_000), trader(35_000));
-  const locked = selectPurchasePrice(item, {
+  const selected = selectPurchasePrice(item, {
     includeTraderPrices: true,
     priceMode: PRICE_MODES.PVP,
     traderLevels: { 'mechanic-id': 2 },
   });
-  const unlocked = selectPurchasePrice(item, {
+
+  assert.equal(selected.value, 35_000);
+  assert.equal(selected.sourceType, PRICE_SOURCE_TYPE.TRADER);
+  assert.equal(selected.traderId, 'mechanic-id');
+  assert.equal(selected.traderLevel, 3);
+  assert.equal(selected.unavailableTraderOffers.length, 1);
+  assert.equal(selected.unavailableTraderOffers[0].value, 35_000);
+  assert.deepEqual(selected.traderAvailability, {
+    evaluated: true,
+    strict: false,
+    unavailableOfferCount: 1,
+    selectedOfferUnavailable: true,
+    fallbackUsed: false,
+  });
+  assert.equal(selected.traderFallbackUsed, false);
+});
+
+test('informational trader levels report an available selected offer without a warning', () => {
+  const selected = selectPurchasePrice(itemWithOffers(flea(78_000), trader(35_000)), {
     includeTraderPrices: true,
     priceMode: PRICE_MODES.PVP,
     traderLevels: { 'mechanic-id': 3 },
   });
 
-  assert.equal(locked.value, 78_000);
-  assert.equal(locked.sourceType, PRICE_SOURCE_TYPE.FLEA_MARKET);
-  assert.equal(locked.unavailableTraderOffers[0].traderLevel, 3);
-  assert.equal(unlocked.value, 35_000);
-  assert.equal(unlocked.sourceType, PRICE_SOURCE_TYPE.TRADER);
+  assert.equal(selected.value, 35_000);
+  assert.deepEqual(selected.unavailableTraderOffers, []);
+  assert.deepEqual(selected.traderAvailability, {
+    evaluated: true,
+    strict: false,
+    unavailableOfferCount: 0,
+    selectedOfferUnavailable: false,
+    fallbackUsed: false,
+  });
+  assert.equal(selected.traderFallbackUsed, false);
 });
 
-test('uses another available trader and never turns an unavailable price into zero', () => {
+test('strict trader levels filter each locked offer and fall back to Flea', () => {
+  const item = itemWithOffers(flea(78_000), trader(35_000));
+  const locked = selectPurchasePrice(item, {
+    includeTraderPrices: true,
+    priceMode: PRICE_MODES.PVP,
+    traderLevels: { 'mechanic-id': 2 },
+    strictTraderLevels: true,
+  });
+  const unlocked = selectPurchasePrice(item, {
+    includeTraderPrices: true,
+    priceMode: PRICE_MODES.PVP,
+    traderLevels: { 'mechanic-id': 3 },
+    strictTraderLevels: true,
+  });
+
+  assert.equal(locked.value, 78_000);
+  assert.equal(locked.sourceType, PRICE_SOURCE_TYPE.FLEA_MARKET);
+  assert.equal(locked.unavailableTraderOffers.length, 1);
+  assert.equal(locked.unavailableTraderOffers[0].traderId, 'mechanic-id');
+  assert.equal(locked.unavailableTraderOffers[0].traderLevel, 3);
+  assert.equal(locked.unavailableTraderOffers[0].value, 35_000);
+  assert.deepEqual(locked.traderAvailability, {
+    evaluated: true,
+    strict: true,
+    unavailableOfferCount: 1,
+    selectedOfferUnavailable: false,
+    fallbackUsed: true,
+  });
+  assert.equal(locked.traderFallbackUsed, true);
+  assert.equal(unlocked.value, 35_000);
+  assert.equal(unlocked.sourceType, PRICE_SOURCE_TYPE.TRADER);
+  assert.deepEqual(unlocked.unavailableTraderOffers, []);
+  assert.deepEqual(unlocked.traderAvailability, {
+    evaluated: true,
+    strict: true,
+    unavailableOfferCount: 0,
+    selectedOfferUnavailable: false,
+    fallbackUsed: false,
+  });
+  assert.equal(unlocked.traderFallbackUsed, false);
+});
+
+test('strict trader levels use another available trader and never turn an unavailable price into zero', () => {
   const item = itemWithOffers(
     trader(20_000),
     trader(40_000, {
@@ -77,16 +142,25 @@ test('uses another available trader and never turns an unavailable price into ze
     includeTraderPrices: true,
     priceMode: PRICE_MODES.PVP,
     traderLevels: { 'mechanic-id': 1, 'prapor-id': 1 },
+    strictTraderLevels: true,
   });
   const missing = selectPurchasePrice(itemWithOffers(trader(20_000)), {
     includeTraderPrices: true,
     priceMode: PRICE_MODES.PVP,
     traderLevels: { 'mechanic-id': 1 },
+    strictTraderLevels: true,
   });
 
   assert.equal(selected.value, 40_000);
   assert.equal(selected.vendorName, 'Prapor');
+  assert.equal(selected.unavailableTraderOffers.length, 1);
+  assert.equal(selected.unavailableTraderOffers[0].vendorName, 'Mechanic');
   assert.equal(missing.value, null);
+  assert.equal(missing.sourceType, PRICE_SOURCE_TYPE.MISSING);
+  assert.equal(missing.unavailableTraderOffers.length, 1);
+  assert.equal(missing.unavailableTraderOffers[0].value, 20_000);
+  assert.equal(missing.traderAvailability.fallbackUsed, false);
+  assert.equal(missing.traderFallbackUsed, false);
 });
 
 function itemWithOffers(...buyFor) {

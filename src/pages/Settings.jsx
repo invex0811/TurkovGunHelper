@@ -1,25 +1,38 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { loadItemsCatalog } from '../data/tarkovApi/repository.js';
 import { getTarkovDevGameMode } from '../data/price/priceProvider.js';
 import { getCatalogTraders } from '../data/tarkovApi/traders.js';
-import {
-  loadIncludeTraderPricesPreference,
-  saveIncludeTraderPricesPreference,
-} from '../data/settings/buildPreferences.js';
 import InstallAppButton from '../features/pwa/InstallAppButton.jsx';
 import { usePriceMode } from '../features/priceMode/usePriceMode.js';
 import { useTraderLevels } from '../features/traderLevels/useTraderLevels.js';
 import { useI18n } from '../i18n/useI18n.js';
 
 export default function Settings({ theme, setTheme }) {
+  const location = useLocation();
+  const tradersSectionRef = useRef(null);
   const { language, setLanguage, t } = useI18n();
   const { priceMode } = usePriceMode();
-  const { traderLevels, updateTraderLevel, resetTraderLevels } = useTraderLevels();
-  const [includeTraderPrices, setIncludeTraderPrices] = useState(
-    loadIncludeTraderPricesPreference,
-  );
+  const {
+    traderLevels,
+    strictTraderLevels,
+    setStrictTraderLevels,
+    initializeTraderLevels,
+    updateTraderLevel,
+    resetTraderLevels,
+  } = useTraderLevels();
   const [traders, setTraders] = useState([]);
   const [status, setStatus] = useState('loading');
+  const [strictNotice, setStrictNotice] = useState(null);
+
+  useEffect(() => {
+    if (location.hash !== '#traders') return undefined;
+    const frameId = window.requestAnimationFrame(() => {
+      tradersSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      tradersSectionRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [location.hash]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -42,15 +55,27 @@ export default function Settings({ theme, setTheme }) {
     [priceMode, traderLevels],
   );
 
-  const handleIncludeChange = event => {
-    const next = event.target.checked;
-    setIncludeTraderPrices(next);
-    saveIncludeTraderPricesPreference(next);
-  };
-
   const handleReset = () => {
     if (!window.confirm(t('traders.resetConfirm'))) return;
     resetTraderLevels(priceMode, traders);
+  };
+
+  const handleStrictChange = event => {
+    const nextValue = event.target.checked;
+    const initializesDefaultLevels = nextValue
+      && traders.length > 0
+      && Object.keys(currentProfile).length === 0;
+    if (initializesDefaultLevels) {
+      initializeTraderLevels(priceMode, traders);
+    }
+    setStrictTraderLevels(nextValue);
+    setStrictNotice(t(
+      initializesDefaultLevels
+        ? 'traders.strictLevelsDefaultNotice'
+        : nextValue
+          ? 'traders.strictLevelsEnabledNotice'
+          : 'traders.strictLevelsDisabledNotice',
+    ));
   };
 
   return (
@@ -95,67 +120,88 @@ export default function Settings({ theme, setTheme }) {
         <InstallAppButton />
       </section>
 
-      <section className="settings-card" aria-labelledby="trader-settings-title">
+      <section
+        id="traders"
+        ref={tradersSectionRef}
+        className="settings-card"
+        aria-labelledby="trader-settings-title"
+        tabIndex={-1}
+      >
         <div className="settings-card__heading">
           <div>
             <h3 id="trader-settings-title">{t('settings.traders')}</h3>
             <p>{t('traders.description')}</p>
           </div>
-          <strong className="price-mode-badge">
-            {t(priceMode === 'pve' ? 'traders.profilePve' : 'traders.profilePvp')}
-          </strong>
         </div>
 
         <label className="check settings-trader-toggle">
           <input
             type="checkbox"
-            checked={includeTraderPrices}
-            onChange={handleIncludeChange}
+            checked={strictTraderLevels}
+            onChange={handleStrictChange}
+            aria-controls="trader-level-settings"
+            aria-expanded={strictTraderLevels}
           />
           <span>
-            <strong>{t('traders.include')}</strong>
-            <small>{t('traders.includeDescription')}</small>
+            <strong>{t('traders.strictLevels')}</strong>
+            <small>{t('traders.strictLevelsDescription')}</small>
           </span>
         </label>
 
-        {status === 'loading' && <p role="status">{t('traders.loading')}</p>}
-        {status === 'error' && <p role="alert">{t('traders.loadError')}</p>}
-        {status === 'empty' && <p>{t('traders.empty')}</p>}
-        {status === 'ready' && (
-          <div className="trader-level-list">
-            {traders.map(trader => {
-              const currentLevel = currentProfile[trader.id] || 1;
-              return (
-                <label className="trader-level-row" key={trader.id}>
-                  <span>{trader.name}</span>
-                  <select
-                    aria-label={`${trader.name}: ${t('traders.level')}`}
-                    value={currentLevel}
-                    onChange={event => updateTraderLevel(
-                      trader.id,
-                      Number(event.target.value),
-                      priceMode,
-                      traders,
-                    )}
-                  >
-                    {Array.from({ length: trader.maxLevel }, (_, index) => index + 1)
-                      .map(level => <option key={level} value={level}>LL{level}</option>)}
-                  </select>
-                </label>
-              );
-            })}
-          </div>
+        {strictNotice && (
+          <p className="inline-message inline-message--info" role="status">{strictNotice}</p>
         )}
 
-        <p className="field-help">{t('traders.separateProfiles')}</p>
-        <button
-          type="button"
-          className="btn btn--ghost"
-          disabled={status !== 'ready'}
-          onClick={handleReset}
+        <div
+          id="trader-level-settings"
+          className={`trader-level-settings${strictTraderLevels ? ' is-expanded' : ''}`}
+          aria-hidden={!strictTraderLevels}
+          inert={!strictTraderLevels}
         >
-          {t('traders.reset')}
-        </button>
+          <div className="trader-level-settings__inner">
+            <strong className="price-mode-badge">
+              {t(priceMode === 'pve' ? 'traders.profilePve' : 'traders.profilePvp')}
+            </strong>
+            {status === 'loading' && <p role="status">{t('traders.loading')}</p>}
+            {status === 'error' && <p role="alert">{t('traders.loadError')}</p>}
+            {status === 'empty' && <p>{t('traders.empty')}</p>}
+            {status === 'ready' && (
+              <div className="trader-level-list">
+                {traders.map(trader => {
+                  const currentLevel = currentProfile[trader.id] || 1;
+                  return (
+                    <label className="trader-level-row" key={trader.id}>
+                      <span>{trader.name}</span>
+                      <select
+                        aria-label={`${trader.name}: ${t('traders.level')}`}
+                        value={currentLevel}
+                        onChange={event => updateTraderLevel(
+                          trader.id,
+                          Number(event.target.value),
+                          priceMode,
+                          traders,
+                        )}
+                      >
+                        {Array.from({ length: trader.maxLevel }, (_, index) => index + 1)
+                          .map(level => <option key={level} value={level}>LL{level}</option>)}
+                      </select>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+
+            <p className="field-help">{t('traders.separateProfiles')}</p>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={status !== 'ready'}
+              onClick={handleReset}
+            >
+              {t('traders.reset')}
+            </button>
+          </div>
+        </div>
       </section>
     </div>
   );

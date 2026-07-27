@@ -107,6 +107,7 @@ export function readSavedBuilds(storage = getDefaultStorage()) {
         settings: {
           ...build.settings,
           includeTraderPrices: build.settings.includeTraderPrices !== false,
+          strictTraderLevels: build.settings.strictTraderLevels === true,
           traderLevelsSnapshot: build.settings.traderLevelsSnapshot
             && typeof build.settings.traderLevelsSnapshot === 'object'
             ? { ...build.settings.traderLevelsSnapshot }

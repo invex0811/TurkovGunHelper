@@ -136,6 +136,7 @@ function findCompatibleAlternatives(
   priceMode,
   includeTraderPrices,
   traderLevels,
+  strictTraderLevels,
   sightMode,
   t,
   mode = 'EXACT_ITEM',
@@ -346,7 +347,13 @@ function findCompatibleAlternatives(
           if (currentSight && scopeItem.id === currentSight.id) continue;
           if (!isPackageCompatibleWithInstalled([altItem, scopeItem], remainingInstalledIds)) continue;
 
-          const score = scoreScope(scopeItem, priceMode, includeTraderPrices, traderLevels);
+          const score = scoreScope(
+            scopeItem,
+            priceMode,
+            includeTraderPrices,
+            traderLevels,
+            strictTraderLevels,
+          );
           if (score > bestScopeScore) {
             bestScopeScore = score;
             bestScope = scopeItem;
@@ -470,6 +477,8 @@ function findCompatibleAlternatives(
     targetNode,
     priceMode,
     includeTraderPrices,
+    traderLevels,
+    strictTraderLevels,
   });
 }
 
@@ -477,11 +486,18 @@ function getItemDisplayName(item, fallbackLabel = 'Item') {
   return item?.shortName || item?.name || fallbackLabel;
 }
 
-function getSelectedPriceInfo(item, selectedPriceMode, includeTraderPrices, traderLevels) {
+function getSelectedPriceInfo(
+  item,
+  selectedPriceMode,
+  includeTraderPrices,
+  traderLevels,
+  strictTraderLevels,
+) {
   const priceInfo = selectPurchasePrice(item, {
     priceMode: selectedPriceMode,
     includeTraderPrices,
     traderLevels,
+    strictTraderLevels,
   });
 
   return {
@@ -496,11 +512,19 @@ function getSelectedPriceInfo(item, selectedPriceMode, includeTraderPrices, trad
   };
 }
 
-function getPackagePriceInfo(items, selectedPriceMode, includeTraderPrices, traderLevels, t) {
+function getPackagePriceInfo(
+  items,
+  selectedPriceMode,
+  includeTraderPrices,
+  traderLevels,
+  strictTraderLevels,
+  t,
+) {
   const packagePrice = sumPurchasePrices(items, {
     priceMode: selectedPriceMode,
     includeTraderPrices,
     traderLevels,
+    strictTraderLevels,
   });
   const sourceLabels = Array.from(new Set(
     packagePrice.priceInfos.map(priceInfo => formatPriceSource(priceInfo, t)).filter(Boolean),
@@ -538,6 +562,7 @@ function collectBuildPriceDiagnostics(
   selectedPriceMode,
   includeTraderPrices,
   traderLevels,
+  strictTraderLevels,
   t,
 ) {
   const entries = [
@@ -556,6 +581,7 @@ function collectBuildPriceDiagnostics(
       selectedPriceMode,
       includeTraderPrices,
       traderLevels,
+      strictTraderLevels,
     ),
   }));
 
@@ -604,7 +630,9 @@ function collectBuildPriceDiagnostics(
 
   if (unavailableTraderEntries.length > 0) {
     warningMessages.push(
-      t('config.price.traderUnavailable', {
+      t(strictTraderLevels
+        ? 'config.price.traderUnavailable'
+        : 'config.price.traderLevelInformational', {
         items: formatDiagnosticsList(unavailableTraderEntries, t),
       }),
     );
@@ -672,6 +700,7 @@ function getReplacementConstraintErrors({
   priceMode,
   includeTraderPrices,
   traderLevels,
+  strictTraderLevels,
   maxWeight,
   maxPrice,
   requiredItemIds,
@@ -733,6 +762,7 @@ function getReplacementConstraintErrors({
     priceMode,
     includeTraderPrices,
     traderLevels,
+    strictTraderLevels,
   });
   const parsedMaxWeight = Number(maxWeight) || 0;
   const parsedMaxPrice = Number(maxPrice) || 0;
@@ -929,7 +959,10 @@ function getBuildResultWarningMessage(buildResult, language, t) {
 function Configurator() {
   const { language, t } = useI18n();
   const { priceMode, setPriceMode } = usePriceMode();
-  const { traderLevels } = useTraderLevels();
+  const {
+    traderLevels,
+    strictTraderLevels,
+  } = useTraderLevels();
   const activeTraderLevels = useMemo(
     () => traderLevels.profiles?.[priceMode] || {},
     [priceMode, traderLevels],
@@ -999,6 +1032,7 @@ function Configurator() {
       suppressorMode,
       priceMode,
       includeTraderPrices,
+      strictTraderLevels,
       traderLevelsSnapshot: activeTraderLevels,
       magazineCapacity,
       includeLaser,
@@ -1060,6 +1094,7 @@ function Configurator() {
             priceMode,
             includeTraderPrices,
             traderLevels: activeTraderLevels,
+            strictTraderLevels,
           });
           return {
             ...current,
@@ -1081,6 +1116,7 @@ function Configurator() {
               priceMode,
               includeTraderPrices,
               traderLevels: activeTraderLevels,
+              strictTraderLevels,
             }).stats.price
             : null;
           setPricePolicyWarning(
@@ -1113,6 +1149,7 @@ function Configurator() {
           priceMode,
           includeTraderPrices: restoredIncludeTraderPrices,
           traderLevels: activeTraderLevels,
+          strictTraderLevels,
         });
 
         setBuildResult({
@@ -1187,6 +1224,7 @@ function Configurator() {
       priceMode,
       includeTraderPrices,
       traderLevels: activeTraderLevels,
+      strictTraderLevels,
       maxWeight,
       maxPrice,
       requiredItemIds: requiredModuleIds,
@@ -1236,6 +1274,7 @@ function Configurator() {
       priceMode,
       includeTraderPrices,
       traderLevels: activeTraderLevels,
+      strictTraderLevels,
       maxWeight,
       maxPrice,
       requiredItemIds: requiredModuleIds,
@@ -1257,6 +1296,7 @@ function Configurator() {
     activeTraderLevels,
     buildResult,
     includeTraderPrices,
+    strictTraderLevels,
     maxPrice,
     maxWeight,
     priceMode,
@@ -1288,6 +1328,7 @@ function Configurator() {
       priceMode,
       includeTraderPrices: nextValue,
       traderLevels: activeTraderLevels,
+      strictTraderLevels,
     });
     const budgetLimit = Number(maxPrice) || 0;
 
@@ -1322,6 +1363,7 @@ function Configurator() {
         priceMode,
         includeTraderPrices,
         traderLevels: activeTraderLevels,
+        strictTraderLevels,
         includeLaser,
         includeFlashlight,
         sightMode,
@@ -1365,6 +1407,7 @@ function Configurator() {
     requiredModuleIds,
     runBuildCalculation,
     sightMode,
+    strictTraderLevels,
     suppressorMode,
     t,
     targetType,
@@ -1396,6 +1439,7 @@ function Configurator() {
       priceMode,
       includeTraderPrices,
       activeTraderLevels,
+      strictTraderLevels,
     );
     return {
       item,
@@ -1459,12 +1503,13 @@ function Configurator() {
         priceMode,
         includeTraderPrices,
         activeTraderLevels,
+        strictTraderLevels,
         sightMode,
         t,
         replaceMode,
       ),
     };
-  }, [weapon, buildResult, hasBuildParts, activeReplacePartId, allMods, priceMode, includeTraderPrices, activeTraderLevels, sightMode, t, replaceMode]);
+  }, [weapon, buildResult, hasBuildParts, activeReplacePartId, allMods, priceMode, includeTraderPrices, activeTraderLevels, strictTraderLevels, sightMode, t, replaceMode]);
 
   const isLoading = loading || (weapon && weapon.id !== weaponId);
 
@@ -1489,6 +1534,7 @@ function Configurator() {
       priceMode,
       includeTraderPrices,
       activeTraderLevels,
+      strictTraderLevels,
       t,
     )
     : {
@@ -1508,7 +1554,13 @@ function Configurator() {
   const currentPrice = canShowBuildDetails
     ? formatCurrency(buildResult.stats.price, 'RUB', t('config.notAvailable'))
     : formatCurrency(
-      getSelectedPriceInfo(weapon, priceMode, includeTraderPrices, activeTraderLevels).value,
+      getSelectedPriceInfo(
+        weapon,
+        priceMode,
+        includeTraderPrices,
+        activeTraderLevels,
+        strictTraderLevels,
+      ).value,
       'RUB',
       t('config.notAvailable'),
     );
@@ -1608,6 +1660,7 @@ function Configurator() {
             priceMode,
             includeTraderPrices,
             activeTraderLevels,
+            strictTraderLevels,
           )
           : null,
       }));
@@ -1630,6 +1683,7 @@ function Configurator() {
         includeFlashlight={includeFlashlight}
         includeLaser={includeLaser}
         includeTraderPrices={includeTraderPrices}
+        strictTraderLevels={strictTraderLevels}
         isSightSelectOpen={isSightSelectOpen}
         magazineCapacity={magazineCapacity}
         maxPrice={maxPrice}
@@ -1751,6 +1805,7 @@ function Configurator() {
           priceMode={priceMode}
           includeTraderPrices={includeTraderPrices}
           traderLevels={activeTraderLevels}
+          strictTraderLevels={strictTraderLevels}
           onBuildChange={handleDiagramBuildChange}
           onClose={handleCloseBuildDiagram}
         />
@@ -1770,6 +1825,7 @@ function Configurator() {
           priceMode,
           includeTraderPrices,
           activeTraderLevels,
+          strictTraderLevels,
         );
 
         return (
@@ -1844,6 +1900,7 @@ function Configurator() {
                           priceMode,
                           includeTraderPrices,
                           activeTraderLevels,
+                          strictTraderLevels,
                           t,
                         );
                         const altPriceValue = altPriceInfo.value;
@@ -1868,6 +1925,7 @@ function Configurator() {
                           priceMode,
                           includeTraderPrices,
                           activeTraderLevels,
+                          strictTraderLevels,
                           t,
                         );
                         const baselinePrice = baselinePriceInfo.value;

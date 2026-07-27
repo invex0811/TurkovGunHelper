@@ -1,5 +1,6 @@
 import AsyncImage from '../../../ui/AsyncImage.jsx';
 import CustomBuildRadar from '../../../ui/CustomBuildRadar.jsx';
+import { Link } from 'react-router-dom';
 import { PriceSource } from './PriceDisplay.jsx';
 
 function ModuleRow({ view, action, actionLabel, onAction }) {
@@ -52,6 +53,7 @@ export default function BuildSettings(props) {
     includeFlashlight,
     includeLaser,
     includeTraderPrices,
+    strictTraderLevels,
     isSightSelectOpen,
     magazineCapacity,
     maxPrice,
@@ -161,6 +163,12 @@ export default function BuildSettings(props) {
                 <span>{t('config.includeTraders')}</span>
               </label>
               <span id="includeTraderPricesHelp" className="field-help">{t('config.helpPrices')}</span>
+              {includeTraderPrices && strictTraderLevels && (
+                <Link className="strict-trader-badge" to="/settings#traders">
+                  <span>{t('traders.strictLevelsActive')}</span>
+                  <small>{t('traders.manageLevels')}</small>
+                </Link>
+              )}
             </div>
           </section>
 

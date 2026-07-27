@@ -39,6 +39,7 @@ export default function WeaponBuildDiagramModal({
   priceMode,
   includeTraderPrices,
   traderLevels,
+  strictTraderLevels,
   onBuildChange,
   onClose,
 }) {
@@ -60,8 +61,9 @@ export default function WeaponBuildDiagramModal({
       priceMode,
       includeTraderPrices,
       traderLevels,
+      strictTraderLevels,
     }),
-    [allMods, buildParts, includeTraderPrices, priceMode, showFreeSlots, traderLevels, weapon],
+    [allMods, buildParts, includeTraderPrices, priceMode, showFreeSlots, strictTraderLevels, traderLevels, weapon],
   );
   const layout = useMemo(() => layoutWeaponDiagramGraph(graph), [graph]);
   const slotContext = useMemo(
@@ -79,8 +81,9 @@ export default function WeaponBuildDiagramModal({
       priceMode,
       includeTraderPrices,
       traderLevels,
+      strictTraderLevels,
     }) : [],
-    [allMods, buildParts, includeTraderPrices, priceMode, slotContext, traderLevels, weapon],
+    [allMods, buildParts, includeTraderPrices, priceMode, slotContext, strictTraderLevels, traderLevels, weapon],
   );
   const moduleCount = graph.nodes.filter(node => node.nodeType === 'module').length;
   const activePreviewCandidate = getActivePreviewCandidate(hoveredCandidate, focusedCandidate);
@@ -94,6 +97,7 @@ export default function WeaponBuildDiagramModal({
       priceMode,
       includeTraderPrices,
       traderLevels,
+      strictTraderLevels,
       meters: stats,
     })
     : null, [
@@ -102,6 +106,7 @@ export default function WeaponBuildDiagramModal({
       activePreviewCandidate,
       includeTraderPrices,
       traderLevels,
+      strictTraderLevels,
       priceMode,
       selectedSlotId,
       stats,
@@ -198,6 +203,7 @@ export default function WeaponBuildDiagramModal({
       priceMode,
       includeTraderPrices,
       traderLevels,
+      strictTraderLevels,
     });
     if (plan.errors?.length > 0) {
       setPanelError(plan.errors.map(error => getSlotPlanErrorMessage(error, t)).join(' '));
@@ -210,7 +216,7 @@ export default function WeaponBuildDiagramModal({
       return;
     }
     applyPlan(plan);
-  }, [allMods, applyPlan, buildParts, includeTraderPrices, priceMode, selectedSlotId, t, traderLevels, weapon]);
+  }, [allMods, applyPlan, buildParts, includeTraderPrices, priceMode, selectedSlotId, strictTraderLevels, t, traderLevels, weapon]);
 
   return createPortal(
     <div className="weapon-diagram-modal" role="presentation" onMouseDown={closeModal}>
@@ -269,6 +275,7 @@ export default function WeaponBuildDiagramModal({
               priceMode={priceMode}
               includeTraderPrices={includeTraderPrices}
               traderLevels={traderLevels}
+              strictTraderLevels={strictTraderLevels}
               onChoose={requestChange}
               onRemove={() => requestChange(null)}
               onConfirmPlan={() => applyPlan(pendingPlan)}

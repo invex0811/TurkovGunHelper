@@ -21,6 +21,7 @@ export function getProjectedBuildMeters({
   priceMode,
   includeTraderPrices,
   traderLevels,
+  strictTraderLevels,
   meters,
 }) {
   const plan = planBuildSlotChange({
@@ -32,6 +33,7 @@ export function getProjectedBuildMeters({
     priceMode,
     includeTraderPrices,
     traderLevels,
+    strictTraderLevels,
   });
   if (plan.errors?.length > 0 || plan.changed === false) return null;
 
@@ -39,6 +41,7 @@ export function getProjectedBuildMeters({
     priceMode,
     includeTraderPrices,
     traderLevels,
+    strictTraderLevels,
   }).stats;
   const weight = Number(projectedStats.weight);
 

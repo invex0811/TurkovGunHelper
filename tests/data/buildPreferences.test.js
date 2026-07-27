@@ -3,12 +3,15 @@ import assert from 'node:assert/strict';
 
 import {
   DEFAULT_INCLUDE_TRADER_PRICES,
+  DEFAULT_STRICT_TRADER_LEVELS,
   loadIncludeTraderPricesPreference,
   loadPriceModePreference,
+  loadStrictTraderLevelsPreference,
   loadTargetTypePreference,
   normalizeTargetType,
   saveIncludeTraderPricesPreference,
   savePriceModePreference,
+  saveStrictTraderLevelsPreference,
   saveTargetTypePreference,
 } from '../../src/data/settings/buildPreferences.js';
 import {
@@ -82,6 +85,43 @@ test('includeTraderPrices preference safely handles unavailable storage', () => 
   withWindow(localStorage, () => {
     assert.equal(loadIncludeTraderPricesPreference(), true);
     assert.doesNotThrow(() => saveIncludeTraderPricesPreference(false));
+  });
+});
+
+test('strictTraderLevels defaults to false and persists only booleans', () => {
+  const storage = createStorage();
+
+  withWindow(storage, () => {
+    assert.equal(DEFAULT_STRICT_TRADER_LEVELS, false);
+    assert.equal(loadStrictTraderLevelsPreference(), false);
+
+    saveStrictTraderLevelsPreference(true);
+    assert.equal(loadStrictTraderLevelsPreference(), true);
+
+    saveStrictTraderLevelsPreference(false);
+    assert.equal(loadStrictTraderLevelsPreference(), false);
+
+    saveStrictTraderLevelsPreference('true');
+    assert.equal(loadStrictTraderLevelsPreference(), false);
+
+    storage.setItem('tarkovGunHelper.strictTraderLevels', 'invalid');
+    assert.equal(loadStrictTraderLevelsPreference(), false);
+  });
+});
+
+test('strictTraderLevels preference safely handles unavailable storage', () => {
+  const localStorage = {
+    getItem() {
+      throw new Error('blocked');
+    },
+    setItem() {
+      throw new Error('blocked');
+    },
+  };
+
+  withWindow(localStorage, () => {
+    assert.equal(loadStrictTraderLevelsPreference(), false);
+    assert.doesNotThrow(() => saveStrictTraderLevelsPreference(true));
   });
 });
 

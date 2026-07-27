@@ -1164,13 +1164,12 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
 
 .item-price__source {
   max-width: 180px;
-  overflow: hidden;
   color: var(--text-muted);
   font-size: 0.68rem;
   font-weight: 600;
   line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .item-price--drawer .item-price__source {
@@ -3352,6 +3351,54 @@ button.weapon-diagram-node:focus-visible,
 
 .settings-trader-toggle small {
   color: var(--muted);
+}
+
+.trader-level-settings {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 180ms ease, opacity 160ms ease;
+}
+
+.trader-level-settings.is-expanded {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.trader-level-settings__inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.strict-trader-badge {
+  align-items: baseline;
+  align-self: flex-start;
+  background: color-mix(in srgb, var(--color-accent-gold) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent-gold) 42%, transparent);
+  border-radius: 999px;
+  color: var(--color-text);
+  display: inline-flex;
+  gap: 0.45rem;
+  padding: 0.35rem 0.6rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.strict-trader-badge small {
+  color: var(--color-accent-gold);
+}
+
+@media (max-width: 420px) {
+  .strict-trader-badge {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trader-level-settings {
+    transition: none;
+  }
 }
 
 .trader-level-list {

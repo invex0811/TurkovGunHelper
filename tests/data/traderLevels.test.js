@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   TRADER_LEVELS_STORAGE_KEY,
   getTraderLevel,
+  initializeTraderLevels,
   loadTraderLevels,
   normalizeTraderLevels,
   resetTraderLevels,
@@ -75,4 +76,34 @@ test('new traders implicitly receive LL1', () => {
     profiles: { pvp: { 'mechanic-id': 2 }, pve: {} },
   }, [...traders, { id: 'new-id', name: 'New trader', maxLevel: 4 }]);
   assert.equal(getTraderLevel('new-id', 'pvp', levels), 1);
+});
+
+test('initializing an empty profile explicitly stores LL1 for every current trader', () => {
+  const storage = createStorage();
+  const levels = initializeTraderLevels(
+    'pvp',
+    normalizeTraderLevels(null, traders),
+    traders,
+  );
+  saveTraderLevels(levels, storage, traders);
+  const restored = loadTraderLevels(storage, traders);
+
+  assert.deepEqual(restored.profiles.pvp, {
+    'mechanic-id': 1,
+    'fence-id': 1,
+  });
+  assert.deepEqual(restored.profiles.pve, {});
+});
+
+test('initializing a non-empty profile preserves existing explicit levels', () => {
+  const current = setTraderLevel(
+    'mechanic-id',
+    3,
+    'pvp',
+    normalizeTraderLevels(null, traders),
+    traders,
+  );
+  const levels = initializeTraderLevels('pvp', current, traders);
+
+  assert.deepEqual(levels.profiles.pvp, { 'mechanic-id': 3 });
 });
