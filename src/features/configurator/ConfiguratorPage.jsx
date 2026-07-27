@@ -855,17 +855,13 @@ const SLOT_GROUP_NAME_MAPPINGS = {
 function getReadableSlotGroupName(slotName, t) {
   if (!slotName) return t('config.other');
   let name = slotName.trim().toLowerCase();
-  
   if (name.startsWith('mod_')) {
     name = name.substring(4);
   }
-  
   name = name.replace(/[\s_-]+/g, ' ');
-  
   if (SLOT_GROUP_NAME_MAPPINGS[name]) {
     return t(SLOT_GROUP_NAME_MAPPINGS[name]);
   }
-  
   return name.split(' ')
              .map(word => word.charAt(0).toUpperCase() + word.slice(1))
              .join(' ');
@@ -977,7 +973,6 @@ function Configurator() {
     },
     t,
   });
-  
   useEffect(() => {
     savePriceModePreference(priceMode);
   }, [priceMode]);
@@ -1027,7 +1022,6 @@ function Configurator() {
         setLoading(false);
         return;
       }
-      
       const capacities = getAvailableCapacities(weaponData, modsData);
       if (capacities.length > 0) {
         if (capacities.includes(30)) {
@@ -1677,7 +1671,6 @@ function Configurator() {
                 <button className="btn btn--ghost" type="button" onClick={() => setActiveReplacePartId(null)}>{t('common.close')}</button>
               </div>
               <div className="drawer__body" style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 100px)', paddingRight: '4px' }}>
-                
                 {hasSightChain && (
                   <div className="segmented" style={{ marginBottom: '1.25rem', display: 'flex', width: '100%' }}>
                     <button
@@ -1744,7 +1737,6 @@ function Configurator() {
                           t,
                         );
                         const altPriceValue = altPriceInfo.value;
-                        
                         const effectiveReplaceMode = alt.replacementMode || replaceMode;
                         const actualReplaceTarget = getReplaceTarget(targetNode, effectiveReplaceMode);
                         const baselineParts = [];
@@ -1782,14 +1774,12 @@ function Configurator() {
                           ? altPriceValue - baselinePrice
                           : null;
                         const weightDiff = altWeight - baselineWeight;
-                      
                         const baseRecoilV = weapon.properties?.recoilVertical || 0;
                         const baseRecoilH = weapon.properties?.recoilHorizontal || 0;
                         const recoilDiffV = baseRecoilV * (recoilDiff / 100);
                         const recoilDiffH = baseRecoilH * (recoilDiff / 100);
 
                         const ergoDiffText = ergoDiff === 0 ? '0' : ergoDiff > 0 ? `+${parseFloat(ergoDiff.toFixed(2))}` : `${parseFloat(ergoDiff.toFixed(2))}`;
-                        
                         function formatRecoilDiff(v, h, pct) {
                           const formatNum = (num) => {
                             const rounded = Math.round(num);
