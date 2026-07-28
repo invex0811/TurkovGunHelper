@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { PRICE_CONFIDENCE } from '../../data/price/priceModes.js';
 import {
   selectPurchasePrice,
+  selectWeaponPurchasePrice,
   sumPurchasePrices,
 } from '../../data/price/priceMapper.js';
 import {
@@ -499,8 +500,9 @@ function getSelectedPriceInfo(
   includeTraderPrices,
   traderLevels,
   strictTraderLevels,
+  useWeaponFallback = false,
 ) {
-  const priceInfo = selectPurchasePrice(item, {
+  const priceInfo = (useWeaponFallback ? selectWeaponPurchasePrice : selectPurchasePrice)(item, {
     priceMode: selectedPriceMode,
     includeTraderPrices,
     traderLevels,
@@ -587,6 +589,7 @@ function collectBuildPriceDiagnostics(
       includeTraderPrices,
       traderLevels,
       strictTraderLevels,
+      instance.isWeapon,
     ),
   }));
 
@@ -1638,6 +1641,7 @@ function Configurator() {
         includeTraderPrices,
         activeTraderLevels,
         strictTraderLevels,
+        true,
       ).value,
       'RUB',
       t('config.notAvailable'),
@@ -1775,6 +1779,7 @@ function Configurator() {
           includeTraderPrices,
           activeTraderLevels,
           strictTraderLevels,
+          true,
         ),
       }],
     }

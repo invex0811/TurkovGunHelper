@@ -350,6 +350,34 @@ export function selectPurchasePrice(item, options = {}) {
   };
 }
 
+export function selectWeaponPurchasePrice(weapon, options = {}) {
+  const basePrice = selectPurchasePrice(weapon, options);
+  if (isPositiveNumber(basePrice.value)) return basePrice;
+
+  const preset = weapon?.defaultPresetItem;
+  if (preset) {
+    const presetPrice = selectPurchasePrice(preset, options);
+    if (isPositiveNumber(presetPrice.value)) {
+      return {
+        ...presetPrice,
+        fallbackUsed: true,
+        fallbackItemId: preset.id,
+      };
+    }
+  }
+
+  if (!isPositiveNumber(weapon?.basePrice)) return basePrice;
+
+  return {
+    ...basePrice,
+    value: weapon.basePrice,
+    sourceType: PRICE_SOURCE_TYPE.BASE_PRICE,
+    field: 'basePrice',
+    fallbackUsed: true,
+    confidence: PRICE_CONFIDENCE.FALLBACK,
+  };
+}
+
 export function normalizeItemPrice(item, mode = DEFAULT_PRICE_MODE) {
   return selectPurchasePrice(item, {
     includeTraderPrices: true,

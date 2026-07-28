@@ -9,6 +9,8 @@ import {
   normalizeComparisonSort, selectComparedModules, sortComparisonRows, toggleComparedModule,
 } from '../features/moduleComparison/comparison.js';
 
+const WIDE_TABLE_METRIC_THRESHOLD = 5;
+
 export default function ModuleComparison() {
   const { language, t } = useI18n();
   const { priceMode } = usePriceMode();
@@ -73,7 +75,7 @@ export default function ModuleComparison() {
       </section>
       {!weapon ? <p className="comparison-empty">{t('moduleComparison.noWeapon')}</p> : !categories.length ? <p className="comparison-empty">{t('moduleComparison.noCategories')}</p> : !categoryKey ? <p className="comparison-empty">{t('moduleComparison.chooseCategory')}</p> : <>
         <section className="module-comparison-filters glass-panel"><label>{t('moduleComparison.moduleSearch')}<input className="input-field" type="search" value={moduleSearch} onChange={event => setModuleSearch(event.target.value)} /></label><label>{t('moduleComparison.compatibility')}<select value={compatibility} onChange={event => setCompatibility(event.target.value)}><option value="">{t('moduleComparison.all')}</option><option value="direct">{t('moduleComparison.direct')}</option><option value="viaAdapter">{t('moduleComparison.viaAdapter')}</option></select></label><label><input type="checkbox" checked={selectedOnly} onChange={event => setSelectedOnly(event.target.checked)} /> {t('moduleComparison.selectedOnly')}</label><label><input type="checkbox" checked={withPrice} onChange={event => setWithPrice(event.target.checked)} /> {t('moduleComparison.withPrice')}</label><button className="btn btn--ghost" type="button" onClick={clearFilters}>{t('moduleComparison.clearFilters')}</button><div className="module-comparison-columns"><button className="btn btn--ghost" type="button" aria-expanded={columnsOpen} onClick={() => setColumnsOpen(open => !open)}>{t('moduleComparison.columns')}</button>{columnsOpen && <div className="module-comparison-columns__menu">{availableMetrics.map(metric => <label key={metric.key}><input type="checkbox" checked={!visibleColumns || visibleColumns.has(metric.key)} onChange={() => toggleColumn(metric.key)} /> {t(metric.labelKey)}</label>)}</div>}</div></section>
-        {rows.length ? <section className="comparison-table-panel glass-panel"><ModuleComparisonTable rows={rows} selectedIds={selectedIds} metrics={visibleMetrics} sortKey={activeSortKey} sortDirection={activeSortDirection} locale={locale} t={t} onSort={onSort} onToggle={toggleItem} onToggleRows={toggleRows} /></section> : <p className="comparison-empty">{t('moduleComparison.noModules')}</p>}
+        {rows.length ? <section className={`comparison-table-panel glass-panel${visibleMetrics.length > WIDE_TABLE_METRIC_THRESHOLD ? ' comparison-table-panel--wide' : ''}`}><ModuleComparisonTable rows={rows} selectedIds={selectedIds} metrics={visibleMetrics} sortKey={activeSortKey} sortDirection={activeSortDirection} locale={locale} t={t} onSort={onSort} onToggle={toggleItem} onToggleRows={toggleRows} /></section> : <p className="comparison-empty">{t('moduleComparison.noModules')}</p>}
       </>}
     </>}
   </div>;

@@ -242,6 +242,8 @@ test('adapter resolves presets, ID references, required slots, and categories', 
       iconLink: 'https://assets.test/preset-icon.webp',
       gridImageLink: 'https://assets.test/preset-grid.webp',
     });
+    assert.equal(weapon.defaultPresetItem.id, 'preset-1');
+    assert.equal(weapon.defaultPresetItem.price.value, 1300);
     assert.equal(weapon.categories[0].name, 'Weapon');
     assert.equal(weapon.ergonomics, 50);
     assert.equal(weapon.recoilVertical, 100);

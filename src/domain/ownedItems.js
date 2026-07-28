@@ -1,4 +1,7 @@
-import { selectPurchasePrice } from '../data/price/priceMapper.js';
+import {
+  selectPurchasePrice,
+  selectWeaponPurchasePrice,
+} from '../data/price/priceMapper.js';
 import { buildWeaponAssemblyTree } from './weaponAssembly.js';
 
 function normalizeOwnedItem(value) {
@@ -83,7 +86,9 @@ export function calculateBuildCostSummary({
   const missingInstances = [];
 
   instances.forEach(instance => {
-    const priceInfo = selectPurchasePrice(instance.item, priceOptions);
+    const priceInfo = instance.isWeapon
+      ? selectWeaponPurchasePrice(instance.item, priceOptions)
+      : selectPurchasePrice(instance.item, priceOptions);
     const price = Number(priceInfo.value);
     if (!Number.isFinite(price) || price <= 0) {
       missingInstances.push({

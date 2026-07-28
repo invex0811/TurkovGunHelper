@@ -75,6 +75,7 @@ export function createTarkovJsonFixture(language = 'en') {
           image512pxLink: 'https://assets.test/preset-512.webp',
           iconLink: 'https://assets.test/preset-icon.webp',
           gridImageLink: 'https://assets.test/preset-grid.webp',
+          avg24hPrice: 1300,
           categories: [], properties: {}, conflictingItems: [], buyFromTrader: [],
         },
         'required-1': {

@@ -242,10 +242,18 @@ export function normalizeItemsCatalog(data, barters, tradersById, priceMode) {
     bartersByItemId.set(normalized.offeredItemId, values);
   }
 
-  const items = Object.values(baseItemsById).map(item => normalizeItemPriceFields({
+  const normalizedItems = Object.values(baseItemsById).map(item => normalizeItemPriceFields({
     ...item,
     bartersFor: bartersByItemId.get(item.id) || [],
   }, priceMode));
+  const normalizedItemsById = Object.fromEntries(
+    normalizedItems.map(item => [item.id, item]),
+  );
+  const items = normalizedItems.map(item => {
+    const presetId = item.properties?.defaultPreset?.id;
+    const defaultPresetItem = presetId ? normalizedItemsById[presetId] : null;
+    return defaultPresetItem ? { ...item, defaultPresetItem } : item;
+  });
   const itemsById = Object.fromEntries(items.map(item => [item.id, item]));
   const weapons = items.filter(item => item.types?.includes('gun'));
   const mods = items.filter(item => item.types?.includes('mods'));
