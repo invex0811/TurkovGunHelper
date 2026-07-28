@@ -1,16 +1,17 @@
 import { normalizeCategoryIdentifier } from '../../domain/itemCategories.js';
 
-export const MAX_COMPARE_MODULES = 8;
-
 export const COMPARISON_METRICS = [
   { key: 'ergonomicsModifier', labelKey: 'moduleComparison.metric.ergonomics', betterDirection: 'higher', format: 'number' },
   { key: 'recoilModifier', labelKey: 'moduleComparison.metric.recoil', betterDirection: 'lower', format: 'percent' },
   { key: 'recoilVertical', labelKey: 'moduleComparison.metric.verticalRecoil', betterDirection: 'lower', format: 'number' },
   { key: 'recoilHorizontal', labelKey: 'moduleComparison.metric.horizontalRecoil', betterDirection: 'lower', format: 'number' },
   { key: 'accuracyModifier', labelKey: 'moduleComparison.metric.accuracy', betterDirection: 'higher', format: 'percent' },
+  { key: 'capacity', labelKey: 'moduleComparison.metric.capacity', betterDirection: 'higher', format: 'number' },
   { key: 'weight', labelKey: 'moduleComparison.metric.weight', betterDirection: 'lower', format: 'weight' },
   { key: 'price', labelKey: 'moduleComparison.metric.price', betterDirection: 'lower', format: 'price' },
 ];
+
+export const DEFAULT_VISIBLE_COLUMNS = new Set(COMPARISON_METRICS.map(metric => metric.key));
 
 function categoryFor(item) {
   const category = (item.categories || []).find(entry => entry?.name || entry?.normalizedName || entry?.id);
@@ -68,10 +69,62 @@ export function filterModulesByCategory(candidates, categoryKey, search = '') {
   }).sort((a, b) => (a.item.name || '').localeCompare(b.item.name || ''));
 }
 
+export function getCandidatesForCategory(candidates, categoryKey) {
+  return candidates.filter(candidate => categoryFor(candidate.item).key === categoryKey);
+}
+
 export function toggleComparedModule(selected, item) {
   if (selected.some(entry => entry.id === item.id)) return selected.filter(entry => entry.id !== item.id);
-  if (selected.length >= MAX_COMPARE_MODULES) return selected;
   return [...selected, item];
+}
+
+export function selectComparedModules(selected, items) {
+  const selectedById = new Map(selected.map(item => [item.id, item]));
+  items.forEach(item => selectedById.set(item.id, item));
+  return [...selectedById.values()];
+}
+
+export function deselectComparedModules(selected, ids) {
+  const idsToRemove = new Set(ids);
+  return selected.filter(item => !idsToRemove.has(item.id));
+}
+
+export function filterComparisonRows(candidates, options = {}) {
+  const query = String(options.search || '').trim().toLocaleLowerCase();
+  const selectedIds = options.selectedIds || new Set();
+  return candidates.filter(candidate => {
+    const item = candidate.item;
+    if (query && ![item.name, item.shortName].some(value => String(value || '').toLocaleLowerCase().includes(query))) return false;
+    if (options.compatibility && candidate.compatibilityKind !== options.compatibility) return false;
+    if (options.selectedOnly && !selectedIds.has(item.id)) return false;
+    if (options.withPrice && metricValue(item, COMPARISON_METRICS.at(-1)) === null) return false;
+    return true;
+  });
+}
+
+function comparisonValue(row, key) {
+  if (key === 'name') return String(row.item.name || row.item.shortName || '');
+  const metric = COMPARISON_METRICS.find(entry => entry.key === key);
+  return metric ? metricValue(row.item, metric) : null;
+}
+
+export function sortComparisonRows(rows, sortKey = 'name', direction = 'asc', locale) {
+  const multiplier = direction === 'desc' ? -1 : 1;
+  return [...rows].sort((left, right) => {
+    const a = comparisonValue(left, sortKey);
+    const b = comparisonValue(right, sortKey);
+    const aMissing = a === null || a === undefined || a === '';
+    const bMissing = b === null || b === undefined || b === '';
+    if (aMissing || bMissing) return aMissing === bMissing ? 0 : aMissing ? 1 : -1;
+    if (typeof a === 'string' || typeof b === 'string') return String(a).localeCompare(String(b), locale) * multiplier;
+    return (a - b) * multiplier;
+  });
+}
+
+export function getInitialSortDirection(key) {
+  const metric = COMPARISON_METRICS.find(entry => entry.key === key);
+  if (!metric) return 'asc';
+  return metric.betterDirection === 'higher' ? 'desc' : 'asc';
 }
 
 export function metricValue(item, metric) {
