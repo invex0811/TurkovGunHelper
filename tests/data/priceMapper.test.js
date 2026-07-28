@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   normalizeItemPriceFields,
   selectPurchasePrice,
+  selectWeaponPurchasePrice,
   sumPurchasePrices,
 } from '../../src/data/price/priceMapper.js';
 import {
@@ -438,6 +439,43 @@ test('handles old items without buyFor using legacy Flea fields but never basePr
     includeTraderPrices: false,
     priceMode: PRICE_MODES.PVP,
   }).value, null);
+});
+
+test('weapon price falls back to the complete default preset when the base is unavailable', () => {
+  const defaultPresetItem = normalizeItemPriceFields({
+    id: 'preset-1',
+    buyFor: [flea(72_000)],
+  }, PRICE_MODES.PVP);
+  const weapon = normalizeItemPriceFields({
+    id: 'weapon-1',
+    defaultPresetItem,
+  }, PRICE_MODES.PVP);
+
+  const price = selectWeaponPurchasePrice(weapon, {
+    includeTraderPrices: false,
+    priceMode: PRICE_MODES.PVP,
+  });
+
+  assert.equal(price.value, 72_000);
+  assert.equal(price.fallbackUsed, true);
+  assert.equal(price.fallbackItemId, 'preset-1');
+});
+
+test('weapon price falls back to its base price when no purchase offer is available', () => {
+  const weapon = normalizeItemPriceFields({
+    id: 'weapon-1',
+    basePrice: 25_800,
+  }, PRICE_MODES.PVP);
+
+  const price = selectWeaponPurchasePrice(weapon, {
+    includeTraderPrices: false,
+    priceMode: PRICE_MODES.PVP,
+  });
+
+  assert.equal(price.value, 25_800);
+  assert.equal(price.sourceType, PRICE_SOURCE_TYPE.BASE_PRICE);
+  assert.equal(price.field, 'basePrice');
+  assert.equal(price.confidence, PRICE_CONFIDENCE.FALLBACK);
 });
 
 test('sumPurchasePrices returns missing rather than treating an unavailable item as free', () => {

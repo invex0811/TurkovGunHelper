@@ -5,6 +5,10 @@ import {
   normalizeCustomExactTargets,
 } from '../customExactTargets.js';
 import { _calculateWeighted } from './candidateSearch.js';
+import {
+  appendBuildWarning,
+  BUILD_WARNING_CODES,
+} from './buildResultMessages.js';
 import { createCalculationCache } from './calculationCache.js';
 import { PRICE_AWARE_TARGET } from './constants.js';
 import {
@@ -392,8 +396,11 @@ export function calculateBestBuild(
   }
 
   if (bestBuild.stats.ergonomics < minErgo || bestBuild.stats.recoilVertical > maxRecoil) {
-    const warning = "It's physically impossible to meet your exact requirements with the current available parts. Showing the closest balanced build possible.";
-    bestBuild.warning = bestBuild.warning ? `${bestBuild.warning} ${warning}` : warning;
+    appendBuildWarning(bestBuild, {
+      code: BUILD_WARNING_CODES.REQUIREMENTS_UNMET_CLOSEST_BUILD,
+      params: {},
+      fallback: "It's physically impossible to meet your exact requirements with the current available parts. Showing the closest balanced build possible.",
+    });
   }
 
   return bestBuild;

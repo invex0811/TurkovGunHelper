@@ -53,6 +53,17 @@ test('cost summary includes the weapon and removes owned instances only from rem
   assert.equal(summary.ownedValue, 2_000);
 });
 
+test('cost summary uses the complete weapon preset when the base weapon has no price', () => {
+  const weapon = item('weapon', null, [slot]);
+  weapon.defaultPresetItem = item('weapon-preset', 15_000);
+
+  const summary = calculateBuildCostSummary({ weapon });
+
+  assert.equal(summary.marketTotal, 15_000);
+  assert.equal(summary.remainingTotal, 15_000);
+  assert.deepEqual(summary.missingInstances, []);
+});
+
 test('identical item IDs installed in separate slots remain independently owned', () => {
   const repeatedSlots = [
     { ...slot, nameId: 'mod_mount' },

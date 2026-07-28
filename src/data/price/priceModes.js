@@ -26,6 +26,7 @@ export const PRICE_SOURCE = {
 export const PRICE_SOURCE_TYPE = {
   FLEA_MARKET: 'fleaMarket',
   TRADER: 'trader',
+  BASE_PRICE: 'basePrice',
   MISSING: 'missing',
 };
 

@@ -11,6 +11,7 @@ import TraderLevelsProvider from './features/traderLevels/TraderLevelsProvider.j
 const Configurator = lazy(() => import('./pages/Configurator'));
 const Builds = lazy(() => import('./pages/Builds'));
 const Settings = lazy(() => import('./pages/Settings'));
+const ModuleComparison = lazy(() => import('./pages/ModuleComparison'));
 
 function useTheme() {
   const [theme, setTheme] = useState(() => {
@@ -84,6 +85,7 @@ function MainLayout() {
         </div>
         <div className="topbar__actions">
           <Link to="/" className="btn btn--ghost">{t('app.weapons')}</Link>
+          <Link to="/module-comparison" className="btn btn--ghost">{t('moduleComparison.nav')}</Link>
           <Link to="/builds" className="btn btn--ghost">{t('app.builds')}</Link>
           <SettingsLink t={t} />
         </div>
@@ -105,6 +107,14 @@ function MainLayout() {
             element={(
               <Suspense fallback={<ConfiguratorLoading />}>
                 <Builds />
+              </Suspense>
+            )}
+          />
+          <Route
+            path="/module-comparison"
+            element={(
+              <Suspense fallback={<ConfiguratorLoading />}>
+                <ModuleComparison />
               </Suspense>
             )}
           />

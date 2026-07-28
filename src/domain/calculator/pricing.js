@@ -1,4 +1,7 @@
-import { getPurchasePriceValue } from '../../data/price/priceMapper.js';
+import {
+  getPurchasePriceValue,
+  selectWeaponPurchasePrice,
+} from '../../data/price/priceMapper.js';
 
 export function createPricingTools(calculationCache, options) {
   function getItemPrice(item) {
@@ -8,6 +11,19 @@ export function createPricingTools(calculationCache, options) {
 
     const price = getPurchasePriceValue(item, options, Number.POSITIVE_INFINITY);
     calculationCache.itemPricesByItem.set(item, price);
+    return price;
+  }
+
+  function getWeaponPrice(weapon) {
+    if (calculationCache.itemPricesByItem.has(weapon)) {
+      return calculationCache.itemPricesByItem.get(weapon);
+    }
+
+    const priceInfo = selectWeaponPurchasePrice(weapon, options);
+    const price = Number.isFinite(priceInfo.value) && priceInfo.value > 0
+      ? priceInfo.value
+      : Number.POSITIVE_INFINITY;
+    calculationCache.itemPricesByItem.set(weapon, price);
     return price;
   }
 
@@ -28,5 +44,6 @@ export function createPricingTools(calculationCache, options) {
     addItemConflictsToSet,
     getItemConflictIds,
     getItemPrice,
+    getWeaponPrice,
   };
 }

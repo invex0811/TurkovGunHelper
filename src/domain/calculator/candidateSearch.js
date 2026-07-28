@@ -1,5 +1,9 @@
 import { createBranchEvaluator } from './branchEvaluation.js';
 import { createBuildOptimizers } from './buildOptimizers.js';
+import {
+  BUILD_WARNING_CODES,
+  setBuildWarnings,
+} from './buildResultMessages.js';
 import { createCalculationCache } from './calculationCache.js';
 import { createCompatibilityTools } from './compatibility.js';
 import { PRICE_AWARE_TARGET } from './constants.js';
@@ -32,13 +36,14 @@ export function _calculateWeighted(
     addItemConflictsToSet,
     getItemConflictIds,
     getItemPrice,
+    getWeaponPrice,
   } = createPricingTools(calculationCache, options);
 
   const build = [];
   let totalErgo = weapon.properties.ergonomics || 0;
   let totalRecoilMod = 0;
   let totalWeight = weapon.weight || 0;
-  let totalPrice = getItemPrice(weapon);
+  let totalPrice = getWeaponPrice(weapon);
   let hasSight = false;
   let hasSuppressorGlobal = hasCategory(weapon, 'Silencer');
   const requireSight = options.requireSight === true;
@@ -178,7 +183,7 @@ export function _calculateWeighted(
     totalErgo = weapon.properties.ergonomics || 0;
     totalRecoilMod = 0;
     totalWeight = weapon.weight || 0;
-    totalPrice = getItemPrice(weapon);
+    totalPrice = getWeaponPrice(weapon);
     hasSight = hasCategory(weapon, 'Sights');
     hasSuppressorGlobal = hasCategory(weapon, 'Silencer');
 
@@ -779,17 +784,31 @@ export function _calculateWeighted(
     );
   }
   if (maxWeight > 0 && totalWeight > maxWeight + weightEpsilon) {
-    warnings.push('The base weapon already exceeds the selected max weight.');
+    warnings.push({
+      code: BUILD_WARNING_CODES.BASE_WEAPON_MAX_WEIGHT,
+      params: { maxWeight },
+      fallback: 'The base weapon already exceeds the selected max weight.',
+    });
   }
   if (maxPrice > 0 && totalPrice > maxPrice) {
-    warnings.push('The build exceeds the selected max price.');
+    warnings.push({
+      code: BUILD_WARNING_CODES.BUILD_MAX_PRICE_EXCEEDED,
+      params: { maxPrice },
+      fallback: 'The build exceeds the selected max price.',
+    });
   }
   if (!Number.isFinite(totalPrice)) {
-    warnings.push('One or more selected items have no available price under the active price policy.');
+    const missingItemCount = [
+      Number.isFinite(getWeaponPrice(weapon)),
+      ...build.map(part => Number.isFinite(getItemPrice(part.item))),
+    ].filter(hasPrice => !hasPrice).length;
+    warnings.push({
+      code: BUILD_WARNING_CODES.PRICE_ITEMS_UNAVAILABLE,
+      params: { count: Math.max(1, missingItemCount) },
+      fallback: 'One or more selected items have no available price under the active price policy.',
+    });
   }
-  if (warnings.length > 0) {
-    result.warning = warnings.join(' ');
-  }
+  setBuildWarnings(result, warnings);
   if (errors.length > 0) {
     result.error = errors.join(' ');
   }
