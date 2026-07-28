@@ -4054,18 +4054,15 @@ button.weapon-diagram-node:focus-visible,
 .comparison-remove { float: right; width: 24px; height: 24px; margin-left: 8px; border: 1px solid var(--line); border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; font: inherit; }
 .comparison-remove:hover, .comparison-remove:focus-visible { border-color: var(--color-accent-red); color: var(--color-accent-red); }
 
-.module-comparison-toolbar,
 .module-comparison-filters {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 14px;
   margin-bottom: 18px;
   padding: 14px 18px;
 }
 
-.module-comparison-toolbar__counts,
-.module-comparison-toolbar__actions,
 .module-comparison-filters {
   display: flex;
   align-items: center;
@@ -4073,8 +4070,6 @@ button.weapon-diagram-node:focus-visible,
   flex-wrap: wrap;
 }
 
-.module-comparison-toolbar__counts { color: var(--muted); font-size: .8rem; }
-.module-comparison-toolbar__counts span + span { padding-left: 10px; border-left: 1px solid var(--line); }
 .module-comparison-filters { position: relative; z-index: 10; justify-content: flex-start; }
 .module-comparison-filters > label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: .8rem; }
 .module-comparison-filters select, .module-comparison-filters .input-field { min-height: 38px; min-width: 150px; }
@@ -4106,8 +4101,7 @@ button.weapon-diagram-node:focus-visible,
   .module-comparison-page__head, .comparison-controls, .comparison-module-list__head { align-items: stretch; flex-direction: column; }
   .comparison-count { align-self: flex-start; }
   .comparison-module { align-items: center; }
-  .module-comparison-toolbar, .module-comparison-filters { align-items: stretch; flex-direction: column; }
-  .module-comparison-toolbar__actions { display: grid; grid-template-columns: 1fr; }
+  .module-comparison-filters { align-items: stretch; flex-direction: column; }
   .module-comparison-filters select, .module-comparison-filters .input-field { width: 100%; }
   .module-comparison-table-wrap { max-height: calc(100vh - 220px); }
   .module-comparison-table__module { min-width: 215px; max-width: 215px; }

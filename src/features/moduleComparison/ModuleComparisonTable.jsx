@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import AsyncImage from '../../ui/AsyncImage.jsx';
-import { COMPARISON_METRICS, formatMetric, getMetricExtremes, metricValue } from './comparison.js';
+import { formatMetric, getMetricExtremes, metricValue } from './comparison.js';
 
 function SelectAllCheckbox({ checked, indeterminate, onChange, label }) {
   const ref = useRef(null);
@@ -9,13 +9,12 @@ function SelectAllCheckbox({ checked, indeterminate, onChange, label }) {
 }
 
 export default function ModuleComparisonTable({
-  rows, selectedIds, visibleColumns, sortKey, sortDirection, locale, t, onSort, onToggle, onToggleRows,
+  rows, selectedIds, metrics, sortKey, sortDirection, locale, t, onSort, onToggle, onToggleRows,
 }) {
   const rowIds = useMemo(() => rows.map(row => row.item.id), [rows]);
   const selectedRowCount = rowIds.filter(id => selectedIds.has(id)).length;
   const allSelected = rowIds.length > 0 && selectedRowCount === rowIds.length;
   const someSelected = selectedRowCount > 0 && !allSelected;
-  const metrics = COMPARISON_METRICS.filter(metric => visibleColumns.has(metric.key));
   const extremesByMetric = useMemo(() => new Map(metrics.map(metric => [metric.key, getMetricExtremes(rows.map(row => row.item), metric)])), [metrics, rows]);
   const toggleSort = key => onSort(key, key === sortKey ? (sortDirection === 'asc' ? 'desc' : 'asc') : undefined);
   const sortLabel = key => sortKey !== key ? '↕' : sortDirection === 'asc' ? '↑' : '↓';
