@@ -55,6 +55,7 @@ import AsyncImage from '../../ui/AsyncImage.jsx';
 import useBuildCalculation from './hooks/useBuildCalculation.js';
 import useConfiguratorCatalog from './hooks/useConfiguratorCatalog.js';
 import useSavedBuild from './hooks/useSavedBuild.js';
+import { getLocalizedBuildWarnings } from './configuratorNotifications.js';
 import { usePriceMode } from '../priceMode/usePriceMode.js';
 import { useTraderLevels } from '../traderLevels/useTraderLevels.js';
 import {
@@ -610,33 +611,36 @@ function collectBuildPriceDiagnostics(
   ));
 
   const warningMessages = [];
+  const infoMessages = [];
 
-  if (missingEntries.length > 0) {
-    warningMessages.push(
-      t('config.price.missing', { items: formatDiagnosticsList(missingEntries, t) }),
-    );
-  }
+  missingEntries.forEach(entry => warningMessages.push(
+    t('config.notification.priceMissingItem', { item: entry.label }),
+  ));
 
-  if (fallbackEntries.length > 0) {
-    warningMessages.push(
-      t('config.price.fallback', { items: formatDiagnosticsList(fallbackEntries, t) }),
-    );
-  }
+  fallbackEntries.forEach(entry => infoMessages.push(
+    t('config.notification.priceFallbackItem', { item: entry.label }),
+  ));
 
   if (modeMismatchEntries.length > 0) {
     warningMessages.push(
-      t('config.price.modeFallback', { items: formatDiagnosticsList(modeMismatchEntries, t) }),
+      t('config.notification.priceModeMismatch', {
+        items: formatDiagnosticsList(modeMismatchEntries, t),
+      }),
     );
   }
 
   if (barterOnlyEntries.length > 0) {
-    warningMessages.push(
-      t('config.price.barterOnlyWarning', { items: formatDiagnosticsList(barterOnlyEntries, t) }),
+    infoMessages.push(
+      t('config.notification.priceBarterOnly', {
+        items: formatDiagnosticsList(barterOnlyEntries, t),
+      }),
     );
   }
 
   if (sourceLabels.length > 1) {
-    warningMessages.push(t('config.price.mixedSources', { sources: sourceLabels.join(', ') }));
+    infoMessages.push(
+      t('config.notification.priceMixedSources', { sources: sourceLabels.join(', ') }),
+    );
   }
 
   const modeLabel = t(`config.price.${selectedPriceMode}Short`);
@@ -654,6 +658,7 @@ function collectBuildPriceDiagnostics(
     barterOnlyEntries,
     sourceLabels,
     warningMessages,
+    infoMessages,
     summaryStatus,
     summaryLabel: `${modeLabel} · ${sourceLabel} · ${summaryStatus}`,
   };
@@ -971,10 +976,6 @@ function getBuildResultErrorMessage(buildResult, language, t) {
   return language === 'ru' ? t('config.constraintMessage') : buildResult.error;
 }
 
-function getBuildResultWarningMessage(buildResult, language, t) {
-  return language === 'ru' ? t('config.buildWarningMessage') : buildResult.warning;
-}
-
 function Configurator() {
   const { language, t } = useI18n();
   const { priceMode, setPriceMode } = usePriceMode();
@@ -1190,6 +1191,12 @@ function Configurator() {
         setBuildResult({
           build: restored.build,
           stats: restoredResult.stats,
+          warningCode: restored.missingItemIds.length > 0
+            ? 'SAVED_MODULES_SKIPPED'
+            : undefined,
+          warningParams: restored.missingItemIds.length > 0
+            ? { count: restored.missingItemIds.length }
+            : undefined,
           warning: restored.missingItemIds.length > 0
             ? t('config.savedModulesSkipped', { count: restored.missingItemIds.length })
             : undefined,
@@ -1620,6 +1627,8 @@ function Configurator() {
       summaryLabel: `${t(`config.price.${priceMode}Short`)} · tarkov.dev · ${includeTraderPrices ? t('config.price.fleaTrader') : t('config.price.fleaOnly')}`,
       summaryStatus: includeTraderPrices ? t('config.price.fleaTrader') : t('config.price.fleaOnly'),
       warningMessages: [],
+      infoMessages: [],
+      fallbackEntries: [],
     };
 
   // Рассчитываем текущие значения для панели метрик
@@ -1916,18 +1925,17 @@ function Configurator() {
               calculationError={buildResult && hasCalculationError
                 ? getBuildResultErrorMessage(buildResult, language, t)
                 : null}
-              buildWarning={buildResult && !hasCalculationError && buildResult.warning
-                ? getBuildResultWarningMessage(buildResult, language, t)
-                : null}
+              buildWarnings={buildResult
+                && !hasCalculationError
+                && (buildResult.warning || buildResult.warningCode || buildResult.warnings)
+                ? getLocalizedBuildWarnings(buildResult, t)
+                : []}
               priceWarnings={canShowBuildDetails ? priceDiagnostics.warningMessages : []}
+              priceInfos={canShowBuildDetails ? priceDiagnostics.infoMessages : []}
+              hasFallbackPrice={priceDiagnostics.fallbackEntries?.length > 0}
+              priceModeNotice={priceModeNotice}
               t={t}
             />
-            {priceModeNotice && (
-              <div className="inline-message inline-message--info" role="status">
-                <strong>{t('priceMode.changed')}</strong>
-                <span>{priceModeNotice}</span>
-              </div>
-            )}
 
             {/* Рендеринг сгруппированных деталей */}
             <BuildParts

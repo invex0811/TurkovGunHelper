@@ -1,4 +1,6 @@
+import { useId } from 'react';
 import { normalizeStatPercent } from '../../../ui/weaponStatMeters.js';
+import { getInlineMessageA11y } from '../configuratorNotifications.js';
 
 export function WarningIcon({ className = '' }) {
   return (
@@ -28,32 +30,71 @@ export function CriticalModuleBadge({ t }) {
   );
 }
 
-export function InlineMessage({ type = 'info', title, children }) {
-  const isError = type === 'error';
-  const isWarning = type === 'warning';
-  const borderColor = isError
-    ? 'var(--color-accent-red)'
-    : isWarning
-      ? 'var(--color-accent-gold-dark)'
-      : 'var(--color-border-active)';
+function ErrorIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="m9 9 6 6m0-6-6 6" />
+    </svg>
+  );
+}
+
+function InfoIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v6m0-10h.01" />
+    </svg>
+  );
+}
+
+function SuccessIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="m8 12 2.5 2.5L16 9" />
+    </svg>
+  );
+}
+
+const MESSAGE_ICONS = {
+  error: ErrorIcon,
+  warning: WarningIcon,
+  info: InfoIcon,
+  success: SuccessIcon,
+};
+
+export function InlineMessage({
+  type = 'info',
+  title,
+  children,
+  details = [],
+}) {
+  const titleId = useId();
+  const { role, ariaLive } = getInlineMessageA11y(type);
+  const Icon = MESSAGE_ICONS[type] || InfoIcon;
 
   return (
     <div
-      style={{
-        backgroundColor: isError ? 'rgba(205, 30, 47, 0.12)' : 'rgba(154, 136, 102, 0.12)',
-        borderLeft: `4px solid ${borderColor}`,
-        padding: '0.75rem 1rem',
-        marginBottom: '1rem',
-        borderRadius: 'var(--radius-sm)',
-        fontSize: '0.9rem',
-      }}
+      className={`inline-message inline-message--${type}`}
+      role={role}
+      aria-live={ariaLive}
+      aria-labelledby={title ? titleId : undefined}
     >
-      {title && (
-        <strong style={{ display: 'block', marginBottom: '0.25rem' }}>
-          {title}
-        </strong>
-      )}
-      <span style={{ color: 'var(--color-text-main)' }}>{children}</span>
+      <div className="inline-message__icon"><Icon /></div>
+      <div className="inline-message__content">
+        {title && <strong className="inline-message__title" id={titleId}>{title}</strong>}
+        <div className="inline-message__body">
+          {children}
+          {details.length > 0 && (
+            <ul className="inline-message__list">
+              {details.map(detail => (
+                <li key={detail}>{detail}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

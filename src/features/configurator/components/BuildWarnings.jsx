@@ -1,46 +1,42 @@
 import { InlineMessage } from './ConfiguratorPrimitives.jsx';
+import { createConfiguratorNotifications } from '../configuratorNotifications.js';
 
 export default function BuildWarnings({
   generationError,
-  pricePolicyWarning,
-  replacementError,
   calculationError,
-  buildWarning,
+  replacementError,
+  buildWarnings,
+  pricePolicyWarning,
   priceWarnings,
+  priceInfos,
+  hasFallbackPrice,
+  priceModeNotice,
   t,
 }) {
+  const notifications = createConfiguratorNotifications({
+    generationError,
+    calculationError,
+    replacementError,
+    buildWarnings,
+    pricePolicyWarning,
+    priceWarnings,
+    priceInfos,
+    hasFallbackPrice,
+    priceModeNotice,
+  }, t);
+
   return (
-    <>
-      {generationError && (
-        <InlineMessage type="error" title={t('config.generationFailedTitle')}>
-          {generationError}
+    <div className="build-warnings">
+      {notifications.map(notification => (
+        <InlineMessage
+          key={notification.id}
+          type={notification.type}
+          title={notification.title}
+          details={notification.details}
+        >
+          {notification.message}
         </InlineMessage>
-      )}
-      {pricePolicyWarning && (
-        <InlineMessage type="warning" title={t('config.pricePolicyTitle')}>
-          {pricePolicyWarning}
-        </InlineMessage>
-      )}
-      {replacementError && (
-        <InlineMessage type="error" title={t('config.replacementRejected')}>
-          {replacementError}
-        </InlineMessage>
-      )}
-      {calculationError && (
-        <InlineMessage type="error" title={t('config.constraintFailed')}>
-          {calculationError}
-        </InlineMessage>
-      )}
-      {buildWarning && (
-        <InlineMessage type="warning" title={t('config.buildNotice')}>
-          {buildWarning}
-        </InlineMessage>
-      )}
-      {priceWarnings.length > 0 && (
-        <InlineMessage type="warning" title={t('config.priceDataNotice')}>
-          {priceWarnings.join(' ')}
-        </InlineMessage>
-      )}
-    </>
+      ))}
+    </div>
   );
 }
