@@ -106,7 +106,7 @@ export default function BuildParts({
                         type="button"
                         onClick={event => {
                           event.stopPropagation();
-                          onOpenReplacement(part);
+                          onOpenReplacement(part, event.currentTarget);
                         }}
                       >
                         {t('config.replace')}
