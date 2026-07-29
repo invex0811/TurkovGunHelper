@@ -5,6 +5,14 @@ import { mockTarkovApi } from './fixtures/tarkovApi.js';
 const SAVED_BUILDS_KEY = 'tarkov-gun-helper:saved-builds';
 const LANGUAGE_KEY = 'tarkovGunHelper.language';
 const PRICE_MODE_KEY = 'tarkovGunHelper.priceMode';
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled]):not([type="hidden"])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ');
 
 test.beforeEach(async ({ page }) => {
   await mockTarkovApi(page);
@@ -50,11 +58,86 @@ async function openSavedBuild(page, name) {
   await expect(page.getByLabel('Build name')).toHaveValue(name);
 }
 
+async function expectOpenModalContract(page, dialog, trigger) {
+  await expect(dialog).toBeVisible();
+  await expect.poll(() => dialog.evaluate(element => element.contains(document.activeElement)))
+    .toBe(true);
+  await expect.poll(() => trigger.evaluate(element => Boolean(element.closest('[inert]'))))
+    .toBe(true);
+  await expect.poll(() => dialog.evaluate(element => Boolean(element.closest('[inert]'))))
+    .toBe(false);
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).overflow))
+    .toBe('hidden');
+
+  const focusable = dialog.locator(FOCUSABLE_SELECTOR);
+  const focusableCount = await focusable.count();
+  expect(focusableCount).toBeGreaterThan(0);
+  const first = focusable.first();
+  const last = focusable.last();
+
+  await last.focus();
+  await page.keyboard.press('Tab');
+  await expect(first).toBeFocused();
+
+  await first.focus();
+  await page.keyboard.press('Shift+Tab');
+  await expect(last).toBeFocused();
+}
+
+async function expectEscapeRestoresModal(page, dialog, trigger, bodyOverflowBefore) {
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await expect.poll(() => trigger.evaluate(element => Boolean(element.closest('[inert]'))))
+    .toBe(false);
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).overflow))
+    .toBe(bodyOverflowBefore);
+}
+
 test('creates a weapon build from the catalog', async ({ page }) => {
   await createBuild(page);
 
   await expect(page.locator('.weapon').getByRole('heading', { name: 'TW', exact: true })).toBeVisible();
   await expect(page.getByText(/^Remaining to buy/)).toBeVisible();
+});
+
+test('keeps loading indicators visible and static when reduced motion is requested', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await expect.poll(() => page.evaluate(() => (
+    matchMedia('(prefers-reduced-motion: reduce)').matches
+  ))).toBe(true);
+
+  const styles = await page.evaluate(() => {
+    const ring = document.createElement('span');
+    ring.className = 'loader-ring';
+    const text = document.createElement('span');
+    text.className = 'loader-text';
+    text.textContent = 'Loading';
+    document.body.append(ring, text);
+    const ringStyle = getComputedStyle(ring);
+    const textStyle = getComputedStyle(text);
+    const result = {
+      ringAnimation: ringStyle.animationName,
+      ringOpacity: ringStyle.opacity,
+      ringWidth: ringStyle.width,
+      textAnimation: textStyle.animationName,
+      textOpacity: textStyle.opacity,
+      textDisplay: textStyle.display,
+    };
+    ring.remove();
+    text.remove();
+    return result;
+  });
+
+  expect(styles).toMatchObject({
+    ringAnimation: 'none',
+    ringOpacity: '1',
+    ringWidth: '80px',
+    textAnimation: 'none',
+    textOpacity: '1',
+  });
+  expect(styles.textDisplay).not.toBe('none');
 });
 
 test('owned items update costs, support mass actions, and persist with a saved build', async ({ page }) => {
@@ -318,21 +401,101 @@ test('replaces a part, saves the build, and restores it', async ({ page }) => {
     name: 'Mark Starter Grip as owned',
     exact: true,
   }).check();
-  await starterPart.getByRole('button', { name: 'Replace', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Replace Part', exact: true })).toBeVisible();
-  await page.getByText('Alternative Grip', { exact: true }).click();
+  const replaceStarter = starterPart.getByRole('button', { name: 'Replace', exact: true });
+  const bodyOverflowBefore = await page.evaluate(() => getComputedStyle(document.body).overflow);
+  await replaceStarter.focus();
+  await replaceStarter.press('Enter');
+
+  const replacementDialog = page.getByRole('dialog', { name: 'Replace Part', exact: true });
+  await expect(replacementDialog).toHaveAttribute('aria-modal', 'true');
+  await expectOpenModalContract(page, replacementDialog, replaceStarter);
+  await expectEscapeRestoresModal(
+    page,
+    replacementDialog,
+    replaceStarter,
+    bodyOverflowBefore,
+  );
+
+  await replaceStarter.press('Enter');
+  const alternativeChoice = page.getByRole('button', { name: /Replace: Alternative Grip/ });
+  await expect(alternativeChoice).toBeVisible();
+  expect(await alternativeChoice.evaluate(element => element.tagName)).toBe('BUTTON');
+  await expect(alternativeChoice.locator('a, button, input, select, textarea')).toHaveCount(0);
+  await alternativeChoice.focus();
+  await alternativeChoice.press('Space');
   const alternativePart = page.locator('.part-card').filter({ hasText: 'Alternative Grip' });
   await expect(alternativePart).toBeVisible();
   await expect(alternativePart.getByRole('checkbox', {
     name: 'Mark Alternative Grip as owned',
     exact: true,
   })).not.toBeChecked();
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).overflow))
+    .toBe(bodyOverflowBefore);
+
+  const replaceAlternative = alternativePart.getByRole('button', { name: 'Replace', exact: true });
+  await replaceAlternative.focus();
+  await replaceAlternative.press('Enter');
+  const starterChoice = page.getByRole('button', { name: /Replace: Starter Grip/ });
+  await starterChoice.focus();
+  await starterChoice.press('Enter');
+  await expect(starterPart).toBeVisible();
+
+  await replaceStarter.focus();
+  await replaceStarter.press('Enter');
+  await page.getByRole('button', { name: /Replace: Alternative Grip/ }).press('Space');
+  await expect(alternativePart).toBeVisible();
 
   await saveBuild(page, 'Replacement build');
   await openSavedBuild(page, 'Replacement build');
 
   await expect(page.locator('.part-card').filter({ hasText: 'Alternative Grip' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Update saved build', exact: true })).toBeVisible();
+});
+
+test('import and comparison dialogs trap focus and restore their triggers', async ({ page }) => {
+  await page.goto('/#/builds');
+  const importTrigger = page.getByRole('button', { name: 'Import', exact: true });
+  const bodyOverflowBefore = await page.evaluate(() => getComputedStyle(document.body).overflow);
+
+  await importTrigger.focus();
+  await importTrigger.press('Enter');
+  const importDialog = page.getByRole('dialog', { name: 'Import builds', exact: true });
+  await expectOpenModalContract(page, importDialog, importTrigger);
+  await expectEscapeRestoresModal(page, importDialog, importTrigger, bodyOverflowBefore);
+
+  await createBuild(page);
+  await saveBuild(page, 'Comparison Alpha');
+  await page.evaluate(savedBuildsKey => {
+    const savedBuilds = JSON.parse(localStorage.getItem(savedBuildsKey));
+    const copy = structuredClone(savedBuilds[0]);
+    copy.id = `${copy.id}-comparison-copy`;
+    copy.name = 'Comparison Bravo';
+    copy.createdAt = new Date(Date.parse(copy.createdAt) + 1000).toISOString();
+    copy.updatedAt = copy.createdAt;
+    localStorage.setItem(savedBuildsKey, JSON.stringify([...savedBuilds, copy]));
+  }, SAVED_BUILDS_KEY);
+  await page.goto('/#/builds');
+
+  await page.getByRole('button', {
+    name: 'Add Comparison Alpha to comparison',
+    exact: true,
+  }).click();
+  await page.getByRole('button', {
+    name: 'Add Comparison Bravo to comparison',
+    exact: true,
+  }).click();
+  const compareTrigger = page.getByRole('button', { name: 'Compare builds', exact: true });
+  await compareTrigger.focus();
+  await compareTrigger.press('Enter');
+
+  const comparisonDialog = page.getByRole('dialog', { name: 'Comparison', exact: true });
+  await expectOpenModalContract(page, comparisonDialog, compareTrigger);
+  await expectEscapeRestoresModal(
+    page,
+    comparisonDialog,
+    compareTrigger,
+    bodyOverflowBefore,
+  );
 });
 
 test('exports, deletes, imports, and opens a saved build', async ({ page }) => {
@@ -348,8 +511,16 @@ test('exports, deletes, imports, and opens a saved build', async ({ page }) => {
   const download = await downloadPromise;
   const exportedBuild = await readFile(await download.path());
 
-  await card.getByRole('button', { name: 'Delete', exact: true }).click();
+  const deleteTrigger = card.getByRole('button', { name: 'Delete', exact: true });
+  const bodyOverflowBefore = await page.evaluate(() => getComputedStyle(document.body).overflow);
+  await deleteTrigger.focus();
+  await deleteTrigger.press('Enter');
   const deleteDialog = page.getByRole('alertdialog', { name: /Delete “Portable build”/ });
+  await expect(deleteDialog).toHaveAttribute('aria-modal', 'true');
+  await expectOpenModalContract(page, deleteDialog, deleteTrigger);
+  await expectEscapeRestoresModal(page, deleteDialog, deleteTrigger, bodyOverflowBefore);
+
+  await deleteTrigger.press('Enter');
   await deleteDialog.getByRole('button', { name: 'Delete build', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'No saved builds yet', exact: true })).toBeVisible();
 

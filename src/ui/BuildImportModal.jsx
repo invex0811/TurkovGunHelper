@@ -9,6 +9,7 @@ import {
   prepareImportedBuilds,
 } from '../features/buildTransfer/index.js';
 import { useI18n } from '../i18n/useI18n.js';
+import ModalDialog from './ModalDialog.jsx';
 
 function getGameModeLabel(gameMode, t) {
   return gameMode === 'pve' ? t('page.import.modePve') : t('page.import.modePvp');
@@ -77,14 +78,19 @@ function shouldResetImportForLanguageChange(phase) {
   return phase === 'reading' || phase === 'loading' || phase === 'ready';
 }
 
-function BuildImportModal({ existingBuilds, language, onClose, onImported }) {
+function BuildImportModal({
+  existingBuilds,
+  language,
+  onClose,
+  onImported,
+  returnFocusRef,
+}) {
   const { t } = useI18n();
   const [phase, setPhase] = useState('select');
   const [results, setResults] = useState([]);
   const [fileErrors, setFileErrors] = useState([]);
   const [summary, setSummary] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
-  const dialogRef = useRef(null);
   const importRequestIdRef = useRef(0);
   const previousLanguageRef = useRef(language);
   const phaseRef = useRef(phase);
@@ -112,19 +118,6 @@ function BuildImportModal({ existingBuilds, language, onClose, onImported }) {
       importRequestIdRef.current += 1;
     };
   }, [language]);
-
-  useEffect(() => {
-    const previousFocus = document.activeElement;
-    dialogRef.current?.focus();
-    const handleKeyDown = event => {
-      if (event.key === 'Escape' && phase !== 'importing') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      previousFocus?.focus?.();
-    };
-  }, [onClose, phase]);
 
   const importableCount = useMemo(
     () => results.filter(result => result.status !== 'error' && result.strategy !== DUPLICATE_STRATEGIES.SKIP).length,
@@ -225,17 +218,17 @@ function BuildImportModal({ existingBuilds, language, onClose, onImported }) {
   };
 
   return (
-    <div className="comparison-modal" role="presentation" onMouseDown={phase === 'importing' ? undefined : onClose}>
-      <section
-        className="build-import-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="buildImportTitle"
-        aria-describedby="buildImportDescription"
-        tabIndex={-1}
-        ref={dialogRef}
-        onMouseDown={event => event.stopPropagation()}
-      >
+    <ModalDialog
+      backdropClassName="comparison-modal"
+      className="build-import-modal"
+      aria-labelledby="buildImportTitle"
+      aria-describedby="buildImportDescription"
+      initialFocus="dialog"
+      closeOnBackdrop={phase !== 'importing'}
+      closeOnEscape={phase !== 'importing'}
+      onClose={onClose}
+      returnFocusRef={returnFocusRef}
+    >
         <header className="build-import-modal__head">
           <div>
             <span className="builds-hero__eyebrow">{t('import.eyebrow')}</span>
@@ -344,8 +337,7 @@ function BuildImportModal({ existingBuilds, language, onClose, onImported }) {
             </>
           )}
         </footer>
-      </section>
-    </div>
+    </ModalDialog>
   );
 }
 
