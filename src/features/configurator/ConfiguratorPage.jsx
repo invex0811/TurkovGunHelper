@@ -1,4 +1,11 @@
-import { useState, useEffect, useCallback, useLayoutEffect, useMemo } from 'react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { PRICE_CONFIDENCE } from '../../data/price/priceModes.js';
 import {
@@ -52,6 +59,7 @@ import {
   sortModuleDisplayItems,
 } from '../../ui/criticalModules.js';
 import AsyncImage from '../../ui/AsyncImage.jsx';
+import ModalDialog from '../../ui/ModalDialog.jsx';
 import useBuildCalculation from './hooks/useBuildCalculation.js';
 import useConfiguratorCatalog from './hooks/useConfiguratorCatalog.js';
 import useSavedBuild from './hooks/useSavedBuild.js';
@@ -1005,6 +1013,7 @@ function Configurator() {
       ?? loadIncludeTraderPricesPreference(),
   );
   const [activeReplacePartId, setActiveReplacePartId] = useState(null);
+  const replacementTriggerRef = useRef(null);
   const [replaceMode, setReplaceMode] = useState('EXACT_ITEM');
   const [magazineCapacity, setMagazineCapacity] = useState(30);
   const [allMods, setAllMods] = useState(null);
@@ -1290,11 +1299,12 @@ function Configurator() {
     setActiveReplacePartId(null);
   };
 
-  const handleOpenReplaceDrawer = (part) => {
+  const handleOpenReplaceDrawer = (part, trigger) => {
     setReplacementError(null);
     if (activeReplacePartId === part.item.id) {
       setActiveReplacePartId(null);
     } else {
+      replacementTriggerRef.current = trigger;
       if (isSightItem(part.item)) {
         setReplaceMode('SIGHT_ITEM');
       } else if (isMountItem(part.item)) {
@@ -1989,10 +1999,15 @@ function Configurator() {
         );
 
         return (
-          <div className="drawer is-open" onClick={() => setActiveReplacePartId(null)}>
-            <div className="drawer__panel" onClick={e => e.stopPropagation()}>
+          <ModalDialog
+            backdropClassName="drawer is-open"
+            className="drawer__panel"
+            aria-labelledby="replacementDialogTitle"
+            onClose={() => setActiveReplacePartId(null)}
+            returnFocusRef={replacementTriggerRef}
+          >
               <div className="drawer__head">
-                <h2>{t('config.replacePart')}</h2>
+                <h2 id="replacementDialogTitle">{t('config.replacePart')}</h2>
                 <button className="btn btn--ghost" type="button" onClick={() => setActiveReplacePartId(null)}>{t('common.close')}</button>
               </div>
               <div className="drawer__body" style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 100px)', paddingRight: '4px' }}>
@@ -2122,8 +2137,10 @@ function Configurator() {
                         const weightDiffText = weightDiff === 0 ? '0 kg' : weightDiff > 0 ? `+${parseFloat(weightDiff.toFixed(3))} kg` : `${parseFloat(weightDiff.toFixed(3))} kg`;
 
                         return (
-                          <div
+                          <button
                             key={getAlternativeListKey(alt)}
+                            type="button"
+                            aria-label={`${t('config.replace')}: ${getAlternativeDisplayName(alt)}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               const effectiveMode = alt.replacementMode || replaceMode;
@@ -2138,7 +2155,11 @@ function Configurator() {
                               borderRadius: '6px',
                               cursor: 'pointer',
                               transition: 'all 0.16s ease',
-                              boxSizing: 'border-box'
+                              boxSizing: 'border-box',
+                              width: '100%',
+                              font: 'inherit',
+                              color: 'inherit',
+                              textAlign: 'left'
                             }}
                             onMouseEnter={e => {
                               e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
@@ -2197,15 +2218,14 @@ function Configurator() {
                                       : '0 RUB'}
                               </div>
                             </div>
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
                   )}
                 </div>
               </div>
-            </div>
-          </div>
+          </ModalDialog>
         );
       })()}
     </div>

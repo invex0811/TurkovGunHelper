@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import {
@@ -9,6 +9,7 @@ import {
 import { loadItemsCatalog } from '../data/tarkovApi/index.js';
 import { downloadAllBuilds, downloadBuildFile } from '../features/buildTransfer/index.js';
 import BuildImportModal from '../ui/BuildImportModal.jsx';
+import ModalDialog from '../ui/ModalDialog.jsx';
 import { useI18n } from '../i18n/useI18n.js';
 import { getBuildGameMode, getLocalizedBuildWeapon } from './buildsLocalizedWeapons.js';
 
@@ -46,6 +47,9 @@ function Builds() {
   const [isComparisonOpen, setIsComparisonOpen] = useState(false);
   const [buildPendingDeletion, setBuildPendingDeletion] = useState(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const comparisonTriggerRef = useRef(null);
+  const deleteTriggerRef = useRef(null);
+  const importTriggerRef = useRef(null);
   const [localizedCatalogs, setLocalizedCatalogs] = useState(() => ({
     language: null,
     byGameMode: new Map(),
@@ -98,21 +102,6 @@ function Builds() {
     };
   }, [builds, language]);
 
-  useEffect(() => {
-    if (!isComparisonOpen && !buildPendingDeletion) return undefined;
-
-    const handleKeyDown = event => {
-      if (event.key !== 'Escape') return;
-      if (buildPendingDeletion) {
-        setBuildPendingDeletion(null);
-      } else {
-        setIsComparisonOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [buildPendingDeletion, isComparisonOpen]);
-
   const selectedBuilds = useMemo(() => {
     const selectedSet = new Set(selectedIds);
     return builds.filter(build => selectedSet.has(build.id));
@@ -141,6 +130,7 @@ function Builds() {
 
   const handleDelete = (event, build) => {
     event.stopPropagation();
+    deleteTriggerRef.current = event.currentTarget;
     setBuildPendingDeletion(build);
   };
 
@@ -205,7 +195,16 @@ function Builds() {
             <span>{t('builds.ofSaved')}</span>
           </div>
           <div className="builds-hero__actions">
-            <button className="btn btn--primary" type="button" onClick={() => setIsImportOpen(true)}>{t('builds.import')}</button>
+            <button
+              className="btn btn--primary"
+              type="button"
+              onClick={event => {
+                importTriggerRef.current = event.currentTarget;
+                setIsImportOpen(true);
+              }}
+            >
+              {t('builds.import')}
+            </button>
             <button className="btn btn--ghost" type="button" onClick={handleExportAll} disabled={builds.length === 0}>{t('builds.exportAll')}</button>
           </div>
         </div>
@@ -305,7 +304,10 @@ function Builds() {
               className="btn btn--primary"
               type="button"
               disabled={selectedBuilds.length < 2}
-              onClick={() => setIsComparisonOpen(true)}
+              onClick={event => {
+                comparisonTriggerRef.current = event.currentTarget;
+                setIsComparisonOpen(true);
+              }}
             >
               {t('builds.compareBuilds')}
             </button>
@@ -314,14 +316,13 @@ function Builds() {
       )}
 
       {isComparisonOpen && selectedBuilds.length >= 2 && (
-        <div className="comparison-modal" role="presentation" onMouseDown={() => setIsComparisonOpen(false)}>
-          <section
-            className="comparison-panel comparison-modal__dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t('builds.comparison')}
-            onMouseDown={event => event.stopPropagation()}
-          >
+        <ModalDialog
+          backdropClassName="comparison-modal"
+          className="comparison-panel comparison-modal__dialog"
+          aria-label={t('builds.comparison')}
+          onClose={() => setIsComparisonOpen(false)}
+          returnFocusRef={comparisonTriggerRef}
+        >
             <div className="comparison-panel__head">
               <div>
                 <span className="builds-hero__eyebrow">{t('builds.comparison')}</span>
@@ -365,24 +366,20 @@ function Builds() {
                 </tbody>
               </table>
             </div>
-          </section>
-        </div>
+        </ModalDialog>
       )}
 
       {buildPendingDeletion && (
-        <div
-          className="comparison-modal"
-          role="presentation"
-          onMouseDown={() => setBuildPendingDeletion(null)}
+        <ModalDialog
+          backdropClassName="comparison-modal"
+          className="delete-confirm"
+          role="alertdialog"
+          aria-labelledby="deleteBuildTitle"
+          aria-describedby="deleteBuildDescription"
+          initialFocus="[autofocus]"
+          onClose={() => setBuildPendingDeletion(null)}
+          returnFocusRef={deleteTriggerRef}
         >
-          <section
-            className="delete-confirm"
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="deleteBuildTitle"
-            aria-describedby="deleteBuildDescription"
-            onMouseDown={event => event.stopPropagation()}
-          >
             <div className="delete-confirm__icon" aria-hidden="true">!</div>
             <div className="delete-confirm__content">
               <span className="builds-hero__eyebrow">{t('builds.deleteSaved')}</span>
@@ -399,8 +396,7 @@ function Builds() {
                 {t('page.builds.confirmDelete')}
               </button>
             </div>
-          </section>
-        </div>
+        </ModalDialog>
       )}
 
       {isImportOpen && (
@@ -408,6 +404,7 @@ function Builds() {
           existingBuilds={builds}
           language={language}
           onClose={() => setIsImportOpen(false)}
+          returnFocusRef={importTriggerRef}
           onImported={nextBuilds => {
             setBuilds(nextBuilds);
             setSelectedIds([]);
