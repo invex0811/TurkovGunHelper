@@ -31,6 +31,11 @@ export function createCompatibilityTools(calculationCache) {
     return getSlotSearchName(slotName, slotNameId).includes('barrel');
   }
 
+  function isMuzzleSlot(slotName, slotNameId = '') {
+    const name = getSlotSearchName(slotName, slotNameId);
+    return name.includes('muzzle') || name.includes('suppressor') || name.includes('silencer');
+  }
+
   function isCombinedPistolGripStock(item) {
     const name = `${item.name || ''} ${item.shortName || ''}`.toLowerCase();
     return hasCategory(item, 'Stock')
@@ -50,6 +55,7 @@ export function createCompatibilityTools(calculationCache) {
     hasCategory,
     isBarrelSlot,
     isCombinedPistolGripStock,
+    isMuzzleSlot,
     isPistolGripSlot,
     isStockSlot,
     isSuppressor,
