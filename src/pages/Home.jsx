@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getCatalogStatus, getWeapons, isAbortError, subscribeToCatalogStatus } from '../data/tarkovApi';
+import { formatWeaponFireModes } from '../domain/fireModes.js';
 import { filterHomeWeapons, getHomeWeaponFilterOptions } from './homeWeaponFilters.js';
 import HomeFilterModal from '../ui/HomeFilterModal.jsx';
 import { useI18n } from '../i18n/useI18n.js';
@@ -186,33 +187,44 @@ function Home() {
               gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
               gap: '1rem',
             }}>
-              {filteredWeapons.map(weapon => (
-                <Link to={`/configure/${weapon.id}`} key={weapon.id} style={{ textDecoration: 'none' }}>
-                  <div className="glass-panel weapon-card" style={{
-                    padding: '1rem',
-                    textAlign: 'center',
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                  }}>
-                    <div>
-                      <AsyncImage
-                        key={weapon.properties?.defaultPreset?.image512pxLink || weapon.image512pxLink || `${weapon.id}-missing-image`}
-                        src={weapon.properties?.defaultPreset?.image512pxLink || weapon.image512pxLink}
-                        alt={weapon.shortName}
-                        unavailableLabel={t('image.unavailable')}
-                        unavailableStyle={{ fontSize: '0.8rem' }}
-                        shimmerBorderRadius="var(--radius-sm)"
-                        style={{ maxWidth: '100%', maxHeight: '100px', objectFit: 'contain' }}
-                        containerStyle={{ height: '100px' }}
-                      />
-                      <h3 style={{ fontSize: '1.2rem', margin: '1rem 0 0.5rem 0', color: 'var(--color-accent-gold)' }}>{weapon.shortName}</h3>
+              {filteredWeapons.map(weapon => {
+                const fireModes = formatWeaponFireModes(weapon);
+
+                return (
+                  <Link to={`/configure/${weapon.id}`} key={weapon.id} style={{ textDecoration: 'none' }}>
+                    <div className="glass-panel weapon-card" style={{
+                      padding: '1rem',
+                      textAlign: 'center',
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                    }}>
+                      <div>
+                        <AsyncImage
+                          key={weapon.properties?.defaultPreset?.image512pxLink || weapon.image512pxLink || `${weapon.id}-missing-image`}
+                          src={weapon.properties?.defaultPreset?.image512pxLink || weapon.image512pxLink}
+                          alt={weapon.shortName}
+                          unavailableLabel={t('image.unavailable')}
+                          unavailableStyle={{ fontSize: '0.8rem' }}
+                          shimmerBorderRadius="var(--radius-sm)"
+                          style={{ maxWidth: '100%', maxHeight: '100px', objectFit: 'contain' }}
+                          containerStyle={{ height: '100px' }}
+                        />
+                        <h3 style={{ fontSize: '1.2rem', margin: '1rem 0 0.5rem 0', color: 'var(--color-accent-gold)' }}>{weapon.shortName}</h3>
+                      </div>
+                      <div>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', margin: 0 }}>{weapon.name}</p>
+                        {fireModes && (
+                          <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', lineHeight: 1.3, margin: '0.25rem 0 0' }}>
+                            {fireModes}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{weapon.name}</p>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                );
+              })}
             </div>
           )}
         </>

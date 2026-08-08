@@ -1,6 +1,5 @@
-export function getMetaResultScore(
-  result,
-  weapon,
+export function getMetaObjectiveScore(
+  { baseErgo, itemErgo, itemRecoil, itemWeight },
   {
     ergoCap,
     ergoSoftCap,
@@ -10,21 +9,6 @@ export function getMetaResultScore(
     weightWeight,
   },
 ) {
-  if (result.error || result.stats.price == null) return -Infinity;
-
-  const baseErgo = weapon.properties.ergonomics || 0;
-  const itemErgo = result.build.reduce(
-    (sum, part) => sum + (part.item.ergonomicsModifier || 0),
-    0,
-  );
-  const itemRecoil = result.build.reduce(
-    (sum, part) => sum + (part.item.recoilModifier || 0),
-    0,
-  );
-  const itemWeight = result.build.reduce(
-    (sum, part) => sum + (part.item.weight || 0),
-    0,
-  );
   const getEffectiveErgo = value => Math.min(ergoCap, value)
     + (Math.max(0, Math.min(ergoSoftCap, value) - ergoCap) * overflowErgoWeight);
   const effectiveErgoDelta = getEffectiveErgo(baseErgo + itemErgo)
@@ -33,6 +17,29 @@ export function getMetaResultScore(
   return (effectiveErgoDelta * ergoWeight)
     - (itemRecoil * recoilWeight)
     - (itemWeight * weightWeight);
+}
+
+export function getMetaResultScore(result, weapon, scoringOptions) {
+  if (result.error || result.stats.price == null) return -Infinity;
+
+  return getMetaObjectiveScore(
+    {
+      baseErgo: weapon.properties.ergonomics || 0,
+      itemErgo: result.build.reduce(
+        (sum, part) => sum + (part.item.ergonomicsModifier || 0),
+        0,
+      ),
+      itemRecoil: result.build.reduce(
+        (sum, part) => sum + (part.item.recoilModifier || 0),
+        0,
+      ),
+      itemWeight: result.build.reduce(
+        (sum, part) => sum + (part.item.weight || 0),
+        0,
+      ),
+    },
+    scoringOptions,
+  );
 }
 
 export function getPriceAwareResultScore(

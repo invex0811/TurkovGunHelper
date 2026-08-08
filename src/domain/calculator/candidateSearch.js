@@ -28,6 +28,7 @@ export function _calculateWeighted(
     hasCategory,
     isBarrelSlot,
     isCombinedPistolGripStock,
+    isMuzzleSlot,
     isPistolGripSlot,
     isStockSlot,
     isSuppressor,
@@ -40,6 +41,29 @@ export function _calculateWeighted(
   } = createPricingTools(calculationCache, options);
 
   const build = [];
+  let branchEvaluatorOptions = options;
+
+  function clearForcedBranchCaches() {
+    calculationCache.minimumRequiredPricesByItem = new WeakMap();
+    calculationCache.minimumRequiredPricesBySlot = new WeakMap();
+    calculationCache.minimumRequiredWeightsByItem = new WeakMap();
+    calculationCache.minimumRequiredWeightsBySlot = new WeakMap();
+  }
+
+  function withBranchEvaluatorSuppressorOverride(callback) {
+    const previousOptions = branchEvaluatorOptions;
+    branchEvaluatorOptions = {
+      ...previousOptions,
+      requireSuppressor: false,
+      forbidSuppressor: true,
+    };
+
+    try {
+      return callback();
+    } finally {
+      branchEvaluatorOptions = previousOptions;
+    }
+  }
   let totalErgo = weapon.properties.ergonomics || 0;
   let totalRecoilMod = 0;
   let totalWeight = weapon.weight || 0;
@@ -547,7 +571,7 @@ export function _calculateWeighted(
     get maxPrice() { return maxPrice; },
     get maxWeight() { return maxWeight; },
     get modMap() { return modMap; },
-    get options() { return options; },
+    get options() { return branchEvaluatorOptions; },
     get overflowErgoWeight() { return overflowErgoWeight; },
     get priceWeight() { return priceWeight; },
     get recoilWeight() { return recoilWeight; },
@@ -717,6 +741,7 @@ export function _calculateWeighted(
 
   const {
     optimizeFinalBarrelBlock,
+    optimizeFinalMuzzleBlock,
     optimizePriceAwareLeafRecoilUpgrades,
   } = createBuildOptimizers({
     get PRICE_AWARE_TARGET() { return PRICE_AWARE_TARGET; },
@@ -725,18 +750,24 @@ export function _calculateWeighted(
     get baseRecoilH() { return baseRecoilH; },
     get baseRecoilV() { return baseRecoilV; },
     get build() { return build; },
+    get clearForcedBranchCaches() { return clearForcedBranchCaches; },
     get ergoCap() { return ergoCap; },
+    get ergoSoftCap() { return ergoSoftCap; },
+    get ergoWeight() { return ergoWeight; },
     get evaluateBranch() { return evaluateBranch; },
     get getItemPrice() { return getItemPrice; },
     get hasCategory() { return hasCategory; },
     get isBarrelSlot() { return isBarrelSlot; },
+    get isMuzzleSlot() { return isMuzzleSlot; },
     get isSuppressor() { return isSuppressor; },
     get maxPrice() { return maxPrice; },
     get maxWeight() { return maxWeight; },
     get modMap() { return modMap; },
     get options() { return options; },
+    get overflowErgoWeight() { return overflowErgoWeight; },
     get rebuildBuildState() { return rebuildBuildState; },
     get requireSight() { return requireSight; },
+    get recoilWeight() { return recoilWeight; },
     get requiredItemIds() { return requiredItemIds; },
     get targetType() { return targetType; },
     get totalErgo() { return totalErgo; },
@@ -745,10 +776,13 @@ export function _calculateWeighted(
     get totalWeight() { return totalWeight; },
     get weapon() { return weapon; },
     get weightEpsilon() { return weightEpsilon; },
+    get weightWeight() { return weightWeight; },
+    get withBranchEvaluatorSuppressorOverride() { return withBranchEvaluatorSuppressorOverride; },
   });
 
   processSlots(weapon.properties.slots);
   optimizeFinalBarrelBlock();
+  optimizeFinalMuzzleBlock();
   optimizePriceAwareLeafRecoilUpgrades();
   rebuildBuildState();
 

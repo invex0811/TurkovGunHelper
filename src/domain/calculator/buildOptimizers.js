@@ -1,3 +1,5 @@
+import { getMetaObjectiveScore } from './scoring.js';
+
 export function createBuildOptimizers(context) {
   function findInstalledSlotContextForItem(itemId) {
     const installedParts = [context.weapon, ...context.build.map(part => part.item)];
@@ -94,6 +96,194 @@ export function createBuildOptimizers(context) {
     } finally {
       slot.filters.allowedItems = originalAllowedItems;
     }
+  }
+
+  function withForcedBranchPath(path, callback) {
+    const originals = path.map(({ slot }) => ({
+      slot,
+      allowedItems: slot.filters.allowedItems,
+      required: slot.required,
+    }));
+
+    path.forEach(({ slot, allowedItem }) => {
+      slot.filters.allowedItems = [allowedItem];
+      slot.required = true;
+    });
+    context.clearForcedBranchCaches();
+
+    try {
+      return callback();
+    } finally {
+      originals.forEach(({ slot, allowedItems, required }) => {
+        slot.filters.allowedItems = allowedItems;
+        slot.required = required;
+      });
+      context.clearForcedBranchCaches();
+    }
+  }
+
+  function withoutAdditionalSuppressor(callback) {
+    return context.withBranchEvaluatorSuppressorOverride(callback);
+  }
+
+  function getMetaCandidateScore(branchEval) {
+    const baseErgo = context.weapon.properties.ergonomics || 0;
+    return getMetaObjectiveScore(
+      {
+        baseErgo,
+        itemErgo: context.totalErgo - baseErgo + branchEval.statsDelta.ergonomics,
+        itemRecoil: context.totalRecoilMod + branchEval.statsDelta.recoil,
+        itemWeight: context.totalWeight - (context.weapon.weight || 0) + branchEval.statsDelta.weight,
+      },
+      {
+        ergoCap: context.ergoCap,
+        ergoSoftCap: context.ergoSoftCap,
+        ergoWeight: context.ergoWeight,
+        overflowErgoWeight: context.overflowErgoWeight,
+        recoilWeight: context.recoilWeight,
+        weightWeight: context.weightWeight,
+      },
+    );
+  }
+
+  function isBetterFinalMuzzle(candidate, bestCandidate) {
+    if (!candidate) return false;
+    if (!bestCandidate) return true;
+
+    const scoreDelta = candidate.score - bestCandidate.score;
+    if (scoreDelta > 0.000001) return true;
+    return false;
+  }
+
+  function findInstalledMuzzleSlotContext() {
+    const installedParts = [context.weapon, ...context.build.map(part => part.item)];
+    const installedIds = new Set(context.build.map(part => part.item.id));
+
+    for (const parentItem of installedParts) {
+      for (const slot of parentItem.properties?.slots || []) {
+        if (!context.isMuzzleSlot(slot.name, slot.nameId || slot.id)) continue;
+        const rootAllowedItem = (slot.filters?.allowedItems || [])
+          .find(allowedItem => installedIds.has(allowedItem.id));
+        if (rootAllowedItem) {
+          return { rootItem: context.modMap[rootAllowedItem.id], slot };
+        }
+      }
+    }
+
+    for (const parentItem of installedParts) {
+      const slot = (parentItem.properties?.slots || [])
+        .find(candidate => context.isMuzzleSlot(candidate.name, candidate.nameId || candidate.id));
+      if (slot) return { rootItem: null, slot };
+    }
+    return null;
+  }
+
+  function collectForcedBranchPaths(rootItem) {
+    const paths = [[]];
+
+    function walk(item, path, pathIds) {
+      for (const slot of item.properties?.slots || []) {
+        for (const allowedItem of slot.filters?.allowedItems || []) {
+          if (pathIds.has(allowedItem.id)) continue;
+          const childItem = context.modMap[allowedItem.id];
+          if (!childItem) continue;
+
+          const nextPath = [...path, { slot, allowedItem }];
+          paths.push(nextPath);
+          walk(childItem, nextPath, new Set([...pathIds, allowedItem.id]));
+        }
+      }
+    }
+
+    walk(rootItem, [], new Set([rootItem.id]));
+    return paths;
+  }
+
+  function optimizeFinalMuzzleBlock() {
+    if (context.targetType !== 'meta') return;
+
+    const slotContext = findInstalledMuzzleSlotContext();
+    if (!slotContext) return;
+
+    const rootIndex = slotContext.rootItem
+      ? context.build.findIndex(part => part.item.id === slotContext.rootItem.id)
+      : context.build.length;
+    if (rootIndex === -1) return;
+
+    const removedIds = slotContext.rootItem
+      ? collectInstalledBranchIds(slotContext.rootItem)
+      : new Set();
+    const removedParts = context.build.filter(part => removedIds.has(part.item.id));
+    const restoreBranchEval = createExistingBranchEvaluation(removedParts);
+    const removedRequiredIds = new Set(
+      removedParts
+        .map(part => part.item.id)
+        .filter(itemId => context.requiredItemIds.has(itemId)),
+    );
+    const removedRequiredSight = context.requireSight
+      && removedParts.some(part => context.hasCategory(part.item, 'Sights'));
+
+    for (let i = context.build.length - 1; i >= 0; i -= 1) {
+      if (removedIds.has(context.build[i].item.id)) context.build.splice(i, 1);
+    }
+    context.rebuildBuildState();
+
+    const hasOtherSuppressor = context.build.some(part => context.isSuppressor(part.item));
+    const hasOtherSight = context.build.some(part => context.hasCategory(part.item, 'Sights'));
+    const createCandidate = branchEval => {
+      if (!branchEval.isValid) return null;
+      if (context.options.requireSuppressor && !hasOtherSuppressor && !branchEval.hasSuppressor) return null;
+      if (hasOtherSuppressor && branchEval.hasSuppressor) return null;
+      if ([...removedRequiredIds].some(itemId => !branchEval.requiredMatches.has(itemId))) return null;
+      if (removedRequiredSight && !hasOtherSight && !branchEval.hasSight) return null;
+
+      const projected = getProjectedStats(branchEval);
+      if (projected.ergonomics < context.ergoCap) return null;
+      if (context.maxWeight > 0 && projected.weight > context.maxWeight + context.weightEpsilon) return null;
+      if (context.maxPrice > 0 && projected.price > context.maxPrice) return null;
+      if (!Number.isFinite(projected.price)) return null;
+      return {
+        branchEval,
+        projected,
+        score: getMetaCandidateScore(branchEval),
+      };
+    };
+
+    let bestCandidate = createCandidate(restoreBranchEval);
+    if (slotContext.slot.required !== true) {
+      const emptyCandidate = createCandidate(createExistingBranchEvaluation([]));
+      if (isBetterFinalMuzzle(emptyCandidate, bestCandidate)) bestCandidate = emptyCandidate;
+    }
+    for (const rootAllowedItem of slotContext.slot.filters?.allowedItems || []) {
+      const rootItem = context.modMap[rootAllowedItem.id];
+      if (!rootItem) continue;
+
+      for (const forcedPath of collectForcedBranchPaths(rootItem)) {
+        const evaluateBranchCandidate = () => context.evaluateBranch(
+          slotContext.slot.name,
+          rootItem.id,
+          context.totalErgo,
+          new Set(),
+          context.totalWeight,
+          new Set(),
+          new Set(),
+          context.totalPrice,
+          0,
+          0,
+          slotContext.slot.nameId || slotContext.slot.id,
+        );
+        const evaluateCandidate = () => hasOtherSuppressor
+          ? withoutAdditionalSuppressor(evaluateBranchCandidate)
+          : evaluateBranchCandidate();
+        const branchEval = forcedPath.length > 0
+          ? withForcedBranchPath(forcedPath, evaluateCandidate)
+          : evaluateCandidate();
+        const candidate = createCandidate(branchEval);
+        if (isBetterFinalMuzzle(candidate, bestCandidate)) bestCandidate = candidate;
+      }
+    }
+
+    context.applyBranchPlan(bestCandidate?.branchEval || restoreBranchEval, rootIndex);
   }
 
   function isBetterFinalBarrel(candidate, bestCandidate) {
@@ -310,6 +500,7 @@ export function createBuildOptimizers(context) {
 
   return {
     optimizeFinalBarrelBlock,
+    optimizeFinalMuzzleBlock,
     optimizePriceAwareLeafRecoilUpgrades,
   };
 }
