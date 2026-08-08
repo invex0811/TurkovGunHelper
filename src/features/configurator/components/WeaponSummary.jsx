@@ -1,4 +1,5 @@
 import AsyncImage from '../../../ui/AsyncImage.jsx';
+import { formatWeaponFireModes } from '../../../domain/fireModes.js';
 import { TarkovDevItemLink } from '../../../ui/TarkovDevItemLink.js';
 import {
   InlineMessage,
@@ -22,12 +23,15 @@ export default function WeaponSummary({
   t,
   weapon,
 }) {
+  const fireModes = formatWeaponFireModes(weapon);
+
   return (
     <section className="panel weapon">
       <div className="weapon__head">
         <div>
           <h2>{weapon.shortName}</h2>
           <p>{weapon.name}</p>
+          {fireModes && <p>{fireModes}</p>}
         </div>
         <div className="source">
           <span>{t(`config.price.${priceMode}Short`)}</span>
