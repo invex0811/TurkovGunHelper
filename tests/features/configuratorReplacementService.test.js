@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 
 import {
   applyReplacement,
+  formatPartName,
+  getAlternativeDisplayName,
   getReplaceTarget,
 } from '../../src/features/configurator/services/replacementService.js';
 
@@ -27,6 +29,23 @@ function node(value, { parent = null, slotName = '', sourceSlot = null, children
   });
   return result;
 }
+
+test('formatPartName keeps handguard dimensions in inches while converting other parts to millimeters', () => {
+  const handguard = item('handguard', [], ['Handguard']);
+  const barrel = item('barrel', [], ['Barrel']);
+
+  assert.equal(formatPartName('SMR MK16 9.5"', handguard), 'SMR MK16 9.5"');
+  assert.equal(formatPartName('M590A1 20 inch', barrel), 'M590A1 508 mm');
+});
+
+test('getAlternativeDisplayName keeps handguard dimensions in inches', () => {
+  const handguard = {
+    ...item('handguard', [], ['Handguard']),
+    shortName: 'SMR MK16 13.5"',
+  };
+
+  assert.equal(getAlternativeDisplayName(handguard), 'SMR MK16 13.5"');
+});
 
 test('applyReplacement preserves compatible descendants and removes incompatible subtrees', () => {
   const compatible = item('compatible-child');
