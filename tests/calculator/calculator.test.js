@@ -2501,3 +2501,34 @@ test('requireSight and sightMode options should correctly filter and guarantee s
   assertNotInstalled(resultNone, reflexSight.id);
   assertNotInstalled(resultNone, scopeSight.id);
 });
+
+test('requiredItemIds install a manually selected sight through its compatible mount chain', () => {
+  const scopeSight = createTestMod({
+    id: 'manual_scope_sight',
+    name: 'Manual Scope',
+    shortName: 'Manual Scope',
+    categories: createCategories(['Scope', 'Sights']),
+    properties: { zoomLevels: [[4]] },
+  });
+  const scopeMount = createTestMod({
+    id: 'manual_scope_mount',
+    name: 'Manual Scope Mount',
+    shortName: 'Manual Mount',
+    categories: createCategories(['Mount']),
+    properties: { slots: [createSlot('mod_scope', [scopeSight.id])] },
+  });
+  const testWeapon = createTestWeapon({
+    slots: [createSlot('mod_mount', [scopeMount.id])],
+  });
+
+  const result = calculateBestBuild(testWeapon, 'meta', 50, 50, createModMap(scopeMount, scopeSight), {
+    magazineCapacity: 30,
+    requireSight: true,
+    sightMode: 'any',
+    requiredItemIds: [scopeSight.id],
+  });
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, scopeMount.id);
+  assertInstalled(result, scopeSight.id);
+});

@@ -1,7 +1,16 @@
 import AsyncImage from '../../../ui/AsyncImage.jsx';
 import CustomBuildRadar from '../../../ui/CustomBuildRadar.jsx';
 import { Link } from 'react-router-dom';
+import { useState } from 'react';
 import { PriceSource } from './PriceDisplay.jsx';
+import TacticalDevicePicker from './TacticalDevicePicker.jsx';
+import { scopeSupportsZoom } from '../scopeOptions.js';
+import { SCOPE_MODES, SCOPE_NONE_OPTION_ID } from '../scopeSelection.js';
+import {
+  getAdditionalScopeZoomLevels,
+  getCompactScopeZoomLevels,
+} from '../scopeZoomDisplay.js';
+import { getScopeAutoCopy } from '../scopeAutoCopy.js';
 
 function ModuleRow({ view, action, actionLabel, onAction }) {
   const media = (
@@ -45,7 +54,6 @@ function ModuleRow({ view, action, actionLabel, onAction }) {
 export default function BuildSettings(props) {
   const {
     availableCapacities,
-    availableZoomLevels,
     configTab,
     customExactTargets,
     customProfile,
@@ -53,8 +61,9 @@ export default function BuildSettings(props) {
     includeFlashlight,
     includeLaser,
     includeTraderPrices,
+    flashlightItems,
+    flashlightItemId,
     strictTraderLevels,
-    isSightSelectOpen,
     magazineCapacity,
     maxPrice,
     maxPriceDraft,
@@ -70,17 +79,37 @@ export default function BuildSettings(props) {
     onMaxWeightChange,
     onRemoveModule,
     onRequiredModuleSearchChange,
-    onSightModeChange,
-    onSightSelectOpenChange,
     requiredModuleSearch,
     selectedModules,
     setters,
-    sightMode,
+    scopeItems,
+    scopeMode,
+    scopeItemId,
+    scopeZoom,
+    scopeZoomLevels,
     suppressorMode,
     targetType,
+    tblItems,
+    tblItemId,
     t,
     weapon,
   } = props;
+  const scopeSelectionId = scopeMode === SCOPE_MODES.NONE
+    ? SCOPE_NONE_OPTION_ID
+    : scopeMode === SCOPE_MODES.MANUAL
+      ? scopeItemId
+      : null;
+  const [zoomFiltersExpanded, setZoomFiltersExpanded] = useState(false);
+  const additionalScopeZoomLevels = getAdditionalScopeZoomLevels(scopeZoomLevels);
+  const compactScopeZoomLevels = getCompactScopeZoomLevels(
+    scopeZoomLevels,
+    scopeZoom,
+    zoomFiltersExpanded,
+  );
+  const scopeAutoCopy = getScopeAutoCopy(
+    t,
+    scopeMode === SCOPE_MODES.AUTO ? scopeZoom : null,
+  );
 
   return (
     <aside className="config" aria-label={t('config.buildConfiguration')}>
@@ -229,31 +258,70 @@ export default function BuildSettings(props) {
           </section>
 
           <section className="config__section">
-            <label className="field-label" htmlFor="sightZoom">{t('config.sight')}</label>
-            <div className={`config-select-wrap ${isSightSelectOpen ? 'is-open' : ''}`}>
-              <select
-                id="sightZoom"
-                className="config-select"
-                value={sightMode}
-                onChange={event => onSightModeChange(event.target.value)}
-                onFocus={() => onSightSelectOpenChange(true)}
-                onBlur={() => onSightSelectOpenChange(false)}
-                onKeyDown={event => {
-                  if (event.key === 'Escape') onSightSelectOpenChange(false);
-                }}
-              >
-                {props.sightOptions.concat(
-                  availableZoomLevels
-                    .filter(zoom => zoom > 1)
-                    .map(zoom => ({
-                      value: String(zoom),
-                      label: t('config.sight.zoom', { zoom }),
-                    })),
-                ).map(option => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </div>
+            <label className="field-label">{t('config.sight')}</label>
+            <TacticalDevicePicker
+              id="scopeItem"
+              items={scopeItems}
+              label={t('config.sight')}
+              onChange={setters.scopeSelection}
+              selectedItemId={scopeSelectionId}
+              showLabel={false}
+              indented={false}
+              searchLabel={t('config.sight.search')}
+              systemOptions={[
+                {
+                  id: null,
+                  label: scopeAutoCopy.label,
+                  description: scopeAutoCopy.description,
+                },
+                { id: SCOPE_NONE_OPTION_ID, label: t('config.sight.none') },
+              ]}
+              filterItems={item => scopeZoom === null || scopeSupportsZoom(item, scopeZoom)}
+              panelControls={(
+                <div className="tactical-device-picker__filters" aria-label={t('config.sight.zoomFilters')}>
+                  <button
+                    className={`tactical-device-picker__filter ${scopeZoom === null ? 'is-active' : ''}`}
+                    type="button"
+                    aria-pressed={scopeZoom === null}
+                    onClick={() => setters.scopeZoom(null)}
+                  >
+                    {t('config.sight.allZooms')}
+                  </button>
+                  {compactScopeZoomLevels.map(zoom => (
+                    <button
+                      key={zoom}
+                      className={`tactical-device-picker__filter ${scopeZoom === zoom ? 'is-active' : ''}`}
+                      type="button"
+                      aria-pressed={scopeZoom === zoom}
+                      onClick={() => setters.scopeZoom(zoom)}
+                    >
+                      {zoom}x
+                    </button>
+                  ))}
+                  <button
+                    className={`tactical-device-picker__filter tactical-device-picker__filter--toggle ${zoomFiltersExpanded ? 'is-expanded' : ''}`}
+                    type="button"
+                    aria-label={zoomFiltersExpanded ? t('config.sight.hideMoreZooms') : t('config.sight.showMoreZooms')}
+                    aria-expanded={zoomFiltersExpanded}
+                    onClick={() => setZoomFiltersExpanded(expanded => !expanded)}
+                  >
+                    <span className="tactical-device-picker__filter-chevron" aria-hidden="true" />
+                  </button>
+                  {zoomFiltersExpanded && additionalScopeZoomLevels.map(zoom => (
+                    <button
+                      key={zoom}
+                      className={`tactical-device-picker__filter ${scopeZoom === zoom ? 'is-active' : ''}`}
+                      type="button"
+                      aria-pressed={scopeZoom === zoom}
+                      onClick={() => setters.scopeZoom(zoom)}
+                    >
+                      {zoom}x
+                    </button>
+                  ))}
+                </div>
+              )}
+              t={t}
+            />
           </section>
 
           <section className="config__section">
@@ -267,6 +335,17 @@ export default function BuildSettings(props) {
                 />
                 <span>{t('config.laser')}</span>
               </label>
+              {includeLaser && (
+                <TacticalDevicePicker
+                  id="tblItem"
+                  items={tblItems}
+                  label={t('config.tactical.tbl')}
+                  onChange={setters.tblItemId}
+                  selectedItemId={tblItemId}
+                  showLabel={false}
+                  t={t}
+                />
+              )}
               <label className="check">
                 <input
                   type="checkbox"
@@ -275,6 +354,17 @@ export default function BuildSettings(props) {
                 />
                 <span>{t('config.flashlight')}</span>
               </label>
+              {includeFlashlight && (
+                <TacticalDevicePicker
+                  id="flashlightItem"
+                  items={flashlightItems}
+                  label={t('config.tactical.flashlight')}
+                  onChange={setters.flashlightItemId}
+                  selectedItemId={flashlightItemId}
+                  showLabel={false}
+                  t={t}
+                />
+              )}
             </div>
           </section>
         </>

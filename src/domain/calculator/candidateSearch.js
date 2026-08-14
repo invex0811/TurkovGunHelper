@@ -8,6 +8,7 @@ import { createCalculationCache } from './calculationCache.js';
 import { createCompatibilityTools } from './compatibility.js';
 import { PRICE_AWARE_TARGET } from './constants.js';
 import { createPricingTools } from './pricing.js';
+import { scopeSupportsZoom } from '../scopeZoom.js';
 
 export function _calculateWeighted(
   weapon,
@@ -444,15 +445,7 @@ export function _calculateWeighted(
 
     const parsedMode = Number(mode);
     if (!isNaN(parsedMode)) {
-      const zoomLevels = item.properties?.zoomLevels;
-      if (zoomLevels) {
-        const flatZooms = zoomLevels.flat();
-        return flatZooms.includes(parsedMode);
-      }
-      if (parsedMode === 1) {
-        return isReflex;
-      }
-      return false;
+      return scopeSupportsZoom(item, parsedMode);
     }
 
     return true;
