@@ -39,8 +39,9 @@ export function getAlternativeListKey(item) {
   return item.attachedScope ? `${item.id}-${item.attachedScope.id}` : item.id;
 }
 
-export function formatPartName(name) {
+export function formatPartName(name, item) {
   if (!name) return '';
+  if (hasItemCategory(item, 'Handguard')) return name;
   return name.replace(/(\d+(?:\.\d+)?)\s*(?:"|inch(?:es)?)/ig, (match, value) => (
     `${Math.round(parseFloat(value) * 25.4)} mm`
   ));
@@ -49,12 +50,12 @@ export function formatPartName(name) {
 export function getAlternativeDisplayName(item) {
   if (Array.isArray(item.attachedParts) && item.attachedParts.length > 0) {
     return [item, ...item.attachedParts.map(part => part.item)]
-      .map(part => formatPartName(part.shortName))
+      .map(part => formatPartName(part.shortName, part))
       .join(' + ');
   }
   return item.attachedScope
-    ? `${formatPartName(item.shortName)} + ${formatPartName(item.attachedScope.shortName)}`
-    : formatPartName(item.shortName);
+    ? `${formatPartName(item.shortName, item)} + ${formatPartName(item.attachedScope.shortName, item.attachedScope)}`
+    : formatPartName(item.shortName, item);
 }
 
 function getItemsMetrics(items, priceMode, includeTraderPrices, traderLevels, strictTraderLevels) {

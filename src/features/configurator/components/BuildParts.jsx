@@ -40,7 +40,7 @@ export default function BuildParts({
                         <h4 className="part-card__empty-warning">{part.emptyWarning}</h4>
                         <span className="part-card__slot-context">
                           {part.slotName} ·{' '}
-                          {formatPartName(part.parentItem?.shortName || part.parentItem?.name)}
+                          {formatPartName(part.parentItem?.shortName || part.parentItem?.name, part.parentItem)}
                         </span>
                       </div>
                       <div className="part-card__badges">
@@ -74,7 +74,7 @@ export default function BuildParts({
                   <div className="part-card__body">
                     <div className="part-card__topline">
                       <div className="part-card__title-wrap">
-                        <h4>{formatPartName(part.item.shortName)}</h4>
+                        <h4>{formatPartName(part.item.shortName, part.item)}</h4>
                         {part.isWeapon && (
                           <span className="part-card__slot-context">
                             {part.item.name || t('ownedItems.baseWeapon')}

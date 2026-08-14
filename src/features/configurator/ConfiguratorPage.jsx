@@ -1631,7 +1631,7 @@ function Configurator() {
     );
     return {
       item,
-      name: formatPartName(item.shortName || item.name),
+      name: formatPartName(item.shortName || item.name, item),
       meta: `${getModuleCategoryLabel(item, t)} · ${formatCurrency(
         priceInfo.value,
         priceInfo.currency,
@@ -2160,7 +2160,7 @@ function Configurator() {
                   />
                   <div>
                     <div className="generated-meta">{getReadableSlotGroupName(activePart.slotName, t)} · {t('config.slot', { slot: activePart.slotName })}</div>
-                    <h3 style={{ margin: '8px 0 6px', fontSize: '1.1rem' }}>{formatPartName(activePart.item.shortName)}</h3>
+                    <h3 style={{ margin: '8px 0 6px', fontSize: '1.1rem' }}>{formatPartName(activePart.item.shortName, activePart.item)}</h3>
                     <ItemPrice priceInfo={priceInfo} />
                   </div>
                 </div>
