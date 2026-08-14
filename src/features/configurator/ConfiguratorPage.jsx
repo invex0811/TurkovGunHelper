@@ -64,6 +64,27 @@ import useBuildCalculation from './hooks/useBuildCalculation.js';
 import useConfiguratorCatalog from './hooks/useConfiguratorCatalog.js';
 import useSavedBuild from './hooks/useSavedBuild.js';
 import { getLocalizedBuildWarnings } from './configuratorNotifications.js';
+import {
+  getTacticalDeviceOptions,
+  TACTICAL_DEVICE_TYPES,
+} from './tacticalDeviceOptions.js';
+import {
+  getPrimaryManualModuleType,
+  getUniqueItemIds,
+  PRIMARY_MANUAL_MODULE_TYPES,
+  replacePrimaryManualModuleId,
+} from './primaryManualModules.js';
+import {
+  getScopeOptions,
+  getScopeZoomOptions,
+  isSelectableScope,
+} from './scopeOptions.js';
+import {
+  getScopeSightMode,
+  normalizeScopeSelection,
+  SCOPE_MODES,
+  SCOPE_NONE_OPTION_ID,
+} from './scopeSelection.js';
 import { usePriceMode } from '../priceMode/usePriceMode.js';
 import { useTraderLevels } from '../traderLevels/useTraderLevels.js';
 import {
@@ -839,34 +860,6 @@ function getAvailableCapacities(weapon, allMods) {
   return Array.from(new Set(capacities)).sort((a, b) => a - b);
 }
 
-function getAvailableZoomLevels(allMods) {
-  if (!allMods) return [];
-  const zooms = new Set();
-
-  Object.values(allMods).forEach(mod => {
-    if (hasItemCategory(mod, 'Ironsight')) return;
-
-    if (hasItemCategory(mod, 'Sights')) {
-      const zoomLevels = mod.properties?.zoomLevels;
-      if (zoomLevels) {
-        const flat = zoomLevels.flat();
-        flat.forEach(z => {
-          if (typeof z === 'number' && z > 0) {
-            zooms.add(z);
-          }
-        });
-      } else {
-        const isReflex = hasItemCategory(mod, 'Reflex sight') || hasItemCategory(mod, 'Compact reflex sight');
-        if (isReflex) {
-          zooms.add(1);
-        }
-      }
-    }
-  });
-
-  return Array.from(zooms).sort((a, b) => a - b);
-}
-
 function getModuleCategoryLabel(item, t) {
   const categories = (item.categories || []).filter(category => category?.name);
   const genericCategories = ['Item', 'Weapon mod', 'Gear mod', 'Functional mod', 'Essential mod', 'Compound item'];
@@ -1032,13 +1025,26 @@ function Configurator() {
   const [generating, setGenerating] = useState(false);
   const [includeLaser, setIncludeLaser] = useState(false);
   const [includeFlashlight, setIncludeFlashlight] = useState(false);
+  const [flashlightItemId, setFlashlightItemId] = useState(null);
+  const [tblItemId, setTblItemId] = useState(null);
+  const [scopeMode, setScopeMode] = useState(SCOPE_MODES.NONE);
+  const [scopeItemId, setScopeItemId] = useState(null);
+  const [scopeZoom, setScopeZoom] = useState(null);
   const [isBuildDiagramOpen, setIsBuildDiagramOpen] = useState(false);
-  const [sightMode, setSightMode] = useState('none');
-  const [isSightSelectOpen, setIsSightSelectOpen] = useState(false);
+  const sightMode = useMemo(
+    () => getScopeSightMode(scopeMode, scopeZoom),
+    [scopeMode, scopeZoom],
+  );
   const [partsFilter, setPartsFilter] = useState('');
   const [configTab, setConfigTab] = useState('basic');
   const [requiredModuleSearch, setRequiredModuleSearch] = useState('');
   const [requiredModuleIds, setRequiredModuleIds] = useState([]);
+  const requiredItemIds = useMemo(() => getUniqueItemIds([
+    ...requiredModuleIds,
+    ...(includeFlashlight && flashlightItemId ? [flashlightItemId] : []),
+    ...(includeLaser && tblItemId ? [tblItemId] : []),
+    ...(scopeMode === SCOPE_MODES.MANUAL && scopeItemId ? [scopeItemId] : []),
+  ]), [flashlightItemId, includeFlashlight, includeLaser, requiredModuleIds, scopeItemId, scopeMode, tblItemId]);
   const [replacementError, setReplacementError] = useState(null);
   const [pricePolicyWarning, setPricePolicyWarning] = useState(null);
   const [priceModeNotice, setPriceModeNotice] = useState(null);
@@ -1076,6 +1082,11 @@ function Configurator() {
       magazineCapacity,
       includeLaser,
       includeFlashlight,
+      flashlightItemId,
+      tblItemId,
+      scopeMode,
+      scopeItemId,
+      scopeZoom,
       sightMode,
       requiredModuleIds,
     },
@@ -1217,12 +1228,31 @@ function Configurator() {
         setSuppressorMode(settings.suppressorMode || 'allow');
         setIncludeTraderPrices(restoredIncludeTraderPrices);
         setMagazineCapacity(Number(settings.magazineCapacity) || capacities[0] || 30);
-        setIncludeLaser(settings.includeLaser === true);
-        setIncludeFlashlight(settings.includeFlashlight === true);
-        setSightMode(settings.sightMode || 'none');
-        setRequiredModuleIds(
-          (settings.requiredModuleIds || []).filter(itemId => Boolean(modsData[itemId])),
+        const restoredFlashlightItemId = settings.flashlightItemId && modsData[settings.flashlightItemId]
+          ? settings.flashlightItemId
+          : null;
+        const restoredTblItemId = settings.tblItemId && modsData[settings.tblItemId]
+          ? settings.tblItemId
+          : null;
+        const restoredScopeSelection = normalizeScopeSelection(
+          settings,
+          itemId => isSelectableScope(modsData[itemId]),
         );
+        setIncludeLaser(settings.includeLaser === true || Boolean(restoredTblItemId));
+        setIncludeFlashlight(settings.includeFlashlight === true || Boolean(restoredFlashlightItemId));
+        setFlashlightItemId(restoredFlashlightItemId);
+        setTblItemId(restoredTblItemId);
+        setScopeMode(restoredScopeSelection.mode);
+        setScopeItemId(restoredScopeSelection.itemId);
+        setScopeZoom(restoredScopeSelection.zoom);
+        setRequiredModuleIds(getUniqueItemIds([
+          ...(settings.requiredModuleIds || []).filter(itemId => Boolean(modsData[itemId])),
+          restoredFlashlightItemId,
+          restoredTblItemId,
+          restoredScopeSelection.mode === SCOPE_MODES.MANUAL
+            ? restoredScopeSelection.itemId
+            : null,
+        ]));
         setActiveSavedBuildId(requestedSavedBuild.id);
         setSaveName(requestedSavedBuild.name);
       } else {
@@ -1230,6 +1260,11 @@ function Configurator() {
         setOwnedItems([]);
         setCustomExactTargets(DEFAULT_CUSTOM_EXACT_TARGETS);
         setRequiredModuleIds([]);
+        setFlashlightItemId(null);
+        setTblItemId(null);
+        setScopeMode(SCOPE_MODES.NONE);
+        setScopeItemId(null);
+        setScopeZoom(null);
         setActiveSavedBuildId(null);
         setSaveName(t('config.defaultBuildName', { weapon: weaponData.shortName || weaponData.name }));
       }
@@ -1281,7 +1316,7 @@ function Configurator() {
       ownedItems: reconciledOwnedItems,
       maxWeight,
       maxPrice,
-      requiredItemIds: requiredModuleIds,
+      requiredItemIds,
       suppressorMode,
       sightMode,
       t,
@@ -1334,7 +1369,7 @@ function Configurator() {
       ownedItems: reconciledOwnedItems,
       maxWeight,
       maxPrice,
-      requiredItemIds: requiredModuleIds,
+      requiredItemIds,
       suppressorMode,
       sightMode,
       t,
@@ -1359,23 +1394,75 @@ function Configurator() {
     maxWeight,
     priceMode,
     reconciledOwnedItems,
-    requiredModuleIds,
+    requiredItemIds,
     sightMode,
     suppressorMode,
     weapon,
     t,
   ]);
 
+  const handleScopeSelection = (itemId) => {
+    const nextItemId = itemId === SCOPE_NONE_OPTION_ID || itemId === null ? null : itemId;
+    setRequiredModuleIds(current => replacePrimaryManualModuleId(current, scopeItemId, nextItemId));
+
+    if (itemId === SCOPE_NONE_OPTION_ID) {
+      setScopeMode(SCOPE_MODES.NONE);
+      setScopeItemId(null);
+      setScopeZoom(null);
+    } else if (itemId === null) {
+      setScopeMode(SCOPE_MODES.AUTO);
+      setScopeItemId(null);
+    } else {
+      setScopeMode(SCOPE_MODES.MANUAL);
+      setScopeItemId(itemId);
+    }
+  };
+
+  const handleFlashlightSelection = (itemId) => {
+    setRequiredModuleIds(current => replacePrimaryManualModuleId(current, flashlightItemId, itemId));
+    setFlashlightItemId(itemId);
+  };
+
+  const handleTblSelection = (itemId) => {
+    setRequiredModuleIds(current => replacePrimaryManualModuleId(current, tblItemId, itemId));
+    setTblItemId(itemId);
+  };
+
+  const handleIncludeFlashlightChange = (checked) => {
+    setIncludeFlashlight(checked);
+    if (!checked) handleFlashlightSelection(null);
+  };
+
+  const handleIncludeLaserChange = (checked) => {
+    setIncludeLaser(checked);
+    if (!checked) handleTblSelection(null);
+  };
+
   const handleAddRequiredModule = (item) => {
-    setRequiredModuleIds(prev => {
-      if (prev.includes(item.id)) return prev;
-      return [...prev, item.id];
-    });
+    const moduleType = getPrimaryManualModuleType(item);
+
+    if (moduleType === PRIMARY_MANUAL_MODULE_TYPES.SCOPE) {
+      handleScopeSelection(item.id);
+    } else if (moduleType === PRIMARY_MANUAL_MODULE_TYPES.FLASHLIGHT) {
+      setIncludeFlashlight(true);
+      handleFlashlightSelection(item.id);
+    } else if (moduleType === PRIMARY_MANUAL_MODULE_TYPES.TBL) {
+      setIncludeLaser(true);
+      handleTblSelection(item.id);
+    } else {
+      setRequiredModuleIds(current => getUniqueItemIds([...current, item.id]));
+    }
     setRequiredModuleSearch('');
   };
 
   const handleRemoveRequiredModule = (itemId) => {
     setRequiredModuleIds(prev => prev.filter(id => id !== itemId));
+    if (scopeMode === SCOPE_MODES.MANUAL && scopeItemId === itemId) {
+      setScopeMode(SCOPE_MODES.AUTO);
+      setScopeItemId(null);
+    }
+    if (flashlightItemId === itemId) setFlashlightItemId(null);
+    if (tblItemId === itemId) setTblItemId(null);
   };
 
   const handleIncludeTraderPricesChange = (nextValue) => {
@@ -1438,7 +1525,7 @@ function Configurator() {
         includeFlashlight,
         sightMode,
         requireSight: sightMode !== 'none',
-        requiredItemIds: requiredModuleIds,
+        requiredItemIds,
       };
 
       const calculation = runBuildCalculation({
@@ -1474,7 +1561,7 @@ function Configurator() {
     latestCalculationRequestIdRef,
     magazineCapacity,
     priceMode,
-    requiredModuleIds,
+    requiredItemIds,
     runBuildCalculation,
     sightMode,
     strictTraderLevels,
@@ -1485,6 +1572,16 @@ function Configurator() {
   ]);
 
   const hasCalculationError = buildResult ? Boolean(buildResult.error) : false;
+  const flashlightItems = useMemo(
+    () => getTacticalDeviceOptions(allMods, TACTICAL_DEVICE_TYPES.FLASHLIGHT),
+    [allMods],
+  );
+  const tblItems = useMemo(
+    () => getTacticalDeviceOptions(allMods, TACTICAL_DEVICE_TYPES.TBL),
+    [allMods],
+  );
+  const scopeItems = useMemo(() => getScopeOptions(allMods), [allMods]);
+  const scopeZoomLevels = useMemo(() => getScopeZoomOptions(scopeItems), [scopeItems]);
   const hasBuildParts = buildResult ? (Array.isArray(buildResult.build) && buildResult.build.length > 0) : false;
   const canShowBuildDetails = Boolean(buildResult && !hasCalculationError && hasBuildParts);
   const buildCostSummary = useMemo(
@@ -1515,10 +1612,6 @@ function Configurator() {
   const availableCapacities = useMemo(
     () => getAvailableCapacities(weapon, allMods),
     [weapon, allMods],
-  );
-  const availableZoomLevels = useMemo(
-    () => getAvailableZoomLevels(allMods),
-    [allMods],
   );
   const selectedRequiredModules = useMemo(
     () => requiredModuleIds.map(itemId => allMods?.[itemId]).filter(Boolean),
@@ -1818,16 +1911,16 @@ function Configurator() {
       {/* Левый сайдбар с конфигурацией сборки */}
       <BuildSettings
         availableCapacities={availableCapacities}
-        availableZoomLevels={availableZoomLevels}
         configTab={configTab}
         customExactTargets={customExactTargets}
         customProfile={customProfile}
         generating={generating}
         includeFlashlight={includeFlashlight}
         includeLaser={includeLaser}
+        flashlightItems={flashlightItems}
+        flashlightItemId={flashlightItemId}
         includeTraderPrices={includeTraderPrices}
         strictTraderLevels={strictTraderLevels}
-        isSightSelectOpen={isSightSelectOpen}
         magazineCapacity={magazineCapacity}
         maxPrice={maxPrice}
         maxPriceDraft={maxPriceDraft}
@@ -1845,16 +1938,32 @@ function Configurator() {
         onMaxWeightChange={value => setCustomProfile(current => normalizeCustomBuildProfile({ ...current, weight: value === '' ? 0 : Number(value) }, weapon))}
         onRemoveModule={handleRemoveRequiredModule}
         onRequiredModuleSearchChange={setRequiredModuleSearch}
-        onSightModeChange={value => { setSightMode(value); setIsSightSelectOpen(false); }}
-        onSightSelectOpenChange={setIsSightSelectOpen}
         requiredModuleSearch={requiredModuleSearch}
         selectedModules={selectedRequiredModuleViews}
-        setters={{ configTab: setConfigTab, customProfile: setCustomProfile, includeFlashlight: setIncludeFlashlight, includeLaser: setIncludeLaser, magazineCapacity: setMagazineCapacity, suppressorMode: setSuppressorMode, targetType: setTargetType }}
+        setters={{
+          configTab: setConfigTab,
+          customProfile: setCustomProfile,
+          includeFlashlight: handleIncludeFlashlightChange,
+          includeLaser: handleIncludeLaserChange,
+          flashlightItemId: handleFlashlightSelection,
+          tblItemId: handleTblSelection,
+          scopeSelection: handleScopeSelection,
+          scopeZoom: setScopeZoom,
+          magazineCapacity: setMagazineCapacity,
+          suppressorMode: setSuppressorMode,
+          targetType: setTargetType,
+        }}
         sightMode={sightMode}
-        sightOptions={[{ value: 'none', label: t('config.sight.none') }, { value: 'any', label: t('config.sight.any') }, { value: 'reflex', label: t('config.sight.reflex') }, { value: 'scope', label: t('config.sight.scope') }]}
+        scopeItems={scopeItems}
+        scopeMode={scopeMode}
+        scopeItemId={scopeItemId}
+        scopeZoom={scopeZoom}
+        scopeZoomLevels={scopeZoomLevels}
         suppressorMode={suppressorMode}
         suppressorOptions={SUPPRESSOR_MODE_OPTIONS}
         targetType={targetType}
+        tblItems={tblItems}
+          tblItemId={tblItemId}
         t={t}
         weapon={weapon}
       />

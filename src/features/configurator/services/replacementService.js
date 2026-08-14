@@ -1,5 +1,6 @@
 import { getPurchasePriceValue } from '../../../data/price/priceMapper.js';
 import { hasItemCategory } from '../../../domain/itemCategories.js';
+import { scopeSupportsZoom } from '../../../domain/scopeZoom.js';
 
 const MISSING_PRICE_COMPARISON_VALUE = 1_000_000_000_000;
 
@@ -131,9 +132,7 @@ export function isValidSightForMode(item, sightMode) {
 
   const parsedMode = Number(mode);
   if (!Number.isNaN(parsedMode)) {
-    const zoomLevels = item.properties?.zoomLevels;
-    if (zoomLevels) return zoomLevels.flat().includes(parsedMode);
-    return parsedMode === 1 ? isReflex : false;
+    return scopeSupportsZoom(item, parsedMode);
   }
   return true;
 }

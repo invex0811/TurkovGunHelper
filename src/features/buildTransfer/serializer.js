@@ -25,6 +25,11 @@ const EXPORTED_SETTING_KEYS = [
   'magazineCapacity',
   'includeLaser',
   'includeFlashlight',
+  'flashlightItemId',
+  'tblItemId',
+  'scopeMode',
+  'scopeItemId',
+  'scopeZoom',
   'sightMode',
   'requiredModuleIds',
 ];
