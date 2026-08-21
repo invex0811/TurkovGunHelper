@@ -3,14 +3,21 @@ import assert from 'node:assert/strict';
 
 import {
   DEFAULT_INCLUDE_TRADER_PRICES,
+  DEFAULT_REMEMBER_TACTICAL_DEVICE_SELECTION,
   DEFAULT_STRICT_TRADER_LEVELS,
   loadIncludeTraderPricesPreference,
+  loadLastSelectedFlashlightId,
+  loadLastSelectedTblId,
   loadPriceModePreference,
+  loadRememberTacticalDeviceSelectionPreference,
   loadStrictTraderLevelsPreference,
   loadTargetTypePreference,
   normalizeTargetType,
   saveIncludeTraderPricesPreference,
+  saveLastSelectedFlashlightId,
+  saveLastSelectedTblId,
   savePriceModePreference,
+  saveRememberTacticalDeviceSelectionPreference,
   saveStrictTraderLevelsPreference,
   saveTargetTypePreference,
 } from '../../src/data/settings/buildPreferences.js';
@@ -69,6 +76,43 @@ test('includeTraderPrices preference persists a safe serialized boolean', () => 
 
     saveIncludeTraderPricesPreference(true);
     assert.equal(loadIncludeTraderPricesPreference(), true);
+  });
+});
+
+test('tactical device preferences preserve manual selections and an explicit none choice', () => {
+  const storage = createStorage();
+
+  withWindow(storage, () => {
+    assert.equal(loadLastSelectedFlashlightId(), undefined);
+    assert.equal(loadLastSelectedTblId(), undefined);
+
+    saveLastSelectedFlashlightId('flashlight-id');
+    saveLastSelectedTblId('tbl-id');
+    assert.equal(loadLastSelectedFlashlightId(), 'flashlight-id');
+    assert.equal(loadLastSelectedTblId(), 'tbl-id');
+
+    saveLastSelectedFlashlightId(null);
+    saveLastSelectedTblId(null);
+    assert.equal(loadLastSelectedFlashlightId(), null);
+    assert.equal(loadLastSelectedTblId(), null);
+  });
+});
+
+test('remember tactical device selection is disabled by default and persists a boolean choice', () => {
+  const storage = createStorage();
+
+  withWindow(storage, () => {
+    assert.equal(DEFAULT_REMEMBER_TACTICAL_DEVICE_SELECTION, false);
+    assert.equal(loadRememberTacticalDeviceSelectionPreference(), false);
+
+    saveRememberTacticalDeviceSelectionPreference(true);
+    assert.equal(loadRememberTacticalDeviceSelectionPreference(), true);
+
+    saveRememberTacticalDeviceSelectionPreference(false);
+    assert.equal(loadRememberTacticalDeviceSelectionPreference(), false);
+
+    storage.setItem('tarkovGunHelper.rememberTacticalDeviceSelection', 'invalid');
+    assert.equal(loadRememberTacticalDeviceSelectionPreference(), false);
   });
 });
 

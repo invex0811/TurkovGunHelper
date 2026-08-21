@@ -3,6 +3,10 @@ import { useLocation } from 'react-router-dom';
 import { loadItemsCatalog } from '../data/tarkovApi/repository.js';
 import { getTarkovDevGameMode } from '../data/price/priceProvider.js';
 import { getCatalogTraders } from '../data/tarkovApi/traders.js';
+import {
+  loadRememberTacticalDeviceSelectionPreference,
+  saveRememberTacticalDeviceSelectionPreference,
+} from '../data/settings/buildPreferences.js';
 import InstallAppButton from '../features/pwa/InstallAppButton.jsx';
 import { usePriceMode } from '../features/priceMode/usePriceMode.js';
 import { useTraderLevels } from '../features/traderLevels/useTraderLevels.js';
@@ -24,6 +28,9 @@ export default function Settings({ theme, setTheme }) {
   const [traders, setTraders] = useState([]);
   const [status, setStatus] = useState('loading');
   const [strictNotice, setStrictNotice] = useState(null);
+  const [rememberTacticalDeviceSelection, setRememberTacticalDeviceSelection] = useState(
+    loadRememberTacticalDeviceSelectionPreference,
+  );
 
   useEffect(() => {
     if (location.hash !== '#traders') return undefined;
@@ -62,20 +69,20 @@ export default function Settings({ theme, setTheme }) {
 
   const handleStrictChange = event => {
     const nextValue = event.target.checked;
+    if (!nextValue) {
+      setStrictTraderLevels(false);
+      setStrictNotice(null);
+      return;
+    }
+
     const initializesDefaultLevels = nextValue
       && traders.length > 0
       && Object.keys(currentProfile).length === 0;
     if (initializesDefaultLevels) {
       initializeTraderLevels(priceMode, traders);
     }
-    setStrictTraderLevels(nextValue);
-    setStrictNotice(t(
-      initializesDefaultLevels
-        ? 'traders.strictLevelsDefaultNotice'
-        : nextValue
-          ? 'traders.strictLevelsEnabledNotice'
-          : 'traders.strictLevelsDisabledNotice',
-    ));
+    setStrictTraderLevels(true);
+    setStrictNotice(initializesDefaultLevels ? t('traders.strictLevelsDefaultNotice') : null);
   };
 
   return (
@@ -117,6 +124,18 @@ export default function Settings({ theme, setTheme }) {
             ))}
           </div>
         </div>
+        <label className="check settings-trader-toggle">
+          <input
+            type="checkbox"
+            checked={rememberTacticalDeviceSelection}
+            onChange={event => {
+              const nextValue = event.target.checked;
+              setRememberTacticalDeviceSelection(nextValue);
+              saveRememberTacticalDeviceSelectionPreference(nextValue);
+            }}
+          />
+          <span>{t('settings.rememberTacticalDeviceSelection')}</span>
+        </label>
         <InstallAppButton />
       </section>
 
@@ -148,16 +167,14 @@ export default function Settings({ theme, setTheme }) {
           </span>
         </label>
 
-        {strictNotice && (
-          <p className="inline-message inline-message--info" role="status">{strictNotice}</p>
-        )}
-
-        <div
-          id="trader-level-settings"
-          className={`trader-level-settings${strictTraderLevels ? ' is-expanded' : ''}`}
-          aria-hidden={!strictTraderLevels}
-          inert={!strictTraderLevels}
-        >
+        {strictTraderLevels && (
+          <>
+            {strictNotice && (
+              <p className="inline-message inline-message--info" role="status">
+                <span className="inline-message__body">{strictNotice}</span>
+              </p>
+            )}
+            <div id="trader-level-settings" className="trader-level-settings">
           <div className="trader-level-settings__inner">
             <strong className="price-mode-badge">
               {t(priceMode === 'pve' ? 'traders.profilePve' : 'traders.profilePvp')}
@@ -201,7 +218,9 @@ export default function Settings({ theme, setTheme }) {
               {t('traders.reset')}
             </button>
           </div>
-        </div>
+            </div>
+          </>
+        )}
       </section>
     </div>
   );
