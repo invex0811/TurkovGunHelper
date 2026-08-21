@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   getTacticalDeviceType,
   getTacticalDeviceOptions,
+  isTacticalDeviceReachable,
   TACTICAL_DEVICE_TYPES,
 } from '../../src/features/configurator/tacticalDeviceOptions.js';
 
@@ -21,6 +22,21 @@ test('returns category-specific tactical device options', () => {
     getTacticalDeviceOptions(allMods, TACTICAL_DEVICE_TYPES.TBL).map(item => item.id),
     ['combined'],
   );
+});
+
+test('recognizes tactical devices behind compatible mount chains', () => {
+  const flashlight = { id: 'flashlight', properties: { slots: [] } };
+  const mount = {
+    id: 'mount',
+    properties: { slots: [{ filters: { allowedItems: [{ id: 'flashlight' }] } }] },
+  };
+  const weapon = {
+    id: 'weapon',
+    properties: { slots: [{ filters: { allowedItems: [{ id: 'mount' }] } }] },
+  };
+
+  assert.equal(isTacticalDeviceReachable(weapon, { mount, flashlight }, 'flashlight'), true);
+  assert.equal(isTacticalDeviceReachable(weapon, { mount, flashlight }, 'missing'), false);
 });
 
 test('returns no options for unavailable catalogs or unsupported device types', () => {

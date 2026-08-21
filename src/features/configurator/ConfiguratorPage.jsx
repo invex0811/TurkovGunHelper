@@ -15,7 +15,12 @@ import {
 } from '../../data/price/priceMapper.js';
 import {
   loadIncludeTraderPricesPreference,
+  loadLastSelectedFlashlightId,
+  loadLastSelectedTblId,
+  loadRememberTacticalDeviceSelectionPreference,
   saveIncludeTraderPricesPreference,
+  saveLastSelectedFlashlightId,
+  saveLastSelectedTblId,
   loadTargetTypePreference,
   normalizeTargetType,
   saveTargetTypePreference,
@@ -66,6 +71,7 @@ import useSavedBuild from './hooks/useSavedBuild.js';
 import { getLocalizedBuildWarnings } from './configuratorNotifications.js';
 import {
   getTacticalDeviceOptions,
+  isTacticalDeviceReachable,
   TACTICAL_DEVICE_TYPES,
 } from './tacticalDeviceOptions.js';
 import {
@@ -1025,6 +1031,9 @@ function Configurator() {
   const [generating, setGenerating] = useState(false);
   const [includeLaser, setIncludeLaser] = useState(false);
   const [includeFlashlight, setIncludeFlashlight] = useState(false);
+  const [rememberTacticalDeviceSelection] = useState(
+    loadRememberTacticalDeviceSelectionPreference,
+  );
   const [flashlightItemId, setFlashlightItemId] = useState(null);
   const [tblItemId, setTblItemId] = useState(null);
   const [scopeMode, setScopeMode] = useState(SCOPE_MODES.NONE);
@@ -1260,8 +1269,30 @@ function Configurator() {
         setOwnedItems([]);
         setCustomExactTargets(DEFAULT_CUSTOM_EXACT_TARGETS);
         setRequiredModuleIds([]);
-        setFlashlightItemId(null);
-        setTblItemId(null);
+        const savedFlashlightItemId = rememberTacticalDeviceSelection
+          ? loadLastSelectedFlashlightId()
+          : undefined;
+        const savedTblItemId = rememberTacticalDeviceSelection
+          ? loadLastSelectedTblId()
+          : undefined;
+        const restoredFlashlightItemId = typeof savedFlashlightItemId === 'string'
+          && isTacticalDeviceReachable(weaponData, modsData, savedFlashlightItemId)
+          ? savedFlashlightItemId
+          : null;
+        const restoredTblItemId = typeof savedTblItemId === 'string'
+          && isTacticalDeviceReachable(weaponData, modsData, savedTblItemId)
+          ? savedTblItemId
+          : null;
+        setIncludeFlashlight(savedFlashlightItemId === null
+          ? false
+          : savedFlashlightItemId !== undefined);
+        setIncludeLaser(savedTblItemId === null ? false : savedTblItemId !== undefined);
+        setFlashlightItemId(restoredFlashlightItemId);
+        setTblItemId(restoredTblItemId);
+        setRequiredModuleIds(getUniqueItemIds([
+          restoredFlashlightItemId,
+          restoredTblItemId,
+        ]));
         setScopeMode(SCOPE_MODES.NONE);
         setScopeItemId(null);
         setScopeZoom(null);
@@ -1421,21 +1452,29 @@ function Configurator() {
   const handleFlashlightSelection = (itemId) => {
     setRequiredModuleIds(current => replacePrimaryManualModuleId(current, flashlightItemId, itemId));
     setFlashlightItemId(itemId);
+    if (rememberTacticalDeviceSelection && itemId) saveLastSelectedFlashlightId(itemId);
   };
 
   const handleTblSelection = (itemId) => {
     setRequiredModuleIds(current => replacePrimaryManualModuleId(current, tblItemId, itemId));
     setTblItemId(itemId);
+    if (rememberTacticalDeviceSelection && itemId) saveLastSelectedTblId(itemId);
   };
 
   const handleIncludeFlashlightChange = (checked) => {
     setIncludeFlashlight(checked);
-    if (!checked) handleFlashlightSelection(null);
+    if (!checked) {
+      handleFlashlightSelection(null);
+      if (rememberTacticalDeviceSelection) saveLastSelectedFlashlightId(null);
+    }
   };
 
   const handleIncludeLaserChange = (checked) => {
     setIncludeLaser(checked);
-    if (!checked) handleTblSelection(null);
+    if (!checked) {
+      handleTblSelection(null);
+      if (rememberTacticalDeviceSelection) saveLastSelectedTblId(null);
+    }
   };
 
   const handleAddRequiredModule = (item) => {
@@ -1573,12 +1612,14 @@ function Configurator() {
 
   const hasCalculationError = buildResult ? Boolean(buildResult.error) : false;
   const flashlightItems = useMemo(
-    () => getTacticalDeviceOptions(allMods, TACTICAL_DEVICE_TYPES.FLASHLIGHT),
-    [allMods],
+    () => getTacticalDeviceOptions(allMods, TACTICAL_DEVICE_TYPES.FLASHLIGHT)
+      .filter(item => isTacticalDeviceReachable(weapon, allMods, item.id)),
+    [allMods, weapon],
   );
   const tblItems = useMemo(
-    () => getTacticalDeviceOptions(allMods, TACTICAL_DEVICE_TYPES.TBL),
-    [allMods],
+    () => getTacticalDeviceOptions(allMods, TACTICAL_DEVICE_TYPES.TBL)
+      .filter(item => isTacticalDeviceReachable(weapon, allMods, item.id)),
+    [allMods, weapon],
   );
   const scopeItems = useMemo(() => getScopeOptions(allMods), [allMods]);
   const scopeZoomLevels = useMemo(() => getScopeZoomOptions(scopeItems), [scopeItems]);

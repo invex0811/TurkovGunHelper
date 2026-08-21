@@ -15,8 +15,15 @@ export default function PwaUpdatePrompt() {
   if (!needsRefresh) return null;
   return (
     <aside className="pwa-update" role="status" aria-live="polite">
-      <span>{t('pwa.updateAvailable')}</span>
-      <button className="btn btn--primary" type="button" onClick={() => updateServiceWorker.current?.(true)}>{t('pwa.update')}</button>
+      <svg className="pwa-update__icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M20 11a8 8 0 1 0 2.2 5.5" />
+        <path d="M20 4v7h-7" />
+      </svg>
+      <div className="pwa-update__content">
+        <strong>{t('pwa.updateAvailable')}</strong>
+        <p>{t('pwa.updateDescription')}</p>
+        <button className="btn btn--primary" type="button" onClick={() => updateServiceWorker.current?.(true)}>{t('pwa.update')}</button>
+      </div>
     </aside>
   );
 }
