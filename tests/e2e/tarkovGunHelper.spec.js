@@ -229,19 +229,21 @@ test('strict trader settings expand, persist, and appear once in Configurator', 
 
   await expect(strictTraderLevels).not.toBeChecked();
   await expect(strictTraderLevels).toHaveAttribute('aria-expanded', 'false');
-  await expect(traderLevelSettings).toHaveAttribute('aria-hidden', 'true');
-  await expect(praporLevel).toBeHidden();
+  await expect(traderLevelSettings).toHaveCount(0);
+  await expect(praporLevel).toHaveCount(0);
 
   await strictTraderLevels.check();
   await expect(strictTraderLevels).toHaveAttribute('aria-expanded', 'true');
-  await expect(traderLevelSettings).toHaveAttribute('aria-hidden', 'false');
+  await expect(traderLevelSettings).toHaveCount(1);
   await expect(praporLevel).toBeVisible();
   await praporLevel.selectOption('3');
 
   await strictTraderLevels.uncheck();
   await expect(strictTraderLevels).toHaveAttribute('aria-expanded', 'false');
-  await expect(praporLevel).toBeHidden();
+  await expect(traderLevelSettings).toHaveCount(0);
+  await expect(praporLevel).toHaveCount(0);
   await strictTraderLevels.check();
+  await expect(traderLevelSettings).toHaveCount(1);
   await expect(praporLevel).toBeVisible();
   await expect(praporLevel).toHaveValue('3');
 
@@ -249,7 +251,7 @@ test('strict trader settings expand, persist, and appear once in Configurator', 
   await expect(page.getByRole('checkbox', {
     name: /Strict(?:ly enforce)? trader levels/,
   })).toBeChecked();
-  await expect(page.locator('#trader-level-settings')).toHaveAttribute('aria-hidden', 'false');
+  await expect(page.locator('#trader-level-settings')).toHaveCount(1);
   await expect(page.getByRole('combobox', { name: 'Prapor: Loyalty level' })).toHaveValue('3');
 
   await createBuild(page);
@@ -270,11 +272,12 @@ test('settings page persists interface and separate trader level profiles', asyn
   await page.getByRole('link', { name: 'Open settings' }).click();
   await expect(page).toHaveURL(/#\/settings$/);
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
-  await expect(page.getByText('Trader levels for PvP', { exact: true })).toBeVisible();
+  await expect(page.getByText('Trader levels for PvP', { exact: true })).toHaveCount(0);
 
   await page.getByRole('checkbox', {
     name: /Strict(?:ly enforce)? trader levels/,
   }).check();
+  await expect(page.getByText('Trader levels for PvP', { exact: true })).toBeVisible();
   const praporLevel = page.getByRole('combobox', { name: 'Prapor: Loyalty level' });
   await praporLevel.selectOption('3');
   await page.locator('header').getByRole('group', { name: 'Price mode' })
