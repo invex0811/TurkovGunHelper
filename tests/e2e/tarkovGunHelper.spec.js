@@ -99,6 +99,18 @@ test('creates a weapon build from the catalog', async ({ page }) => {
 
   await expect(page.locator('.weapon').getByRole('heading', { name: 'TW', exact: true })).toBeVisible();
   await expect(page.getByText(/^Remaining to buy/)).toBeVisible();
+  await expect(page.locator('.stat-compare').getByText('Accuracy', { exact: true })).toBeVisible();
+  await expect(page.locator('.stat-compare').getByText('2.17 MOA', { exact: true })).toBeVisible();
+  const accuracyRow = page.locator('.stat-compare .stat-row--lower-is-better.stat-row--inverted-fill').filter({
+    hasText: 'Accuracy',
+  });
+  await expect(accuracyRow).toBeVisible();
+  await expect(accuracyRow.locator('.bar__gradient')).toHaveAttribute(
+    'style',
+    /--meter-value: 91\.32%/,
+  );
+  await expect(page.locator('.stat-compare [role="meter"][aria-label="Accuracy"]'))
+    .toHaveAttribute('aria-valuenow', '2.17');
 });
 
 test('keeps loading indicators visible and static when reduced motion is requested', async ({ page }) => {

@@ -1,8 +1,10 @@
 import { recalculateBuildStats } from '../domain/calculator.js';
 import { planBuildSlotChange } from '../domain/weaponBuildEditor.js';
+import { formatAccuracyMoa } from './weaponStatMeters.js';
 
 const STAT_KEYS = Object.freeze({
   ergonomics: 'ergonomics',
+  accuracyMoa: 'accuracy-moa',
   verticalRecoil: 'vertical-recoil',
   horizontalRecoil: 'horizontal-recoil',
   weight: 'weight',
@@ -22,6 +24,7 @@ export function getProjectedBuildMeters({
   includeTraderPrices,
   traderLevels,
   strictTraderLevels,
+  locale,
   meters,
 }) {
   const plan = planBuildSlotChange({
@@ -54,6 +57,13 @@ export function getProjectedBuildMeters({
           ...meter,
           value: projectedStats.ergonomics,
           displayValue: projectedStats.ergonomics,
+        };
+      case STAT_KEYS.accuracyMoa:
+        return {
+          ...meter,
+          value: projectedStats.accuracyMoa,
+          displayValue: formatAccuracyMoa(projectedStats.accuracyMoa, locale)
+            ?? meter.displayValue,
         };
       case STAT_KEYS.verticalRecoil:
         return {

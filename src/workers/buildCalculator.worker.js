@@ -1,4 +1,4 @@
-import { calculateBestBuild } from '../domain/calculator.js';
+import { calculateBestBuild, recalculateBuildStats } from '../domain/calculator.js';
 
 let modMap = null;
 let modMapVersion = null;
@@ -51,9 +51,21 @@ self.onmessage = ({ data }) => {
       customProfile,
       data.customExactTargets,
     );
+    const displayStats = recalculateBuildStats(
+      data.weapon,
+      result.build ?? [],
+      data.options,
+    ).stats;
+    const resultWithDisplayStats = {
+      ...result,
+      stats: {
+        ...result.stats,
+        accuracyMoa: displayStats.accuracyMoa,
+      },
+    };
 
     if (!cancelledRequestIds.has(requestId)) {
-      self.postMessage({ type: 'result', requestId, result });
+      self.postMessage({ type: 'result', requestId, result: resultWithDisplayStats });
     }
 
     cancelledRequestIds.delete(requestId);

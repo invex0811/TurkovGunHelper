@@ -43,7 +43,7 @@ export default function WeaponBuildDiagramModal({
   onBuildChange,
   onClose,
 }) {
-  const { t } = useI18n();
+  const { language, t } = useI18n();
   const closeButtonRef = useRef(null);
   const selectedSlotRef = useRef(null);
   const lastTriggerRef = useRef(null);
@@ -98,6 +98,7 @@ export default function WeaponBuildDiagramModal({
       includeTraderPrices,
       traderLevels,
       strictTraderLevels,
+      locale: language,
       meters: stats,
     })
     : null, [
@@ -105,6 +106,7 @@ export default function WeaponBuildDiagramModal({
       buildParts,
       activePreviewCandidate,
       includeTraderPrices,
+      language,
       traderLevels,
       strictTraderLevels,
       priceMode,

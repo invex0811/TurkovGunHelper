@@ -247,10 +247,17 @@ test('adapter resolves presets, ID references, required slots, and categories', 
     assert.equal(weapon.categories[0].name, 'Weapon');
     assert.equal(weapon.ergonomics, 50);
     assert.equal(weapon.recoilVertical, 100);
+    assert.equal(weapon.properties.centerOfImpact, 0.01);
+    assert.equal(weapon.properties.deviationCurve, 1.35);
+    assert.equal(weapon.properties.deviationMax, 23);
+    assert.equal(weapon.defaultPresetItem.properties.moa, 2.17);
 
     const nestedSlot = (await getAllMods())['mod-1'].properties.slots[0];
     assert.equal(nestedSlot.name, 'Mount');
     assert.deepEqual(nestedSlot.filters.allowedItems, [{ id: 'other-1' }]);
+    const accuracyProperties = (await getAllMods())['mod-1'].properties;
+    assert.equal(accuracyProperties.centerOfImpact, 0.053);
+    assert.equal(accuracyProperties.deviationMax, 23);
   });
 });
 

@@ -1,5 +1,61 @@
 import { getPurchasePriceValue } from '../../data/price/priceMapper.js';
 
+const DEFAULT_BARREL_DEVIATION_MAX = 100;
+const FULL_DURABILITY = 100;
+const MOA_CONVERSION_FACTOR = 2.9089;
+
+function toFiniteNumber(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function getBarrelDeviation(deviationCurve, barrelDeviationMax) {
+  const doubledCurve = 2 * deviationCurve;
+  const denominator = 100 - doubledCurve;
+  const durabilityFactor = denominator === 0
+    ? FULL_DURABILITY / doubledCurve
+    : (
+      -deviationCurve
+      + Math.sqrt((-doubledCurve + 100) * FULL_DURABILITY + deviationCurve)
+    ) / denominator;
+  const inverseDurabilityFactor = 1 - durabilityFactor;
+
+  return (
+    inverseDurabilityFactor * inverseDurabilityFactor * barrelDeviationMax
+    + 2 * durabilityFactor * inverseDurabilityFactor * deviationCurve
+    + durabilityFactor * durabilityFactor
+  );
+}
+
+export function calculateAccuracyMoa(weapon, buildParts = []) {
+  const baseCenterOfImpact = toFiniteNumber(weapon?.properties?.centerOfImpact);
+  const deviationCurve = toFiniteNumber(weapon?.properties?.deviationCurve);
+  if (baseCenterOfImpact === null || deviationCurve === null) return null;
+
+  let centerOfImpact = baseCenterOfImpact;
+  // tarkov-data-manager starts at 100 and lets an installed barrel/part override it.
+  let barrelDeviationMax = DEFAULT_BARREL_DEVIATION_MAX;
+
+  for (const part of Array.isArray(buildParts) ? buildParts : []) {
+    const partCenterOfImpact = toFiniteNumber(part?.item?.properties?.centerOfImpact);
+    if (partCenterOfImpact !== null) centerOfImpact += partCenterOfImpact;
+
+    const partDeviationMax = toFiniteNumber(part?.item?.properties?.deviationMax);
+    if (partDeviationMax !== null && partDeviationMax !== 0) {
+      barrelDeviationMax = partDeviationMax;
+    }
+  }
+
+  const barrelDeviation = getBarrelDeviation(deviationCurve, barrelDeviationMax);
+  const accuracyMoa = centerOfImpact * barrelDeviation * 100 / MOA_CONVERSION_FACTOR;
+  if (!Number.isFinite(accuracyMoa) || accuracyMoa < 0) return null;
+
+  return Math.round(accuracyMoa * 100) / 100;
+}
+
 export function recalculateBuildStats(weapon, buildParts, options = {}) {
   let totalErgo = weapon.properties.ergonomics || 0;
   let totalRecoilMod = 0;
@@ -32,6 +88,7 @@ export function recalculateBuildStats(weapon, buildParts, options = {}) {
       recoilHorizontal: Math.round(finalRecoilH),
       weight: totalWeight.toFixed(2),
       price: Number.isFinite(totalPrice) ? Math.round(totalPrice) : null,
+      accuracyMoa: calculateAccuracyMoa(weapon, buildParts),
     }
   };
 }

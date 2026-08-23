@@ -24,7 +24,7 @@ function createItem(id, options = {}) {
     recoilModifier: options.recoilModifier ?? 0,
     weight: options.weight ?? 0,
     price: { value: options.price ?? 1_000 },
-    properties: { slots: options.slots ?? [] },
+    properties: { ...options.properties, slots: options.slots ?? [] },
     categories: [{ name: 'Weapon mod' }],
   };
 }
@@ -37,6 +37,9 @@ function createWeapon(slots) {
       ergonomics: 50,
       recoilVertical: 100,
       recoilHorizontal: 200,
+      centerOfImpact: 0.01,
+      deviationCurve: 1.35,
+      deviationMax: 23,
     },
   };
 }
@@ -143,4 +146,36 @@ test('returns null for invalid and no-op replacement plans', () => {
     slotInstanceId: 'missing-slot',
     nextItem: mount,
   }), null);
+});
+
+test('projects a new MOA value when replacing an accuracy-affecting part', () => {
+  const slot = createSlot('Barrel', ['old-barrel', 'new-barrel']);
+  const weapon = createWeapon([slot]);
+  const oldBarrel = createItem('old-barrel', {
+    properties: { centerOfImpact: 0.053, deviationMax: 23 },
+  });
+  const newBarrel = createItem('new-barrel', {
+    properties: { centerOfImpact: 0.07, deviationMax: 22 },
+  });
+  const buildParts = [{ slotName: 'Barrel', item: oldBarrel }];
+  const slotInstanceId = buildWeaponAssemblyTree(weapon, buildParts).slots[0].id;
+  const meters = [{
+    key: 'accuracy-moa',
+    label: 'Accuracy',
+    value: 2.17,
+    displayValue: '2.17 MOA',
+    range: { min: 0, max: 25, direction: 'lower-is-better' },
+  }];
+
+  const preview = getPreview({
+    weapon,
+    buildParts,
+    allMods: { 'old-barrel': oldBarrel, 'new-barrel': newBarrel },
+    slotInstanceId,
+    nextItem: newBarrel,
+    meters,
+  });
+
+  assert.equal(preview[0].value, 2.75);
+  assert.equal(preview[0].displayValue, '2.75 MOA');
 });
