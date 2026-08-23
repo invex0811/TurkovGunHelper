@@ -20,7 +20,7 @@ function createCatalogResponses(priceMultiplier = 1) {
     lastLowPrice: 65,
     ergonomicsModifier: 2,
     recoilModifier: -1,
-    properties: { slots: [] },
+    properties: { centerOfImpact: 0.07, deviationMax: 22, slots: [] },
   };
   fixture.itemTranslations.data['mod-2 Name'] = 'Alternative Grip';
   fixture.itemTranslations.data['mod-2 ShortName'] = 'Alternative Grip';

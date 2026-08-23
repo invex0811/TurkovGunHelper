@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   WEAPON_STAT_UI_RANGES,
+  formatAccuracyMoa,
   normalizeStatPercent,
   toFiniteStatNumber,
   withBaseStatMaximum,
@@ -44,6 +45,12 @@ test('converts calculator weight strings into meter values', () => {
   assert.ok(Number.isNaN(toFiniteStatNumber('N/A')));
 });
 
+test('formats MOA with two locale-aware decimal places', () => {
+  assert.equal(formatAccuracyMoa(2.1, 'en-US'), '2.10 MOA');
+  assert.equal(formatAccuracyMoa(2.1, 'ru-RU'), '2,10 MOA');
+  assert.equal(formatAccuracyMoa(Number.NaN, 'en-US'), null);
+});
+
 test('uses the unmodified weapon recoil as the meter maximum', () => {
   const range = withBaseStatMaximum(WEAPON_STAT_UI_RANGES.verticalRecoil, 119);
 
@@ -69,6 +76,11 @@ test('uses explicit stable visualization ranges for every weapon stat', () => {
   assert.deepEqual(WEAPON_STAT_UI_RANGES.ergonomics, {
     min: 0,
     max: 100,
+    direction: 'higher-is-better',
+  });
+  assert.deepEqual(WEAPON_STAT_UI_RANGES.accuracyMoa, {
+    min: 0,
+    max: 25,
     direction: 'higher-is-better',
   });
   assert.deepEqual(WEAPON_STAT_UI_RANGES.verticalRecoil, {

@@ -44,7 +44,7 @@ export const configMessages = {
     'config.warning.requirementsUnmet': 'The selected requirements cannot be met exactly with the available modules. The closest balanced build is shown.',
     'config.warning.baseWeaponMaxWeight': 'The base weapon already exceeds the selected maximum weight of {maxWeight} kg.',
     'config.warning.buildMaxPriceExceeded': 'The build exceeds the selected maximum price of {maxPrice} RUB.',
-    'config.stat.weight': 'Weight', 'config.stat.ergonomics': 'Ergonomics', 'config.stat.verticalRecoil': 'Vertical recoil', 'config.stat.horizontalRecoil': 'Horizontal recoil',
+    'config.stat.weight': 'Weight', 'config.stat.ergonomics': 'Ergonomics', 'config.stat.accuracy': 'Accuracy', 'config.stat.verticalRecoil': 'Vertical recoil', 'config.stat.horizontalRecoil': 'Horizontal recoil',
   },
   ru: {
     'ownedItems.baseWeapon': 'Основа оружия',
@@ -91,6 +91,6 @@ export const configMessages = {
     'config.warning.requirementsUnmet': 'Точно выполнить выбранные требования с доступными модулями невозможно. Показана наиболее близкая сбалансированная сборка.',
     'config.warning.baseWeaponMaxWeight': 'Базовое оружие уже превышает выбранное ограничение веса {maxWeight} кг.',
     'config.warning.buildMaxPriceExceeded': 'Стоимость сборки превышает выбранное ограничение {maxPrice} RUB.',
-    'config.stat.weight': 'Вес', 'config.stat.ergonomics': 'Эргономика', 'config.stat.verticalRecoil': 'Вертикальная отдача', 'config.stat.horizontalRecoil': 'Горизонтальная отдача',
+    'config.stat.weight': 'Вес', 'config.stat.ergonomics': 'Эргономика', 'config.stat.accuracy': 'Точность', 'config.stat.verticalRecoil': 'Вертикальная отдача', 'config.stat.horizontalRecoil': 'Горизонтальная отдача',
   },
 };

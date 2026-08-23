@@ -42,6 +42,9 @@ export function createTarkovJsonFixture(language = 'en') {
             ergonomics: 50,
             recoilVertical: 100,
             recoilHorizontal: 200,
+            centerOfImpact: 0.01,
+            deviationCurve: 1.35,
+            deviationMax: 23,
             defaultPreset: 'preset-1',
             slots: [{
               id: 'slot-1', name: 'SLOT_PISTOL_GRIP', nameId: 'mod_pistol_grip',
@@ -63,6 +66,9 @@ export function createTarkovJsonFixture(language = 'en') {
             minTraderLevel: 1, taskUnlock: null,
           }],
           properties: {
+            centerOfImpact: 0.053,
+            deviationCurve: 1.35,
+            deviationMax: 23,
             slots: [{
               id: 'nested-slot-1', name: 'SLOT_NESTED', nameId: 'mod_mount',
               required: false,
@@ -76,7 +82,7 @@ export function createTarkovJsonFixture(language = 'en') {
           iconLink: 'https://assets.test/preset-icon.webp',
           gridImageLink: 'https://assets.test/preset-grid.webp',
           avg24hPrice: 1300,
-          categories: [], properties: {}, conflictingItems: [], buyFromTrader: [],
+          categories: [], properties: { moa: 2.17, baseItem: 'weapon-1' }, conflictingItems: [], buyFromTrader: [],
         },
         'required-1': {
           id: 'required-1', name: 'required-1 Name', shortName: 'REQ', types: [],

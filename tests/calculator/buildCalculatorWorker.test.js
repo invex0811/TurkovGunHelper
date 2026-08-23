@@ -37,6 +37,9 @@ test('calculator worker forwards Exact flags and keeps old messages compatible',
         ergonomics: 50,
         recoilVertical: 100,
         recoilHorizontal: 100,
+        centerOfImpact: 0.01,
+        deviationCurve: 1.35,
+        deviationMax: 23,
         slots: [{
           name: 'Stock',
           nameId: 'mod_stock',
@@ -84,6 +87,7 @@ test('calculator worker forwards Exact flags and keeps old messages compatible',
     assert.equal(messages[0].result.errorCode, 'CUSTOM_EXACT_TARGETS_UNMET');
     assert.equal(messages[1].requestId, 2);
     assert.equal(messages[1].result.error, undefined);
+    assert.equal(messages[1].result.stats.accuracyMoa, 0.34);
   } finally {
     globalThis.self = previousSelf;
   }

@@ -54,6 +54,7 @@ import {
 } from '../../ui/customBuildRadar.js';
 import {
   WEAPON_STAT_UI_RANGES,
+  formatAccuracyMoa,
   toFiniteStatNumber,
   withBaseStatMaximum,
 } from '../../ui/weaponStatMeters.js';
@@ -1783,6 +1784,10 @@ function Configurator() {
   const currentWeight = canShowBuildDetails ? `${buildResult.stats.weight} kg` : (weapon.weight ? `${weapon.weight} kg` : t('config.notAvailable'));
   const currentRecoilV = canShowBuildDetails ? buildResult.stats.recoilVertical : (weapon.properties?.recoilVertical ?? t('config.notAvailable'));
   const currentRecoilH = canShowBuildDetails ? buildResult.stats.recoilHorizontal : (weapon.properties?.recoilHorizontal ?? t('config.notAvailable'));
+  const currentAccuracyMoa = toFiniteStatNumber(
+    canShowBuildDetails ? buildResult.stats.accuracyMoa : null,
+  );
+  const currentAccuracy = formatAccuracyMoa(currentAccuracyMoa, language);
   const currentPrice = canShowBuildDetails
     ? buildCostSummary?.remainingTotal === 0
       ? t('ownedItems.allPurchased')
@@ -1813,6 +1818,13 @@ function Configurator() {
       value: currentErgo,
       range: WEAPON_STAT_UI_RANGES.ergonomics,
     },
+    ...(currentAccuracy ? [{
+      key: 'accuracy-moa',
+      label: t('config.stat.accuracy'),
+      value: currentAccuracyMoa,
+      displayValue: currentAccuracy,
+      range: WEAPON_STAT_UI_RANGES.accuracyMoa,
+    }] : []),
     {
       key: 'vertical-recoil',
       label: t('config.stat.verticalRecoil'),
