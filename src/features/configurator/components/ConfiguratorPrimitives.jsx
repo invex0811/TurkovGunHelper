@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import { normalizeStatPercent } from '../../../ui/weaponStatMeters.js';
+import { normalizeStatFillPercent } from '../../../ui/weaponStatMeters.js';
 import { getInlineMessageA11y } from '../configuratorNotifications.js';
 
 export function WarningIcon({ className = '' }) {
@@ -101,13 +101,13 @@ export function InlineMessage({
 
 export function StatMeterRow({ label, value, displayValue = value, range, t }) {
   const hasNumericValue = typeof value === 'number' && Number.isFinite(value);
-  const percent = normalizeStatPercent(value, range.min, range.max);
+  const percent = normalizeStatFillPercent(value, range);
   const accessibleValue = hasNumericValue
     ? Math.min(range.max, Math.max(range.min, value))
     : undefined;
 
   return (
-    <div className={`stat-row stat-row--${range.direction}`}>
+    <div className={`stat-row stat-row--${range.direction}${range.invertFill ? ' stat-row--inverted-fill' : ''}`}>
       <span>{label}</span>
       <div
         className="bar"

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   WEAPON_STAT_UI_RANGES,
   formatAccuracyMoa,
+  normalizeStatFillPercent,
   normalizeStatPercent,
   toFiniteStatNumber,
   withBaseStatMaximum,
@@ -45,6 +46,22 @@ test('converts calculator weight strings into meter values', () => {
   assert.ok(Number.isNaN(toFiniteStatNumber('N/A')));
 });
 
+test('inverts only the accuracy MOA fill percentage', () => {
+  const range = WEAPON_STAT_UI_RANGES.accuracyMoa;
+
+  assert.equal(normalizeStatFillPercent(0, range), 100);
+  assert.ok(Math.abs(normalizeStatFillPercent(1.63, range) - 93.48) < 1e-10);
+  assert.equal(normalizeStatFillPercent(5, range), 80);
+  assert.equal(normalizeStatFillPercent(25, range), 0);
+  assert.equal(normalizeStatFillPercent(-1, range), 100);
+  assert.equal(normalizeStatFillPercent(26, range), 0);
+});
+
+test('keeps standard fill normalization unchanged for other stats', () => {
+  assert.equal(normalizeStatFillPercent(25, WEAPON_STAT_UI_RANGES.ergonomics), 25);
+  assert.equal(normalizeStatPercent(25, 0, 100), 25);
+});
+
 test('formats MOA with two locale-aware decimal places', () => {
   assert.equal(formatAccuracyMoa(2.1, 'en-US'), '2.10 MOA');
   assert.equal(formatAccuracyMoa(2.1, 'ru-RU'), '2,10 MOA');
@@ -81,7 +98,8 @@ test('uses explicit stable visualization ranges for every weapon stat', () => {
   assert.deepEqual(WEAPON_STAT_UI_RANGES.accuracyMoa, {
     min: 0,
     max: 25,
-    direction: 'higher-is-better',
+    direction: 'lower-is-better',
+    invertFill: true,
   });
   assert.deepEqual(WEAPON_STAT_UI_RANGES.verticalRecoil, {
     min: 0,

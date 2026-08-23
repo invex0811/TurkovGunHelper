@@ -1,15 +1,15 @@
-import { normalizeStatPercent } from './weaponStatMeters.js';
+import { normalizeStatFillPercent } from './weaponStatMeters.js';
 import { useI18n } from '../i18n/useI18n.js';
 
 function DiagramStatRow({ label, value, displayValue = value, range, t }) {
   const hasNumericValue = typeof value === 'number' && Number.isFinite(value);
-  const percent = normalizeStatPercent(value, range.min, range.max);
+  const percent = normalizeStatFillPercent(value, range);
   const accessibleValue = hasNumericValue
     ? Math.min(range.max, Math.max(range.min, value))
     : undefined;
 
   return (
-    <div className={`stat-row stat-row--${range.direction} weapon-diagram-stats__row`}>
+    <div className={`stat-row stat-row--${range.direction}${range.invertFill ? ' stat-row--inverted-fill' : ''} weapon-diagram-stats__row`}>
       <span>{label}</span>
       <div
         className="bar"

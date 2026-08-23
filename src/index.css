@@ -2410,6 +2410,10 @@ button.weapon-diagram-node:focus-visible,
   background: linear-gradient(90deg, var(--color-green), var(--color-orange), var(--color-red));
 }
 
+.stat-row--lower-is-better.stat-row--inverted-fill .bar__gradient {
+  background: linear-gradient(90deg, var(--color-red), var(--color-orange), var(--color-green));
+}
+
 .stat-row > strong {
   color: var(--color-gold);
   font-family: var(--font-mono);
