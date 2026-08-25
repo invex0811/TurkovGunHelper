@@ -6,6 +6,7 @@ import {
   calculateBestBuild,
   recalculateBuildStats,
 } from '../../src/domain/calculator.js';
+import { createTarkovJsonFixture } from '../fixtures/tarkovJson.js';
 
 function createWeapon(properties = {}) {
   return {
@@ -74,6 +75,65 @@ test('changes MOA when an accuracy-affecting barrel is replaced', () => {
 
   assert.equal(calculateAccuracyMoa(weapon, [{ item: standardBarrel }]), 2.17);
   assert.equal(calculateAccuracyMoa(weapon, [{ item: replacementBarrel }]), 2.75);
+});
+
+test('matches the full stats path across representative build scenarios', () => {
+  const fixture = createTarkovJsonFixture();
+  const fixtureWeapon = fixture.items.data.items['weapon-1'];
+  const fixturePart = fixture.items.data.items['mod-1'];
+  const scenarios = [
+    {
+      name: 'base weapon',
+      weapon: createWeapon(),
+      build: [],
+    },
+    {
+      name: 'one accuracy modifier',
+      weapon: createWeapon(),
+      build: [{
+        item: createPart('single-accuracy-part', {
+          centerOfImpact: 0.053,
+          deviationMax: 23,
+        }),
+      }],
+    },
+    {
+      name: 'multiple accuracy modifiers',
+      weapon: createWeapon(),
+      build: [
+        {
+          item: createPart('first-accuracy-part', {
+            centerOfImpact: 0.053,
+            deviationMax: 23,
+          }),
+        },
+        {
+          item: createPart('second-accuracy-part', {
+            centerOfImpact: 0.002,
+            deviationMax: 22,
+          }),
+        },
+      ],
+    },
+    {
+      name: 'existing Tarkov JSON fixture',
+      weapon: fixtureWeapon,
+      build: [{
+        item: fixturePart,
+      }],
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const oldAccuracyMoa = recalculateBuildStats(
+      scenario.weapon,
+      scenario.build,
+      { includeTraderPrices: true },
+    ).stats.accuracyMoa;
+    const newAccuracyMoa = calculateAccuracyMoa(scenario.weapon, scenario.build);
+
+    assert.strictEqual(oldAccuracyMoa, newAccuracyMoa, scenario.name);
+  }
 });
 
 test('returns null instead of a non-finite MOA when required data is missing', () => {
