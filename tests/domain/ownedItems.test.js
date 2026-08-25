@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 
 import {
   calculateBuildCostSummary,
+  createBuildAssemblySnapshot,
   getBuildItemInstances,
+  getBuildItemInstancesFromAssemblyTree,
+  reconcileOwnedItemInstances,
   reconcileOwnedItems,
   toggleOwnedItem,
 } from '../../src/domain/ownedItems.js';
@@ -128,3 +131,87 @@ test('missing owned prices do not hide a known remaining-to-buy total', () => {
   assert.equal(unownedMissingSummary.remainingTotal, null);
   assert.equal(unownedMissingSummary.missingInstances[0].isOwned, false);
 });
+
+test('assembly snapshots preserve nested instance identity and remain read-only for ownership and cost', () => {
+  const foregrip = item('foregrip', 3_000);
+  const rail = item('rail', 2_000, [{
+    name: 'Foregrip',
+    nameId: 'mod_foregrip',
+    filters: { allowedItems: [{ id: foregrip.id }] },
+  }]);
+  const handguard = item('handguard', 4_000, [{
+    name: 'Rail',
+    nameId: 'mod_rail',
+    filters: { allowedItems: [{ id: rail.id }] },
+  }]);
+  const weapon = item('weapon', 10_000, [{
+    name: 'Handguard',
+    nameId: 'mod_handguard',
+    filters: { allowedItems: [{ id: handguard.id }] },
+  }]);
+  const buildParts = [
+    { slotName: 'Handguard', item: handguard },
+    { slotName: 'Rail', item: rail },
+    { slotName: 'Foregrip', item: foregrip },
+  ];
+  const snapshot = createBuildAssemblySnapshot(weapon, buildParts);
+  const before = treeShape(snapshot.tree);
+  const wrapperInstances = getBuildItemInstances(weapon, buildParts);
+  const snapshotInstances = getBuildItemInstancesFromAssemblyTree(snapshot.tree);
+
+  assert.deepEqual(instanceSignature(snapshot.instances), instanceSignature(wrapperInstances));
+  assert.deepEqual(instanceSignature(snapshot.instances), instanceSignature(snapshotInstances));
+  assert.deepEqual(instanceSignature(snapshot.instances), [
+    { key: snapshot.tree.instanceId, itemId: 'weapon', isWeapon: true, buildPart: null },
+    { key: snapshot.tree.children[0].instanceId, itemId: 'handguard', isWeapon: false, buildPart: buildParts[0] },
+    { key: snapshot.tree.children[0].children[0].instanceId, itemId: 'rail', isWeapon: false, buildPart: buildParts[1] },
+    { key: snapshot.tree.children[0].children[0].children[0].instanceId, itemId: 'foregrip', isWeapon: false, buildPart: buildParts[2] },
+  ]);
+
+  const owned = [
+    { key: snapshot.instances[1].key, itemId: 'handguard' },
+    { key: 'stale', itemId: 'stale' },
+    { key: snapshot.instances[2].key, itemId: 'wrong-item' },
+    { key: snapshot.instances[1].key, itemId: 'handguard' },
+    { key: snapshot.instances[3].key, itemId: 'foregrip' },
+  ];
+  const reconciled = reconcileOwnedItemInstances(owned, snapshot.instances);
+  const summary = calculateBuildCostSummary({
+    weapon,
+    buildParts,
+    ownedItems: owned,
+    priceOptions: { priceMode: 'pvp' },
+    assemblySnapshot: snapshot,
+  });
+
+  assert.deepEqual(reconciled, [
+    { key: snapshot.instances[1].key, itemId: 'handguard' },
+    { key: snapshot.instances[3].key, itemId: 'foregrip' },
+  ]);
+  assert.strictEqual(summary.instances, snapshot.instances);
+  assert.deepEqual(summary.ownedItems, reconciled);
+  assert.equal(summary.marketTotal, 19_000);
+  assert.equal(summary.remainingTotal, 12_000);
+  assert.equal(summary.ownedValue, 7_000);
+  assert.deepEqual(summary.missingInstances, []);
+  assert.deepEqual(treeShape(snapshot.tree), before);
+});
+
+function instanceSignature(instances) {
+  return instances.map(instance => ({
+    key: instance.key,
+    itemId: instance.itemId,
+    isWeapon: instance.isWeapon,
+    buildPart: instance.buildPart,
+  }));
+}
+
+function treeShape(node) {
+  return {
+    itemId: node.item?.id,
+    instanceId: node.instanceId,
+    sourceSlotId: node.sourceSlot?.nameId || null,
+    buildPart: node.buildPart,
+    children: node.children.map(treeShape),
+  };
+}

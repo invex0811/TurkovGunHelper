@@ -20,13 +20,12 @@ export function createBuildItemKey(instanceId, itemId) {
   return `item:${encodeURIComponent(String(itemId || 'unknown')).replaceAll('%', '_')}`;
 }
 
-export function getBuildItemInstances(weapon, buildParts = []) {
-  if (!weapon) return [];
-  const root = buildWeaponAssemblyTree(weapon, buildParts);
+export function getBuildItemInstancesFromAssemblyTree(root) {
+  if (!root?.item) return [];
   const instances = [{
-    key: createBuildItemKey(root.instanceId, weapon.id),
-    itemId: weapon.id,
-    item: weapon,
+    key: createBuildItemKey(root.instanceId, root.item.id),
+    itemId: root.item.id,
+    item: root.item,
     buildPart: null,
     isWeapon: true,
   }];
@@ -45,9 +44,22 @@ export function getBuildItemInstances(weapon, buildParts = []) {
   return instances;
 }
 
-export function reconcileOwnedItems(ownedItems, weapon, buildParts = []) {
+export function createBuildAssemblySnapshot(weapon, buildParts = []) {
+  const tree = buildWeaponAssemblyTree(weapon, buildParts);
+  return {
+    tree,
+    instances: getBuildItemInstancesFromAssemblyTree(tree),
+  };
+}
+
+export function getBuildItemInstances(weapon, buildParts = []) {
+  if (!weapon) return [];
+  return createBuildAssemblySnapshot(weapon, buildParts).instances;
+}
+
+export function reconcileOwnedItemInstances(ownedItems, instances) {
   const instanceByKey = new Map(
-    getBuildItemInstances(weapon, buildParts).map(instance => [instance.key, instance]),
+    (instances || []).map(instance => [instance.key, instance]),
   );
   const reconciled = [];
   const seen = new Set();
@@ -60,6 +72,13 @@ export function reconcileOwnedItems(ownedItems, weapon, buildParts = []) {
     reconciled.push({ key: instance.key, itemId: instance.itemId });
   });
   return reconciled;
+}
+
+export function reconcileOwnedItems(ownedItems, weapon, buildParts = [], instances = null) {
+  return reconcileOwnedItemInstances(
+    ownedItems,
+    instances || getBuildItemInstances(weapon, buildParts),
+  );
 }
 
 export function toggleOwnedItem(ownedItems, instance) {
@@ -76,9 +95,13 @@ export function calculateBuildCostSummary({
   buildParts = [],
   ownedItems = [],
   priceOptions = {},
+  assemblySnapshot = null,
+  instances: suppliedInstances = null,
 }) {
-  const instances = getBuildItemInstances(weapon, buildParts);
-  const reconciledOwnedItems = reconcileOwnedItems(ownedItems, weapon, buildParts);
+  const instances = suppliedInstances
+    || assemblySnapshot?.instances
+    || getBuildItemInstances(weapon, buildParts);
+  const reconciledOwnedItems = reconcileOwnedItemInstances(ownedItems, instances);
   const ownedKeys = new Set(reconciledOwnedItems.map(item => item.key));
   let marketTotal = 0;
   let remainingTotal = 0;
