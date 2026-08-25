@@ -1,4 +1,4 @@
-import { calculateBestBuild, recalculateBuildStats } from '../domain/calculator.js';
+import { calculateAccuracyMoa, calculateBestBuild } from '../domain/calculator.js';
 
 let modMap = null;
 let modMapVersion = null;
@@ -54,16 +54,11 @@ self.onmessage = ({ data }) => {
       data.characteristicMode,
       data.priorityMaxPrice,
     );
-    const displayStats = recalculateBuildStats(
-      data.weapon,
-      result.build ?? [],
-      data.options,
-    ).stats;
     const resultWithDisplayStats = {
       ...result,
       stats: {
         ...result.stats,
-        accuracyMoa: displayStats.accuracyMoa,
+        accuracyMoa: calculateAccuracyMoa(data.weapon, result.build ?? []),
       },
     };
 

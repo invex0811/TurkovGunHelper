@@ -33,6 +33,7 @@ import {
 import { recalculateBuildStats } from '../../domain/calculator.js';
 import {
   calculateBuildCostSummary,
+  createBuildAssemblySnapshot,
   getBuildItemInstances,
   reconcileOwnedItems,
   toggleOwnedItem,
@@ -133,8 +134,8 @@ import {
   subtreeHasSight,
 } from './services/replacementService.js';
 
-function getBuildModuleDisplayItems(weapon, buildParts) {
-  const assemblyTree = buildAssemblyTree(weapon, buildParts);
+function getBuildModuleDisplayItems(weapon, buildParts, assemblyTree = null) {
+  const tree = assemblyTree || buildAssemblyTree(weapon, buildParts);
   const nodeByBuildPart = new Map();
   const emptyCriticalItems = [];
 
@@ -162,7 +163,7 @@ function getBuildModuleDisplayItems(weapon, buildParts) {
     });
   }
 
-  visit(assemblyTree);
+  visit(tree);
 
   const installedItems = buildParts.map((part, originalIndex) => {
     const node = nodeByBuildPart.get(part);
@@ -617,9 +618,10 @@ function collectBuildPriceDiagnostics(
   strictTraderLevels,
   ownedItems,
   t,
+  instances = null,
 ) {
   const ownedKeys = new Set((ownedItems || []).map(item => item.key));
-  const entries = getBuildItemInstances(weapon, buildResult.build).map(instance => ({
+  const entries = (instances || getBuildItemInstances(weapon, buildResult.build)).map(instance => ({
     label: instance.isWeapon
       ? t('config.weapon')
       : getItemDisplayName(instance.item, instance.buildPart?.slotName),
@@ -1031,11 +1033,23 @@ function Configurator() {
   const [ownedItems, setOwnedItems] = useState(
     () => requestedSavedBuild?.ownedItems || [],
   );
+  const currentBuildParts = buildResult?.build;
+  const currentBuildSnapshot = useMemo(
+    () => weapon && currentBuildParts
+      ? createBuildAssemblySnapshot(weapon, currentBuildParts)
+      : null,
+    [weapon, currentBuildParts],
+  );
   const reconciledOwnedItems = useMemo(
-    () => weapon && buildResult?.build
-      ? reconcileOwnedItems(ownedItems, weapon, buildResult.build)
+    () => weapon && currentBuildParts
+      ? reconcileOwnedItems(
+        ownedItems,
+        weapon,
+        currentBuildParts,
+        currentBuildSnapshot?.instances,
+      )
       : [],
-    [buildResult, ownedItems, weapon],
+    [currentBuildParts, currentBuildSnapshot, ownedItems, weapon],
   );
   const [loadError, setLoadError] = useState(null);
   const [generationError, setGenerationError] = useState(null);
@@ -1538,6 +1552,7 @@ function Configurator() {
       weapon,
       buildParts: buildResult.build,
       ownedItems,
+      assemblySnapshot: currentBuildSnapshot,
       priceOptions: {
         priceMode,
         includeTraderPrices: nextValue,
@@ -1655,6 +1670,7 @@ function Configurator() {
         weapon,
         buildParts: buildResult.build,
         ownedItems: reconciledOwnedItems,
+        assemblySnapshot: currentBuildSnapshot,
         priceOptions: {
           priceMode,
           includeTraderPrices,
@@ -1669,6 +1685,7 @@ function Configurator() {
       canShowBuildDetails,
       includeTraderPrices,
       reconciledOwnedItems,
+      currentBuildSnapshot,
       priceMode,
       strictTraderLevels,
       weapon,
@@ -1710,7 +1727,7 @@ function Configurator() {
   const replacementContext = useMemo(() => {
     if (!weapon || !buildResult || !hasBuildParts || !activeReplacePartId) return null;
 
-    const assemblyTree = buildAssemblyTree(weapon, buildResult.build);
+    const assemblyTree = currentBuildSnapshot?.tree;
     const activePart = buildResult.build.find(part => part.item.id === activeReplacePartId);
     const targetNode = activePart
       ? findTreeNodeByItemId(assemblyTree, activePart.item.id)
@@ -1762,7 +1779,7 @@ function Configurator() {
         replaceMode,
       ),
     };
-  }, [weapon, buildResult, hasBuildParts, activeReplacePartId, allMods, priceMode, includeTraderPrices, activeTraderLevels, strictTraderLevels, sightMode, t, replaceMode]);
+  }, [weapon, buildResult, currentBuildSnapshot, hasBuildParts, activeReplacePartId, allMods, priceMode, includeTraderPrices, activeTraderLevels, strictTraderLevels, sightMode, t, replaceMode]);
 
   const isLoading = loading || (weapon && weapon.id !== weaponId);
 
@@ -1790,6 +1807,7 @@ function Configurator() {
       strictTraderLevels,
       reconciledOwnedItems,
       t,
+      currentBuildSnapshot?.instances,
     )
     : {
       summaryLabel: `${t(`config.price.${priceMode}Short`)} · tarkov.dev · ${includeTraderPrices ? t('config.price.fleaTrader') : t('config.price.fleaOnly')}`,
@@ -1872,7 +1890,7 @@ function Configurator() {
   const partsGroups = [];
   if (canShowBuildDetails) {
     const groupMap = new Map();
-    getBuildModuleDisplayItems(weapon, buildResult.build).forEach(part => {
+    getBuildModuleDisplayItems(weapon, buildResult.build, currentBuildSnapshot?.tree).forEach(part => {
       const slotGroup = getReadableSlotGroupName(part.slotName, t);
       const displayRank = getModuleDisplayRank(part);
       const groupKey = `${displayRank}:${slotGroup}`;
@@ -1977,7 +1995,12 @@ function Configurator() {
     : renderedGroups;
   const handleOwnedToggle = instance => {
     setOwnedItems(current => toggleOwnedItem(
-      reconcileOwnedItems(current, weapon, buildResult?.build || []),
+      reconcileOwnedItems(
+        current,
+        weapon,
+        buildResult?.build || [],
+        currentBuildSnapshot?.instances,
+      ),
       instance,
     ));
   };
