@@ -110,6 +110,9 @@ export default function useBuildCalculation() {
       targetType: calculationInput.targetType,
       customProfile: calculationInput.customProfile,
       customExactTargets: calculationInput.customExactTargets,
+      priorityAttributes: calculationInput.priorityAttributes,
+      characteristicMode: calculationInput.characteristicMode,
+      priorityMaxPrice: calculationInput.priorityMaxPrice,
       options: calculationInput.options,
     });
 

@@ -149,6 +149,21 @@ test('export preserves strict trader level policy', () => {
   assert.equal(exportBuild(build).settings.strictTraderLevels, true);
 });
 
+test('export preserves Custom priority mode settings', () => {
+  const build = savedBuild();
+  build.settings = {
+    ...build.settings,
+    targetType: 'custom',
+    characteristicMode: 'priorities',
+    priorityAttributes: ['weight', 'ergonomics'],
+    priorityMaxPrice: '250000',
+  };
+  const parsed = parseBuildImport(JSON.stringify(exportBuilds([build])));
+  assert.deepEqual(parsed.builds[0].settings.priorityAttributes, ['weight', 'ergonomics']);
+  assert.equal(parsed.builds[0].settings.characteristicMode, 'priorities');
+  assert.equal(parsed.builds[0].settings.priorityMaxPrice, 250000);
+});
+
 test('export excludes dynamic stats, images, prices and full item objects', () => {
   const serialized = JSON.stringify(exportBuild(savedBuild()));
   assert.equal(serialized.includes('stats'), false);

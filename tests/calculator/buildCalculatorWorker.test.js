@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-test('calculator worker forwards Exact flags and keeps old messages compatible', async () => {
+test('calculator worker forwards characteristic mode and priority maximum price while keeping old messages compatible', async () => {
   const messages = [];
   const previousSelf = globalThis.self;
   globalThis.self = {
@@ -68,6 +68,22 @@ test('calculator worker forwards Exact flags and keeps old messages compatible',
         targetType: 'custom',
         customProfile,
         customExactTargets: { ergonomics: true },
+        priorityAttributes: ['ergonomics', 'ergonomics', 'price'],
+        options: {},
+      },
+    });
+    globalThis.self.onmessage({
+      data: {
+        type: 'calculate',
+        requestId: 3,
+        modMapVersion: 1,
+        weapon,
+        targetType: 'custom',
+        customProfile,
+        customExactTargets: { ergonomics: true },
+        priorityAttributes: ['ergonomics'],
+        characteristicMode: 'priorities',
+        priorityMaxPrice: 0,
         options: {},
       },
     });
@@ -85,9 +101,11 @@ test('calculator worker forwards Exact flags and keeps old messages compatible',
 
     assert.equal(messages[0].requestId, 1);
     assert.equal(messages[0].result.errorCode, 'CUSTOM_EXACT_TARGETS_UNMET');
-    assert.equal(messages[1].requestId, 2);
+    assert.equal(messages[1].requestId, 3);
     assert.equal(messages[1].result.error, undefined);
-    assert.equal(messages[1].result.stats.accuracyMoa, 0.34);
+    assert.equal(messages[2].requestId, 2);
+    assert.equal(messages[2].result.error, undefined);
+    assert.equal(messages[2].result.stats.accuracyMoa, 0.34);
   } finally {
     globalThis.self = previousSelf;
   }

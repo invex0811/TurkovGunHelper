@@ -21,6 +21,13 @@ import {
   getMetaResultScore,
   getPriceAwareResultScore,
 } from './scoring.js';
+import {
+  compareCustomPriorityScores,
+  getCustomPriorityScore,
+  normalizeCustomCharacteristicMode,
+  normalizePriorityMaxPrice,
+  normalizePriorityAttributes,
+} from '../customPriorityAttributes.js';
 
 export function calculateBestBuild(
   weapon,
@@ -31,6 +38,9 @@ export function calculateBestBuild(
   options = {},
   customProfile = null,
   customExactTargets = null,
+  priorityAttributes = [],
+  characteristicMode = 'constraints',
+  priorityMaxPrice = 0,
 ) {
   const calculationCache = createCalculationCache();
   const effectiveTargetType = targetType === 'custom'
@@ -137,9 +147,14 @@ export function calculateBestBuild(
   let closestExactTieKey = '';
   let firstCalculationError = null;
   let successfulCalculationCount = 0;
+  const normalizedCharacteristicMode = normalizeCustomCharacteristicMode(characteristicMode);
+  const isPriorityMode = normalizedCharacteristicMode === 'priorities';
+  const normalizedPriorityAttributes = normalizePriorityAttributes(priorityAttributes);
+  const hasPriorityAttributes = normalizedPriorityAttributes.length > 0;
   const hasCustomProfile = Boolean(customProfile && typeof customProfile === 'object');
   const normalizedExactTargets = normalizeCustomExactTargets(customExactTargets);
-  const hasExactTargets = hasCustomProfile
+  const hasExactTargets = !isPriorityMode
+    && hasCustomProfile
     && hasEnabledCustomExactTargets(normalizedExactTargets);
   const maxHorizontalRecoil = hasCustomProfile
     ? Number(customProfile.horizontalRecoil)
@@ -157,8 +172,14 @@ export function calculateBestBuild(
   const exactMaxPrice = normalizedExactTargets.price
     ? customTargetValues.price + getCustomExactTolerance('price', customTargetValues.price)
     : Number(customProfile?.price) || 0;
-  const customOptions = hasCustomProfile
+  const customOptions = isPriorityMode
     ? {
+        ...options,
+        maxWeight: 0,
+        maxPrice: normalizePriorityMaxPrice(priorityMaxPrice),
+      }
+    : hasCustomProfile
+      ? {
         ...options,
         maxWeight: Number.isFinite(exactMaxWeight) ? exactMaxWeight : 0,
         maxPrice: Number.isFinite(exactMaxPrice) ? exactMaxPrice : 0,
@@ -244,7 +265,53 @@ export function calculateBestBuild(
     }
   }
 
-  if (hasCustomProfile) {
+  function isEligiblePriorityCandidate(result) {
+    const maxPrice = customOptions.maxPrice;
+    return !(maxPrice > 0)
+      || (result.stats.price != null && result.stats.price <= maxPrice);
+  }
+
+  function selectPriorityCandidate(candidates) {
+    const results = candidates.map(candidate => candidate.result);
+    let selected = null;
+    let selectedScore = -Infinity;
+    let selectedTieKey = '';
+
+    for (const candidate of candidates) {
+      const priorityScore = getCustomPriorityScore(
+        candidate.result,
+        results,
+        normalizedPriorityAttributes,
+      );
+      const tieKey = getBuildTieKey(candidate.result);
+      const priorityComparison = hasPriorityAttributes && selected
+        ? compareCustomPriorityScores(priorityScore, selectedScore)
+        : 0;
+      const better = !selected
+        || priorityComparison > 0
+        || (
+          priorityComparison === 0
+          && (
+            (candidate.result.stats.price ?? Number.POSITIVE_INFINITY)
+              < (selected.result.stats.price ?? Number.POSITIVE_INFINITY)
+            || (
+              candidate.result.stats.price === selected.result.stats.price
+              && tieKey.localeCompare(selectedTieKey) < 0
+            )
+          )
+        );
+
+      if (better) {
+        selected = candidate;
+        selectedScore = priorityScore;
+        selectedTieKey = tieKey;
+      }
+    }
+
+    return selected?.result ?? null;
+  }
+
+  if (hasCustomProfile && !isPriorityMode) {
     const metaCandidate = _calculateWeighted(
       weapon,
       1,
@@ -279,7 +346,55 @@ export function calculateBestBuild(
     }
   }
 
-  for (let i = 0; i <= 20; i++) {
+  if (isPriorityMode) {
+    const priorityCandidates = new Map();
+    const customSearchRoutes = Array.from({ length: 21 }, (_, index) => ({
+      ergoWeight: index / 20,
+      recoilWeight: 1 - (index / 20),
+      weightWeight: 0.001,
+    }));
+
+    // The greedy slot search needs a few weight-led routes to expose light builds;
+    // the established 21 ergo/recoil routes remain the main bounded candidate sweep.
+    if (normalizedPriorityAttributes.includes('weight')) {
+      customSearchRoutes.push(
+        { ergoWeight: 0, recoilWeight: 0, weightWeight: 15 },
+        { ergoWeight: 1, recoilWeight: 0, weightWeight: 15 },
+        { ergoWeight: 0, recoilWeight: 1, weightWeight: 15 },
+      );
+    }
+
+    function collectPriorityCandidate(result) {
+      if (!isEligiblePriorityCandidate(result)) return;
+      priorityCandidates.set(getBuildTieKey(result), { result });
+    }
+
+    for (const route of customSearchRoutes) {
+      const result = _calculateWeighted(
+        weapon,
+        route.ergoWeight,
+        route.recoilWeight,
+        0,
+        modMap,
+        customOptions,
+        100,
+        'custom',
+        route.weightWeight,
+        0,
+        100,
+        calculationCache,
+      );
+      if (result.error) {
+        firstCalculationError ||= result;
+        continue;
+      }
+      successfulCalculationCount += 1;
+      collectPriorityCandidate(result);
+    }
+
+    const selectedPriorityBuild = selectPriorityCandidate([...priorityCandidates.values()]);
+    if (selectedPriorityBuild) return selectedPriorityBuild;
+  } else for (let i = 0; i <= 20; i++) {
     const ergoWeight = i / 20;
     const recoilWeight = 1 - ergoWeight;
     const priceWeight = 0;
@@ -328,6 +443,23 @@ export function calculateBestBuild(
       bestBuildScore = score;
       bestBuild = result;
     }
+  }
+
+  if (isPriorityMode && !bestBuild) {
+    if (successfulCalculationCount === 0 && firstCalculationError) return firstCalculationError;
+    return {
+      build: [],
+      stats: {
+        ergonomics: weapon.properties?.ergonomics ?? 0,
+        recoilVertical: weapon.properties?.recoilVertical ?? 0,
+        recoilHorizontal: weapon.properties?.recoilHorizontal ?? 0,
+        weight: Number(weapon.weight || 0).toFixed(2),
+        price: null,
+      },
+      error: customOptions.maxPrice > 0
+        ? `No available build satisfies the priority maximum price of ${customOptions.maxPrice} RUB.`
+        : 'No available build satisfies the current builder options.',
+    };
   }
 
   if (!bestBuild && successfulCalculationCount === 0 && firstCalculationError && !hasExactTargets) {

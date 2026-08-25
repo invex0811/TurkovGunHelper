@@ -46,6 +46,12 @@ import {
   DEFAULT_CUSTOM_EXACT_TARGETS,
   normalizeCustomExactTargets,
 } from '../../domain/customExactTargets.js';
+import {
+  normalizeCustomCharacteristicMode,
+  normalizePriorityMaxPrice,
+  normalizePriorityAttributes,
+  togglePriorityAttribute,
+} from '../../domain/customPriorityAttributes.js';
 import WeaponBuildDiagramModal from '../../ui/WeaponBuildDiagramModal.jsx';
 import {
   CUSTOM_BUILD_DEFAULT_PROFILE,
@@ -1007,6 +1013,10 @@ function Configurator() {
   const [targetType, setTargetType] = useState(loadTargetTypePreference);
   const [customProfile, setCustomProfile] = useState(CUSTOM_BUILD_DEFAULT_PROFILE);
   const [customExactTargets, setCustomExactTargets] = useState(DEFAULT_CUSTOM_EXACT_TARGETS);
+  const [characteristicMode, setCharacteristicMode] = useState('constraints');
+  const [priorityAttributes, setPriorityAttributes] = useState([]);
+  const [priorityMaxPrice, setPriorityMaxPrice] = useState(0);
+  const [priorityMaxPriceDraft, setPriorityMaxPriceDraft] = useState(null);
   const [suppressorMode, setSuppressorMode] = useState('allow');
   const [includeTraderPrices, setIncludeTraderPrices] = useState(
     () => requestedSavedBuild?.settings.includeTraderPrices
@@ -1084,6 +1094,9 @@ function Configurator() {
       targetType,
       customProfile,
       customExactTargets,
+      characteristicMode,
+      priorityAttributes,
+      priorityMaxPrice,
       suppressorMode,
       priceMode,
       includeTraderPrices,
@@ -1235,6 +1248,10 @@ function Configurator() {
         setTargetType(normalizeTargetType(settings.targetType));
         setCustomProfile(createCustomBuildProfileFromSettings(settings, weaponData));
         setCustomExactTargets(normalizeCustomExactTargets(settings.customExactTargets));
+        setCharacteristicMode(normalizeCustomCharacteristicMode(settings.characteristicMode));
+        setPriorityAttributes(normalizePriorityAttributes(settings.priorityAttributes));
+        setPriorityMaxPrice(normalizePriorityMaxPrice(settings.priorityMaxPrice));
+        setPriorityMaxPriceDraft(null);
         setSuppressorMode(settings.suppressorMode || 'allow');
         setIncludeTraderPrices(restoredIncludeTraderPrices);
         setMagazineCapacity(Number(settings.magazineCapacity) || capacities[0] || 30);
@@ -1573,6 +1590,9 @@ function Configurator() {
         targetType,
         customProfile,
         customExactTargets,
+        characteristicMode,
+        priorityAttributes,
+        priorityMaxPrice,
         allMods,
         options,
       });
@@ -1593,8 +1613,11 @@ function Configurator() {
   }, [
     activeTraderLevels,
     allMods,
+    characteristicMode,
     customExactTargets,
     customProfile,
+    priorityAttributes,
+    priorityMaxPrice,
     includeFlashlight,
     includeLaser,
     includeTraderPrices,
@@ -1964,9 +1987,11 @@ function Configurator() {
       {/* Левый сайдбар с конфигурацией сборки */}
       <BuildSettings
         availableCapacities={availableCapacities}
+        activeCharacteristicMode={characteristicMode}
         configTab={configTab}
         customExactTargets={customExactTargets}
         customProfile={customProfile}
+        priorityAttributes={priorityAttributes}
         generating={generating}
         includeFlashlight={includeFlashlight}
         includeLaser={includeLaser}
@@ -1982,7 +2007,22 @@ function Configurator() {
         maxWeightLimit={WEAPON_STAT_UI_RANGES.weight.max}
         moduleResults={requiredModuleResultViews}
         onAddModule={handleAddRequiredModule}
+        onCharacteristicModeChange={setCharacteristicMode}
         onExactChange={(axisKey, enabled) => setCustomExactTargets(current => ({ ...current, [axisKey]: enabled }))}
+        onPriorityAttributeToggle={attribute => setPriorityAttributes(current => (
+          togglePriorityAttribute(current, attribute)
+        ))}
+        onPriorityMaxPriceBlur={value => {
+          setPriorityMaxPrice(normalizePriorityMaxPrice(value));
+          setPriorityMaxPriceDraft(null);
+        }}
+        onPriorityMaxPriceChange={value => {
+          setPriorityMaxPriceDraft(value);
+          setPriorityMaxPrice(normalizePriorityMaxPrice(value));
+        }}
+        onPriorityMaxPriceFocus={setPriorityMaxPriceDraft}
+        priorityMaxPrice={priorityMaxPrice}
+        priorityMaxPriceDraft={priorityMaxPriceDraft}
         onGenerate={handleGenerate}
         onIncludeTraderPricesChange={handleIncludeTraderPricesChange}
         onMaxPriceBlur={value => { setMaxPriceDraft(null); setCustomProfile(current => normalizeCustomBuildProfile({ ...current, price: value === '' ? 0 : Number(value) }, weapon)); }}

@@ -4,11 +4,19 @@ import {
   BUILD_GAME_MODES,
 } from './constants.js';
 import { buildWeaponAssemblyTree } from '../../domain/weaponAssembly.js';
+import {
+  normalizeCustomCharacteristicMode,
+  normalizePriorityAttributes,
+  normalizePriorityMaxPrice,
+} from '../../domain/customPriorityAttributes.js';
 
 const EXPORTED_SETTING_KEYS = [
   'targetType',
   'customProfile',
   'customExactTargets',
+  'characteristicMode',
+  'priorityAttributes',
+  'priorityMaxPrice',
   'customErgonomics',
   'customVerticalRecoil',
   'customHorizontalRecoil',
@@ -44,7 +52,16 @@ function copyExportedSettings(settings = {}) {
   return Object.fromEntries(
     EXPORTED_SETTING_KEYS
       .filter(key => Object.hasOwn(settings, key))
-      .map(key => [key, structuredClone(settings[key])]),
+      .map(key => [
+        key,
+        key === 'characteristicMode'
+          ? normalizeCustomCharacteristicMode(settings[key])
+          : key === 'priorityAttributes'
+            ? normalizePriorityAttributes(settings[key])
+            : key === 'priorityMaxPrice'
+              ? normalizePriorityMaxPrice(settings[key])
+              : structuredClone(settings[key]),
+      ]),
   );
 }
 

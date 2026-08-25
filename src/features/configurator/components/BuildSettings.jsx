@@ -1,7 +1,11 @@
 import AsyncImage from '../../../ui/AsyncImage.jsx';
 import CustomBuildRadar from '../../../ui/CustomBuildRadar.jsx';
+import {
+  CUSTOM_PRIORITY_ATTRIBUTE_KEYS,
+  CUSTOM_PRIORITY_ATTRIBUTE_METADATA,
+} from '../../../domain/customPriorityAttributes.js';
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { PriceSource } from './PriceDisplay.jsx';
 import TacticalDevicePicker from './TacticalDevicePicker.jsx';
 import { scopeSupportsZoom } from '../scopeOptions.js';
@@ -51,12 +55,219 @@ function ModuleRow({ view, action, actionLabel, onAction }) {
   );
 }
 
+const CHARACTERISTIC_TABS = [
+  { id: 'constraints', labelKey: 'config.characteristicConstraints' },
+  { id: 'priorities', labelKey: 'config.characteristicPriorities' },
+];
+
+function PrioritySelector({
+  onMaxPriceBlur,
+  onMaxPriceChange,
+  onMaxPriceFocus,
+  onToggle,
+  priorityAttributes,
+  priorityMaxPrice,
+  priorityMaxPriceDraft,
+  t,
+}) {
+  return (
+    <section className="custom-priority-attributes" aria-labelledby="customPriorityAttributesLabel">
+      <div className="custom-priority-attributes__head">
+        <div>
+          <h4 id="customPriorityAttributesLabel" className="field-label">{t('config.priorityAttributes')}</h4>
+          <p className="field-help">{t('config.choosePriorityAttributes')}</p>
+        </div>
+      </div>
+      <div className="custom-priority-attributes__choices">
+        {CUSTOM_PRIORITY_ATTRIBUTE_KEYS.map(attribute => {
+          const selected = priorityAttributes.includes(attribute);
+          return (
+            <button
+              key={attribute}
+              className={`custom-priority-attributes__choice ${selected ? 'is-selected' : ''}`}
+              type="button"
+              aria-pressed={selected}
+              disabled={!selected && priorityAttributes.length >= 3}
+              onClick={() => onToggle(attribute)}
+            >
+              {t(CUSTOM_PRIORITY_ATTRIBUTE_METADATA[attribute].labelKey)}
+            </button>
+          );
+        })}
+      </div>
+      <div className="priority-max-price">
+        <label className="field-label" htmlFor="priorityMaxPrice">{t('config.priorityMaxPrice')}</label>
+        <span className="priority-max-price__control">
+          <input
+            id="priorityMaxPrice"
+            type="number"
+            inputMode="numeric"
+            min="0"
+            step="1000"
+            value={priorityMaxPriceDraft ?? priorityMaxPrice}
+            onFocus={event => onMaxPriceFocus(event.currentTarget.value)}
+            onChange={event => onMaxPriceChange(event.currentTarget.value)}
+            onBlur={event => onMaxPriceBlur(event.currentTarget.value)}
+            onKeyDown={event => {
+              if (event.key === 'Enter') event.currentTarget.blur();
+            }}
+            aria-describedby="priorityMaxPriceHelp"
+          />
+          <span aria-hidden="true">RUB</span>
+        </span>
+        <span id="priorityMaxPriceHelp" className="field-help">{t('config.priorityMaxPriceHelp')}</span>
+      </div>
+      {priorityAttributes.length > 0 && (
+        <div className="custom-priority-attributes__selected">
+          {priorityAttributes.map(attribute => (
+            <span key={attribute} className="custom-priority-attributes__chip">
+              {t(CUSTOM_PRIORITY_ATTRIBUTE_METADATA[attribute].labelKey)}
+              <button
+                type="button"
+                onClick={() => onToggle(attribute)}
+                aria-label={t('config.removePriorityAttribute', {
+                  attribute: t(CUSTOM_PRIORITY_ATTRIBUTE_METADATA[attribute].labelKey),
+                })}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CharacteristicSettings({
+  activeCharacteristicMode,
+  customExactTargets,
+  customProfile,
+  onExactChange,
+  onCharacteristicModeChange,
+  onPriorityMaxPriceBlur,
+  onPriorityMaxPriceChange,
+  onPriorityMaxPriceFocus,
+  onPriorityAttributeToggle,
+  priorityAttributes,
+  priorityMaxPrice,
+  priorityMaxPriceDraft,
+  setters,
+  t,
+  weapon,
+}) {
+  const tabRefs = useRef({});
+  const activeTab = activeCharacteristicMode;
+
+  const selectTab = tab => {
+    onCharacteristicModeChange(tab);
+    tabRefs.current[tab]?.focus();
+  };
+
+  const handleTabKeyDown = event => {
+    const currentIndex = CHARACTERISTIC_TABS.findIndex(tab => tab.id === activeTab);
+    if (currentIndex === -1) return;
+
+    let nextIndex = null;
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % CHARACTERISTIC_TABS.length;
+    if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + CHARACTERISTIC_TABS.length) % CHARACTERISTIC_TABS.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = CHARACTERISTIC_TABS.length - 1;
+    if (nextIndex === null) return;
+
+    event.preventDefault();
+    selectTab(CHARACTERISTIC_TABS[nextIndex].id);
+  };
+
+  return (
+    <section className="custom-characteristic-settings" aria-labelledby="customCharacteristicSettingsTitle">
+      <h3 id="customCharacteristicSettingsTitle">{t('config.characteristicSettings')}</h3>
+      <div
+        className="segmented custom-characteristic-settings__tabs"
+        role="tablist"
+        aria-label={t('config.characteristicSettings')}
+      >
+        {CHARACTERISTIC_TABS.map(tab => {
+          const selected = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              ref={element => { tabRefs.current[tab.id] = element; }}
+              id={`customCharacteristicTab-${tab.id}`}
+              className={`custom-characteristic-settings__tab ${selected ? 'is-active' : ''}`}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              aria-controls={`customCharacteristicPanel-${tab.id}`}
+              tabIndex={selected ? 0 : -1}
+              onClick={() => onCharacteristicModeChange(tab.id)}
+              onKeyDown={handleTabKeyDown}
+            >
+              <span className="custom-characteristic-settings__tab-content">
+                <span className="custom-characteristic-settings__tab-label">{t(tab.labelKey)}</span>
+                {tab.id === 'priorities' && (
+                  <span className="custom-characteristic-settings__tab-count">
+                    {t('config.priorityAttributesCount', { count: priorityAttributes.length })}
+                  </span>
+                )}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <span className="visually-hidden" aria-live="polite" aria-atomic="true">
+        {t('config.priorityAttributesAnnouncement', { count: priorityAttributes.length })}
+      </span>
+
+      <div
+        id="customCharacteristicPanel-constraints"
+        className="custom-characteristic-settings__panel"
+        role="tabpanel"
+        aria-labelledby="customCharacteristicTab-constraints"
+        hidden={activeTab !== 'constraints'}
+      >
+        {activeTab === 'constraints' && (
+          <CustomBuildRadar
+            profile={customProfile}
+            weapon={weapon}
+            onChange={setters.customProfile}
+            exactTargets={customExactTargets}
+            onExactChange={onExactChange}
+          />
+        )}
+      </div>
+      <div
+        id="customCharacteristicPanel-priorities"
+        className="custom-characteristic-settings__panel"
+        role="tabpanel"
+        aria-labelledby="customCharacteristicTab-priorities"
+        hidden={activeTab !== 'priorities'}
+      >
+        {activeTab === 'priorities' && (
+          <PrioritySelector
+            onMaxPriceBlur={onPriorityMaxPriceBlur}
+            onMaxPriceChange={onPriorityMaxPriceChange}
+            onMaxPriceFocus={onPriorityMaxPriceFocus}
+            priorityAttributes={priorityAttributes}
+            priorityMaxPrice={priorityMaxPrice}
+            priorityMaxPriceDraft={priorityMaxPriceDraft}
+            onToggle={onPriorityAttributeToggle}
+            t={t}
+          />
+        )}
+      </div>
+    </section>
+  );
+}
+
 export default function BuildSettings(props) {
   const {
     availableCapacities,
+    activeCharacteristicMode,
     configTab,
     customExactTargets,
     customProfile,
+    priorityAttributes,
     generating,
     includeFlashlight,
     includeLaser,
@@ -70,7 +281,14 @@ export default function BuildSettings(props) {
     maxWeight,
     moduleResults,
     onAddModule,
+    onCharacteristicModeChange,
     onExactChange,
+    onPriorityAttributeToggle,
+    onPriorityMaxPriceBlur,
+    onPriorityMaxPriceChange,
+    onPriorityMaxPriceFocus,
+    priorityMaxPrice,
+    priorityMaxPriceDraft,
     onGenerate,
     onIncludeTraderPricesChange,
     onMaxPriceBlur,
@@ -153,12 +371,22 @@ export default function BuildSettings(props) {
             inert={targetType !== 'custom'}
           >
             <div className="custom-radar-collapse__inner">
-              <CustomBuildRadar
-                profile={customProfile}
-                weapon={weapon}
-                onChange={setters.customProfile}
-                exactTargets={customExactTargets}
+              <CharacteristicSettings
+                activeCharacteristicMode={activeCharacteristicMode}
+                customExactTargets={customExactTargets}
+                customProfile={customProfile}
+                onCharacteristicModeChange={onCharacteristicModeChange}
                 onExactChange={onExactChange}
+                onPriorityAttributeToggle={onPriorityAttributeToggle}
+                onPriorityMaxPriceBlur={onPriorityMaxPriceBlur}
+                onPriorityMaxPriceChange={onPriorityMaxPriceChange}
+                onPriorityMaxPriceFocus={onPriorityMaxPriceFocus}
+                priorityAttributes={priorityAttributes}
+                priorityMaxPrice={priorityMaxPrice}
+                priorityMaxPriceDraft={priorityMaxPriceDraft}
+                setters={setters}
+                t={t}
+                weapon={weapon}
               />
             </div>
           </div>

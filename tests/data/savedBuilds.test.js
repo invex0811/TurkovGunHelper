@@ -206,6 +206,7 @@ test('saved builds preserve the new Custom radar profile without a schema bump',
     weight: false,
     price: true,
   };
+  const priorityAttributes = ['weight', 'ergonomics', 'weight', 'price', 'verticalRecoil'];
 
   saveBuildSnapshot(createSnapshot({
     settings: {
@@ -213,6 +214,9 @@ test('saved builds preserve the new Custom radar profile without a schema bump',
       priceMode: 'pvp',
       customProfile,
       customExactTargets,
+      characteristicMode: 'priorities',
+      priorityAttributes,
+      priorityMaxPrice: '250000',
       customErgo: customProfile.ergonomics,
       customRecoil: customProfile.verticalRecoil,
       maxWeight: customProfile.weight,
@@ -224,6 +228,9 @@ test('saved builds preserve the new Custom radar profile without a schema bump',
   assert.equal(restored.version, 1);
   assert.deepEqual(restored.settings.customProfile, customProfile);
   assert.deepEqual(restored.settings.customExactTargets, customExactTargets);
+  assert.equal(restored.settings.characteristicMode, 'priorities');
+  assert.deepEqual(restored.settings.priorityAttributes, ['weight', 'ergonomics', 'verticalRecoil']);
+  assert.equal(restored.settings.priorityMaxPrice, 250000);
   assert.equal(restored.settings.customErgo, 62);
   assert.equal(restored.settings.customRecoil, 74);
 });
@@ -239,6 +246,9 @@ test('old saved builds default every Custom Exact target to disabled', () => {
     weight: false,
     price: false,
   });
+  assert.deepEqual(getSavedBuild('before-exact-targets', storage).settings.priorityAttributes, []);
+  assert.equal(getSavedBuild('before-exact-targets', storage).settings.characteristicMode, 'constraints');
+  assert.equal(getSavedBuild('before-exact-targets', storage).settings.priorityMaxPrice, 0);
 });
 
 test('batch import skip does not add a duplicate', () => {

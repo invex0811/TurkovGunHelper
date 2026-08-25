@@ -364,6 +364,87 @@ test('Custom profile passes weight and price limits through the existing price p
   assert.equal(result.stats.price <= 3_000, true);
 });
 
+test('Custom priority mode ignores every stored constraint and uses its independent price cap', () => {
+  const affordablePart = createTestMod({
+    id: 'priority-affordable',
+    weight: 0.1,
+    basePrice: 1_000,
+    avg24hPrice: 1_000,
+    ergonomicsModifier: 10,
+    recoilModifier: -10,
+  });
+  const highPerformancePart = createTestMod({
+    id: 'priority-high-performance',
+    weight: 1,
+    basePrice: 10_000,
+    avg24hPrice: 10_000,
+    ergonomicsModifier: 30,
+    recoilModifier: -50,
+  });
+  const testWeapon = createTestWeapon({
+    slots: [createSlot('Stock', [affordablePart.id, highPerformancePart.id], 'mod_stock', true)],
+  });
+  const profile = {
+    ergonomics: 90,
+    verticalRecoil: 40,
+    horizontalRecoil: 40,
+    weight: 1.2,
+    price: 2_000,
+  };
+  const options = { ...defaultOptions, maxWeight: profile.weight, maxPrice: profile.price, priceMode: 'pvp', includeTraderPrices: true };
+  const unconstrainedPriorityResult = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(affordablePart, highPerformancePart),
+    options,
+    profile,
+    { ergonomics: true, verticalRecoil: true, horizontalRecoil: true, weight: true, price: true },
+    ['ergonomics'],
+    'priorities',
+    0,
+  );
+  const cappedPriorityResult = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(affordablePart, highPerformancePart),
+    options,
+    profile,
+    null,
+    ['ergonomics'],
+    'priorities',
+    2_500,
+  );
+  const constraintProfile = { ...profile, ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 100_000 };
+  const constraintsResult = calculateBestBuild(
+    testWeapon,
+    'custom',
+    constraintProfile.ergonomics,
+    constraintProfile.verticalRecoil,
+    createModMap(affordablePart, highPerformancePart),
+    options,
+    constraintProfile,
+    null,
+    ['ergonomics'],
+    'constraints',
+    2_500,
+  );
+
+  assertInstalled(unconstrainedPriorityResult, highPerformancePart.id);
+  assert.equal(unconstrainedPriorityResult.stats.ergonomics < profile.ergonomics, true);
+  assert.equal(unconstrainedPriorityResult.stats.recoilVertical > profile.verticalRecoil, true);
+  assert.equal(unconstrainedPriorityResult.stats.recoilHorizontal > profile.horizontalRecoil, true);
+  assert.equal(Number(unconstrainedPriorityResult.stats.weight) > profile.weight, true);
+  assert.equal(unconstrainedPriorityResult.stats.price > profile.price, true);
+  assertInstalled(cappedPriorityResult, affordablePart.id);
+  assert.equal(cappedPriorityResult.stats.price <= 2_500, true);
+  assertInstalled(constraintsResult, highPerformancePart.id);
+  assert.equal(constraintsResult.stats.price > 2_500, true);
+});
+
 test('Custom reuses a Meta build when its displayed stats satisfy the profile', () => {
   const metaResult = calculateBestBuild(weapon, 'meta', 0, 0, modMap, defaultOptions);
   const profile = {

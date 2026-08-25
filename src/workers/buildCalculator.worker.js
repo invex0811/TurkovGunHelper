@@ -50,6 +50,9 @@ self.onmessage = ({ data }) => {
       data.options,
       customProfile,
       data.customExactTargets,
+      data.priorityAttributes,
+      data.characteristicMode,
+      data.priorityMaxPrice,
     );
     const displayStats = recalculateBuildStats(
       data.weapon,
