@@ -354,7 +354,7 @@ test('Custom profile passes weight and price limits through the existing price p
     50,
     100,
     createModMap(validPart, expensivePart, heavyPart),
-    { ...defaultOptions, priceMode: 'pvp', includeTraderPrices: true },
+    { ...defaultOptions, maxPrice: 3_000, priceMode: 'pvp', includeTraderPrices: true },
     { ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: 1.2, price: 3_000 },
   );
 
@@ -364,7 +364,7 @@ test('Custom profile passes weight and price limits through the existing price p
   assert.equal(result.stats.price <= 3_000, true);
 });
 
-test('Custom priority mode ignores every stored constraint and uses its independent price cap', () => {
+test('Meta, Custom constraints, and priorities use the shared maxPrice option', () => {
   const affordablePart = createTestMod({
     id: 'priority-affordable',
     weight: 0.1,
@@ -391,19 +391,19 @@ test('Custom priority mode ignores every stored constraint and uses its independ
     weight: 1.2,
     price: 2_000,
   };
-  const options = { ...defaultOptions, maxWeight: profile.weight, maxPrice: profile.price, priceMode: 'pvp', includeTraderPrices: true };
+  const unlimitedOptions = { ...defaultOptions, maxWeight: profile.weight, maxPrice: 0, priceMode: 'pvp', includeTraderPrices: true };
+  const cappedOptions = { ...unlimitedOptions, maxPrice: 2_500 };
   const unconstrainedPriorityResult = calculateBestBuild(
     testWeapon,
     'custom',
     profile.ergonomics,
     profile.verticalRecoil,
     createModMap(affordablePart, highPerformancePart),
-    options,
+    unlimitedOptions,
     profile,
     { ergonomics: true, verticalRecoil: true, horizontalRecoil: true, weight: true, price: true },
     ['ergonomics'],
     'priorities',
-    0,
   );
   const cappedPriorityResult = calculateBestBuild(
     testWeapon,
@@ -411,12 +411,12 @@ test('Custom priority mode ignores every stored constraint and uses its independ
     profile.ergonomics,
     profile.verticalRecoil,
     createModMap(affordablePart, highPerformancePart),
-    options,
+    cappedOptions,
     profile,
     null,
     ['ergonomics'],
     'priorities',
-    2_500,
+    100_000,
   );
   const constraintProfile = { ...profile, ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 100_000 };
   const constraintsResult = calculateBestBuild(
@@ -425,12 +425,19 @@ test('Custom priority mode ignores every stored constraint and uses its independ
     constraintProfile.ergonomics,
     constraintProfile.verticalRecoil,
     createModMap(affordablePart, highPerformancePart),
-    options,
+    cappedOptions,
     constraintProfile,
     null,
     ['ergonomics'],
     'constraints',
-    2_500,
+  );
+  const metaResult = calculateBestBuild(
+    testWeapon,
+    'meta',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(affordablePart, highPerformancePart),
+    cappedOptions,
   );
 
   assertInstalled(unconstrainedPriorityResult, highPerformancePart.id);
@@ -441,8 +448,91 @@ test('Custom priority mode ignores every stored constraint and uses its independ
   assert.equal(unconstrainedPriorityResult.stats.price > profile.price, true);
   assertInstalled(cappedPriorityResult, affordablePart.id);
   assert.equal(cappedPriorityResult.stats.price <= 2_500, true);
-  assertInstalled(constraintsResult, highPerformancePart.id);
-  assert.equal(constraintsResult.stats.price > 2_500, true);
+  assertInstalled(constraintsResult, affordablePart.id);
+  assert.equal(constraintsResult.stats.price <= 2_500, true);
+  assertInstalled(metaResult, affordablePart.id);
+  assert.equal(metaResult.stats.price <= 2_500, true);
+});
+
+test('Priorities order selects different required-slot modules and ignores constraint targets', () => {
+  const ergonomicPart = createTestMod({
+    id: 'priority-ergo-module',
+    ergonomicsModifier: 20,
+    recoilModifier: 0,
+    basePrice: 1_000,
+    avg24hPrice: 1_000,
+  });
+  const recoilPart = createTestMod({
+    id: 'priority-recoil-module',
+    ergonomicsModifier: 0,
+    recoilModifier: -50,
+    basePrice: 1_000,
+    avg24hPrice: 1_000,
+  });
+  const testWeapon = createTestWeapon({
+    basePrice: 1_000,
+    avg24hPrice: 1_000,
+    slots: [createSlot(
+      'Required stock',
+      [ergonomicPart.id, recoilPart.id],
+      'mod_stock',
+      true,
+    )],
+  });
+  const impossibleConstraintProfile = {
+    ergonomics: 99,
+    verticalRecoil: 1,
+    horizontalRecoil: 1,
+    weight: 0.01,
+    price: 1,
+  };
+  const exactTargets = {
+    ergonomics: true,
+    verticalRecoil: true,
+    horizontalRecoil: true,
+    weight: true,
+    price: true,
+  };
+  const hardBudget = 2_500;
+  const options = {
+    ...defaultOptions,
+    maxPrice: hardBudget,
+    priceMode: 'pvp',
+    includeTraderPrices: true,
+  };
+  const prioritiesByErgonomics = calculateBestBuild(
+    testWeapon,
+    'custom',
+    impossibleConstraintProfile.ergonomics,
+    impossibleConstraintProfile.verticalRecoil,
+    createModMap(ergonomicPart, recoilPart),
+    options,
+    impossibleConstraintProfile,
+    exactTargets,
+    ['ergonomics', 'verticalRecoil'],
+    'priorities',
+  );
+  const prioritiesByVerticalRecoil = calculateBestBuild(
+    testWeapon,
+    'custom',
+    impossibleConstraintProfile.ergonomics,
+    impossibleConstraintProfile.verticalRecoil,
+    createModMap(ergonomicPart, recoilPart),
+    options,
+    impossibleConstraintProfile,
+    exactTargets,
+    ['verticalRecoil', 'ergonomics'],
+    'priorities',
+  );
+
+  assert.equal(prioritiesByErgonomics.error, undefined);
+  assert.equal(prioritiesByVerticalRecoil.error, undefined);
+  assertInstalled(prioritiesByErgonomics, ergonomicPart.id);
+  assertNotInstalled(prioritiesByErgonomics, recoilPart.id);
+  assertInstalled(prioritiesByVerticalRecoil, recoilPart.id);
+  assertNotInstalled(prioritiesByVerticalRecoil, ergonomicPart.id);
+  assert.equal(prioritiesByErgonomics.stats.price <= hardBudget, true);
+  assert.equal(prioritiesByVerticalRecoil.stats.price <= hardBudget, true);
 });
 
 test('Custom reuses a Meta build when its displayed stats satisfy the profile', () => {

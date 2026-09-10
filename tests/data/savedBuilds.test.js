@@ -190,7 +190,7 @@ test('saved builds preserve owned item occurrences independently', () => {
   assert.deepEqual(getSavedBuild('owned-items', storage).ownedItems, ownedItems);
 });
 
-test('saved builds preserve the new Custom radar profile without a schema bump', () => {
+test('saved builds migrate legacy Custom prices to one shared limit without a schema bump', () => {
   const storage = createStorage();
   const customProfile = {
     ergonomics: 62,
@@ -206,7 +206,14 @@ test('saved builds preserve the new Custom radar profile without a schema bump',
     weight: false,
     price: true,
   };
-  const priorityAttributes = ['weight', 'ergonomics', 'weight', 'price', 'verticalRecoil'];
+  const priorityAttributes = [
+    'weight',
+    'ergonomics',
+    'weight',
+    'price',
+    'verticalRecoil',
+    'horizontalRecoil',
+  ];
 
   saveBuildSnapshot(createSnapshot({
     settings: {
@@ -229,8 +236,15 @@ test('saved builds preserve the new Custom radar profile without a schema bump',
   assert.deepEqual(restored.settings.customProfile, customProfile);
   assert.deepEqual(restored.settings.customExactTargets, customExactTargets);
   assert.equal(restored.settings.characteristicMode, 'priorities');
-  assert.deepEqual(restored.settings.priorityAttributes, ['weight', 'ergonomics', 'verticalRecoil']);
-  assert.equal(restored.settings.priorityMaxPrice, 250000);
+  assert.deepEqual(restored.settings.priorityAttributes, [
+    'weight',
+    'ergonomics',
+    'verticalRecoil',
+    'horizontalRecoil',
+  ]);
+  assert.equal(restored.settings.sharedMaxPrice, 70_000);
+  assert.equal(restored.settings.maxPrice, 70_000);
+  assert.equal(restored.settings.priorityMaxPrice, 70_000);
   assert.equal(restored.settings.customErgo, 62);
   assert.equal(restored.settings.customRecoil, 74);
 });
@@ -248,7 +262,26 @@ test('old saved builds default every Custom Exact target to disabled', () => {
   });
   assert.deepEqual(getSavedBuild('before-exact-targets', storage).settings.priorityAttributes, []);
   assert.equal(getSavedBuild('before-exact-targets', storage).settings.characteristicMode, 'constraints');
+  assert.equal(getSavedBuild('before-exact-targets', storage).settings.sharedMaxPrice, 0);
   assert.equal(getSavedBuild('before-exact-targets', storage).settings.priorityMaxPrice, 0);
+});
+
+test('legacy priority-only budgets migrate when the old constraint budget was unlimited', () => {
+  const storage = createStorage();
+  saveBuildSnapshot(createSnapshot({
+    settings: {
+      targetType: 'custom',
+      characteristicMode: 'priorities',
+      customProfile: { ergonomics: 50, verticalRecoil: 50, horizontalRecoil: 50, weight: 0, price: 0 },
+      priorityMaxPrice: 250_000,
+    },
+  }), storage, { id: 'legacy-priority-budget' });
+
+  const settings = getSavedBuild('legacy-priority-budget', storage).settings;
+  assert.equal(settings.sharedMaxPrice, 250_000);
+  assert.equal(settings.customProfile.price, 250_000);
+  assert.equal(settings.maxPrice, 250_000);
+  assert.equal(settings.priorityMaxPrice, 250_000);
 });
 
 test('batch import skip does not add a duplicate', () => {

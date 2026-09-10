@@ -2,8 +2,8 @@ import { normalizeCustomExactTargets } from '../domain/customExactTargets.js';
 import {
   normalizeCustomCharacteristicMode,
   normalizePriorityAttributes,
-  normalizePriorityMaxPrice,
 } from '../domain/customPriorityAttributes.js';
+import { migrateSharedMaxPriceSettings } from '../domain/buildMaxPrice.js';
 import { buildWeaponAssemblyTree } from '../domain/weaponAssembly.js';
 
 export const SAVED_BUILDS_STORAGE_KEY = 'tarkov-gun-helper:saved-builds';
@@ -116,7 +116,7 @@ export function readSavedBuilds(storage = getDefaultStorage()) {
             && typeof item.itemId === 'string'
           )).map(item => ({ key: item.key, itemId: item.itemId }))
           : [],
-        settings: {
+        settings: migrateSharedMaxPriceSettings({
           ...build.settings,
           includeTraderPrices: build.settings.includeTraderPrices !== false,
           strictTraderLevels: build.settings.strictTraderLevels === true,
@@ -127,8 +127,7 @@ export function readSavedBuilds(storage = getDefaultStorage()) {
           customExactTargets: normalizeCustomExactTargets(build.settings.customExactTargets),
           characteristicMode: normalizeCustomCharacteristicMode(build.settings.characteristicMode),
           priorityAttributes: normalizePriorityAttributes(build.settings.priorityAttributes),
-          priorityMaxPrice: normalizePriorityMaxPrice(build.settings.priorityMaxPrice),
-        },
+        }),
       }))
       .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
   } catch {
@@ -278,12 +277,11 @@ export function createBuildSnapshot({
       weight: buildResult.stats.weight,
       price: buildResult.stats.price,
     },
-    settings: {
+    settings: migrateSharedMaxPriceSettings({
       ...settings,
       characteristicMode: normalizeCustomCharacteristicMode(settings.characteristicMode),
       priorityAttributes: normalizePriorityAttributes(settings.priorityAttributes),
-      priorityMaxPrice: normalizePriorityMaxPrice(settings.priorityMaxPrice),
-    },
+    }),
   };
 }
 

@@ -149,18 +149,25 @@ test('export preserves strict trader level policy', () => {
   assert.equal(exportBuild(build).settings.strictTraderLevels, true);
 });
 
-test('export preserves Custom priority mode settings', () => {
+test('export migrates a legacy priority budget to the shared maximum price', () => {
   const build = savedBuild();
   build.settings = {
     ...build.settings,
     targetType: 'custom',
     characteristicMode: 'priorities',
-    priorityAttributes: ['weight', 'ergonomics'],
+    priorityAttributes: ['weight', 'ergonomics', 'verticalRecoil', 'horizontalRecoil'],
     priorityMaxPrice: '250000',
   };
   const parsed = parseBuildImport(JSON.stringify(exportBuilds([build])));
-  assert.deepEqual(parsed.builds[0].settings.priorityAttributes, ['weight', 'ergonomics']);
+  assert.deepEqual(parsed.builds[0].settings.priorityAttributes, [
+    'weight',
+    'ergonomics',
+    'verticalRecoil',
+    'horizontalRecoil',
+  ]);
   assert.equal(parsed.builds[0].settings.characteristicMode, 'priorities');
+  assert.equal(parsed.builds[0].settings.sharedMaxPrice, 250000);
+  assert.equal(parsed.builds[0].settings.maxPrice, 250000);
   assert.equal(parsed.builds[0].settings.priorityMaxPrice, 250000);
 });
 

@@ -230,7 +230,7 @@ export function createBranchEvaluator(context) {
 
       if (context.targetType === 'meta') {
         branchScore = (recoil * 100) - (loadMod * 10) - (ammoCheckMod * 10) + (ergoM * 0.2);
-      } else if (context.targetType === context.PRICE_AWARE_TARGET) {
+      } else if (context.budgetAwareSearch) {
         const baseScoring = (recoil * 100) - (loadMod * 10) - (ammoCheckMod * 10) + (ergoM * 0.2) + 200;
         branchScore = baseScoring / lowPrice;
       } else {

@@ -7,8 +7,11 @@ import { buildWeaponAssemblyTree } from '../../domain/weaponAssembly.js';
 import {
   normalizeCustomCharacteristicMode,
   normalizePriorityAttributes,
-  normalizePriorityMaxPrice,
 } from '../../domain/customPriorityAttributes.js';
+import {
+  migrateSharedMaxPriceSettings,
+  normalizeBuildMaxPrice,
+} from '../../domain/buildMaxPrice.js';
 
 const EXPORTED_SETTING_KEYS = [
   'targetType',
@@ -16,6 +19,7 @@ const EXPORTED_SETTING_KEYS = [
   'customExactTargets',
   'characteristicMode',
   'priorityAttributes',
+  'sharedMaxPrice',
   'priorityMaxPrice',
   'customErgonomics',
   'customVerticalRecoil',
@@ -49,18 +53,26 @@ function getGameMode(savedBuild) {
 }
 
 function copyExportedSettings(settings = {}) {
+  const hasPriceSetting = [
+    'sharedMaxPrice',
+    'customMaxPrice',
+    'maxPrice',
+    'priorityMaxPrice',
+  ].some(key => Object.hasOwn(settings, key)) || Object.hasOwn(settings.customProfile || {}, 'price');
+  const source = hasPriceSetting ? migrateSharedMaxPriceSettings(settings) : settings;
+
   return Object.fromEntries(
     EXPORTED_SETTING_KEYS
-      .filter(key => Object.hasOwn(settings, key))
+      .filter(key => Object.hasOwn(source, key))
       .map(key => [
         key,
         key === 'characteristicMode'
-          ? normalizeCustomCharacteristicMode(settings[key])
+          ? normalizeCustomCharacteristicMode(source[key])
           : key === 'priorityAttributes'
-            ? normalizePriorityAttributes(settings[key])
-            : key === 'priorityMaxPrice'
-              ? normalizePriorityMaxPrice(settings[key])
-              : structuredClone(settings[key]),
+            ? normalizePriorityAttributes(source[key])
+            : ['sharedMaxPrice', 'customMaxPrice', 'maxPrice', 'priorityMaxPrice'].includes(key)
+              ? normalizeBuildMaxPrice(source[key])
+              : structuredClone(source[key]),
       ]),
   );
 }

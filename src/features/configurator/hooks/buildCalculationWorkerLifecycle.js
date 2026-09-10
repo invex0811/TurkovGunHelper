@@ -156,7 +156,6 @@ export function createBuildCalculationWorkerLifecycle({
         customExactTargets: calculationInput.customExactTargets,
         priorityAttributes: calculationInput.priorityAttributes,
         characteristicMode: calculationInput.characteristicMode,
-        priorityMaxPrice: calculationInput.priorityMaxPrice,
         options: calculationInput.options,
       });
     } catch (error) {
