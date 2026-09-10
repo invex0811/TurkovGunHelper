@@ -113,28 +113,63 @@ test('creates a weapon build from the catalog', async ({ page }) => {
     .toHaveAttribute('aria-valuenow', '2.17');
 });
 
-test('characteristic settings tabs preserve constraints and priority attributes', async ({ page }) => {
+test('build goal modes preserve their state and calculator settings', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('link').filter({
     has: page.getByRole('heading', { name: 'TW', exact: true }),
   }).click();
 
-  await page.getByRole('button', { name: 'Generate Build', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Save build', exact: true })).toBeVisible();
+  const config = page.locator('.config');
+  const goalGroup = config.getByRole('group', { name: 'Build Goal' });
+  const metaButton = goalGroup.getByRole('button', { name: 'Meta', exact: true });
+  const constraintsButton = goalGroup.getByRole('button', { name: 'By constraints', exact: true });
+  const prioritiesButton = goalGroup.getByRole('button', { name: 'By priorities', exact: true });
+  const expectGenerateButtonGreen = async () => {
+    const generateButton = config.getByRole('button', { name: 'Generate Build', exact: true });
+    await expect(generateButton).toHaveCSS('background-color', 'rgb(92, 214, 138)');
+    await generateButton.hover();
+    await expect(generateButton).toHaveCSS('background-color', 'rgb(92, 214, 138)');
+    await page.mouse.move(0, 0);
+  };
+  await expect(metaButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(config.getByRole('button', { name: 'Basic', exact: true })).toHaveCount(0);
+  await expect(config.getByRole('button', { name: 'Advanced', exact: true })).toHaveCount(0);
+  await expect(config.getByRole('button', { name: 'Custom', exact: true })).toHaveCount(0);
+  await expect(config.getByRole('searchbox', { name: 'Must Include Modules' })).toBeVisible();
+  await expectGenerateButtonGreen();
 
-  const customButton = page.getByRole('button', { name: 'Custom', exact: true });
-  await customButton.click();
+  const metaMaxPrice = config.locator('[data-build-goal="meta"]').getByRole('spinbutton', {
+    name: 'Maximum price',
+    exact: true,
+  });
+  await expect(metaMaxPrice).toHaveValue('0');
+  await expect(config.getByText('0 = no limit', { exact: true })).toBeVisible();
+  await metaMaxPrice.fill('250000');
+  await metaMaxPrice.press('Enter');
+
+  const includeTraderPrices = config.getByRole('checkbox', { name: 'Include trader prices', exact: true });
+  await includeTraderPrices.uncheck();
+  await expect(metaMaxPrice).toHaveValue('250000');
+  await includeTraderPrices.check();
+  await expect(metaMaxPrice).toHaveValue('250000');
+
+  const priceModeGroup = page.locator('header').getByRole('group', { name: 'Price mode' });
+  await priceModeGroup.getByRole('button', { name: 'PvE', exact: true }).click();
+  await expect(metaMaxPrice).toHaveValue('250000');
+  await priceModeGroup.getByRole('button', { name: 'PvP', exact: true }).click();
+  await expect(metaMaxPrice).toHaveValue('250000');
+
+  await constraintsButton.click();
+  await expect(constraintsButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(config.getByText('0 = no limit', { exact: true })).toBeVisible();
+  await expectGenerateButtonGreen();
   const characteristicSettings = page.locator('.custom-characteristic-settings');
   await expect(characteristicSettings).toBeVisible();
-
-  const constraintsTab = characteristicSettings.getByRole('tab', { name: /^Constraints$/ });
-  const prioritiesTab = characteristicSettings.getByRole('tab', { name: /^Priorities/ });
-  const constraintsPanel = characteristicSettings.locator('#customCharacteristicPanel-constraints');
-  const prioritiesPanel = characteristicSettings.locator('#customCharacteristicPanel-priorities');
-  await expect(constraintsTab).toHaveAttribute('aria-selected', 'true');
-  await expect(prioritiesTab).toHaveAttribute('aria-selected', 'false');
-  await expect(characteristicSettings.locator('.custom-radar')).toBeVisible();
-  await expect(characteristicSettings.getByRole('spinbutton').first()).toBeVisible();
+  await expect(characteristicSettings.locator('svg')).toHaveCount(4);
+  await expect(characteristicSettings.locator('.custom-radar')).toHaveCount(0);
+  await expect(characteristicSettings.getByRole('spinbutton')).toHaveCount(4);
+  await expect(characteristicSettings.getByRole('spinbutton', { name: /Price value/ })).toHaveCount(0);
+  await expect(characteristicSettings.getByRole('checkbox', { name: /Price/ })).toHaveCount(0);
 
   const ergonomicsInput = characteristicSettings.getByRole('spinbutton', {
     name: 'Ergonomics value',
@@ -150,29 +185,39 @@ test('characteristic settings tabs preserve constraints and priority attributes'
   await expect(ergonomicsInput).toHaveValue('51');
   await expect(exactErgonomics).toBeChecked();
 
-  await prioritiesTab.click();
-  await expect(prioritiesTab).toHaveAttribute('aria-selected', 'true');
-  await expect(characteristicSettings.locator('.custom-radar')).toHaveCount(0);
-  await expect(characteristicSettings.locator('.custom-radar__inputs')).toHaveCount(0);
-  await expect(constraintsPanel).toBeHidden();
-  await expect.poll(() => constraintsPanel.evaluate(element => element.getBoundingClientRect().height)).toBe(0);
-  await expect(prioritiesPanel).toBeVisible();
+  const constraintBudget = config.locator('[data-build-goal="constraints"]').getByRole('spinbutton', {
+    name: 'Maximum price',
+    exact: true,
+  });
+  const magazineGroup = config.getByRole('group', { name: 'Magazine Capacity (rounds)' });
+  await expect(constraintBudget).toBeVisible();
+  await expect.poll(() => constraintBudget.evaluate(input => (
+    input.closest('.config__section')?.nextElementSibling
+      ?.querySelector('[aria-label="Magazine Capacity (rounds)"]') !== null
+  ))).toBe(true);
+  await expect(magazineGroup).toBeVisible();
+  await expect(constraintBudget).toHaveValue('250000');
+  await constraintBudget.fill('180000');
+  await constraintBudget.press('Enter');
 
-  await prioritiesTab.press('ArrowLeft');
-  await expect(constraintsTab).toBeFocused();
-  await expect(characteristicSettings.locator('.custom-radar')).toBeVisible();
-  await expect(ergonomicsInput).toHaveValue('51');
-  await expect(exactErgonomics).toBeChecked();
-  await constraintsTab.press('ArrowRight');
-  await expect(prioritiesTab).toBeFocused();
-  await prioritiesTab.click();
-  await expect(prioritiesPanel).toBeVisible();
+  await config.getByRole('group', { name: 'Suppressor Mode' })
+    .getByRole('button', { name: 'Forbid', exact: true }).click();
+  const moduleSearch = config.getByRole('searchbox', { name: 'Must Include Modules' });
+  await moduleSearch.fill('Alternative Grip');
+  await config.locator('.module-search-item').filter({ hasText: 'Alternative Grip' }).click();
+  await expect(config.locator('.required-module').filter({ hasText: 'Alternative Grip' })).toBeVisible();
 
+  await prioritiesButton.click();
+  await expect(prioritiesButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(config.getByText('0 = no limit', { exact: true })).toBeVisible();
+  await expectGenerateButtonGreen();
+  await expect(characteristicSettings).toHaveCount(0);
+  const prioritiesPanel = config.locator('[data-build-goal="priorities"]');
   const priorityMaxPrice = prioritiesPanel.getByRole('spinbutton', {
     name: 'Maximum price',
     exact: true,
   });
-  await expect(priorityMaxPrice).toHaveValue('0');
+  await expect(priorityMaxPrice).toHaveValue('180000');
   await priorityMaxPrice.fill('250000');
   await priorityMaxPrice.press('Enter');
   await expect(priorityMaxPrice).toHaveValue('250000');
@@ -181,65 +226,140 @@ test('characteristic settings tabs preserve constraints and priority attributes'
   const horizontalRecoil = prioritiesPanel.getByRole('button', { name: 'Horizontal recoil', exact: true });
   const ergonomics = prioritiesPanel.getByRole('button', { name: 'Ergonomics', exact: true });
   const weight = prioritiesPanel.getByRole('button', { name: 'Weight', exact: true });
+  await ergonomics.click();
   await verticalRecoil.click();
   await horizontalRecoil.click();
-  await expect(verticalRecoil).toHaveAttribute('aria-pressed', 'true');
-  await expect(horizontalRecoil).toHaveAttribute('aria-pressed', 'true');
-  await expect(characteristicSettings.locator('.custom-characteristic-settings__tab-count')).toHaveText('2/3');
+  await expect(prioritiesPanel.locator('.custom-priority-attributes__count')).toHaveText('3/4');
+  await expect(prioritiesPanel.locator('.custom-priority-attributes__item').nth(0))
+    .toContainText('Rank 1Ergonomics');
+  await expect(prioritiesPanel.locator('.custom-priority-attributes__item').nth(1))
+    .toContainText('Rank 2Vertical recoil');
+  await expect(prioritiesPanel.locator('.custom-priority-attributes__selected')).not.toContainText('%');
 
-  await constraintsTab.click();
-  await expect(characteristicSettings.locator('.custom-radar')).toBeVisible();
-  await constraintsTab.press('ArrowRight');
-  await expect(prioritiesTab).toBeFocused();
-  await prioritiesTab.press('Home');
-  await expect(constraintsTab).toBeFocused();
-  await constraintsTab.press('End');
-  await expect(prioritiesTab).toBeFocused();
-  await expect(verticalRecoil).toHaveAttribute('aria-pressed', 'true');
-  await expect(horizontalRecoil).toHaveAttribute('aria-pressed', 'true');
-
-  await ergonomics.click();
-  await expect(characteristicSettings.locator('.custom-characteristic-settings__tab-count')).toHaveText('3/3');
-  await expect(weight).toBeDisabled();
-  await expect(verticalRecoil).toBeEnabled();
-  await expect(horizontalRecoil).toBeEnabled();
-
-  await prioritiesPanel.getByRole('button', { name: 'Remove Vertical recoil priority', exact: true }).click();
-  await expect(characteristicSettings.locator('.custom-characteristic-settings__tab-count')).toHaveText('2/3');
-  await expect(weight).toBeEnabled();
   await weight.click();
   await expect(weight).toHaveAttribute('aria-pressed', 'true');
-  await expect(characteristicSettings.locator('.custom-characteristic-settings__tab-count')).toHaveText('3/3');
-  await prioritiesPanel.getByRole('button', { name: 'Remove Ergonomics priority', exact: true }).click();
-  await expect(characteristicSettings.locator('.custom-characteristic-settings__tab-count')).toHaveText('2/3');
+  await expect(prioritiesPanel.locator('.custom-priority-attributes__count')).toHaveText('4/4');
+  await expect(prioritiesPanel.locator('.custom-priority-attributes__item').nth(0))
+    .toContainText('Rank 1Ergonomics');
+  await expect(prioritiesPanel.locator('.custom-priority-attributes__item').nth(3))
+    .toContainText('Rank 4Weight');
+  await prioritiesPanel.getByRole('button', { name: 'Move Vertical recoil up', exact: true }).click();
+  await expect(prioritiesPanel.locator('.custom-priority-attributes__item').nth(0))
+    .toContainText('Rank 1Vertical recoil');
+  await expect(prioritiesPanel.locator('.custom-priority-attributes__item').nth(1))
+    .toContainText('Rank 2Ergonomics');
+  await expect(prioritiesPanel.getByRole('button', { name: 'Move Vertical recoil up', exact: true })).toBeDisabled();
+  await expect(prioritiesPanel.getByRole('button', { name: 'Move Weight down', exact: true })).toBeDisabled();
+  await expect(config.locator('.required-module').filter({ hasText: 'Alternative Grip' })).toBeVisible();
+  await expect(config.getByRole('button', { name: 'Forbid', exact: true })).toHaveAttribute('aria-pressed', 'true');
+
+  await constraintsButton.click();
+  await expect(page.getByRole('spinbutton', { name: 'Ergonomics value', exact: true })).toHaveValue('51');
+  await expect(page.getByRole('checkbox', { name: 'Use exact target for Ergonomics', exact: true })).toBeChecked();
+  await expect(config.getByRole('spinbutton', { name: 'Maximum price', exact: true })).toHaveValue('250000');
+  await expect(config.locator('.required-module').filter({ hasText: 'Alternative Grip' })).toBeVisible();
+
+  await metaButton.click();
+  await expect(metaButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(metaMaxPrice).toHaveValue('250000');
+  await expect(config.getByRole('button', { name: 'Forbid', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(config.locator('.required-module').filter({ hasText: 'Alternative Grip' })).toBeVisible();
+
+  await prioritiesButton.click();
+  await expect(priorityMaxPrice).toHaveValue('250000');
+  await expect(verticalRecoil).toHaveAttribute('aria-pressed', 'true');
+  await expect(ergonomics).toHaveAttribute('aria-pressed', 'true');
   await expect(horizontalRecoil).toHaveAttribute('aria-pressed', 'true');
   await expect(weight).toHaveAttribute('aria-pressed', 'true');
+  await expect(prioritiesPanel.locator('.custom-priority-attributes__item').nth(0))
+    .toContainText('Rank 1Vertical recoil');
 
   await page.getByRole('button', { name: 'Generate Build', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Save build', exact: true })).toBeVisible();
 
+  await includeTraderPrices.uncheck();
+  await expect(priorityMaxPrice).toHaveValue('250000');
+  const currentPrice = Number((await page.locator('.price-amount').innerText()).replace(/\D/g, ''));
+  const warningBudget = currentPrice - 1;
+  await priorityMaxPrice.fill(String(warningBudget));
+  await priorityMaxPrice.press('Enter');
+  await includeTraderPrices.check();
+  await includeTraderPrices.uncheck();
+  await expect(priorityMaxPrice).toHaveValue(String(warningBudget));
+  await expect(page.getByText(
+    `The current build exceeds the ${warningBudget} RUB budget under this price policy.`,
+    { exact: true },
+  )).toBeVisible();
+
+  const replacementBudget = currentPrice + 10;
+  await priorityMaxPrice.fill(String(replacementBudget));
+  await priorityMaxPrice.press('Enter');
+  const alternativePart = page.locator('.part-card').filter({ hasText: 'Alternative Grip' });
+  await alternativePart.getByRole('button', { name: 'Replace', exact: true }).click();
+  await page.getByRole('button', { name: /Replace: Starter Grip/ }).click();
+  await expect(page.getByText(
+    `This replacement exceeds the ${replacementBudget} RUB budget limit.`,
+    { exact: false },
+  )).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('button', { name: 'Build Diagram', exact: true }).click();
+  const diagram = page.getByRole('dialog', { name: 'Build Diagram', exact: true });
+  await diagram.getByRole('button', { name: 'Replace module Alternative Grip', exact: true }).click();
+  await diagram.getByRole('button', { name: 'Install Starter Grip', exact: true }).click();
+  await expect(diagram.getByText(
+    `This replacement exceeds the ${replacementBudget} RUB budget limit.`,
+    { exact: false },
+  )).toBeVisible();
+  await diagram.getByRole('button', { name: 'Close build diagram', exact: true }).click();
+
+  await priorityMaxPrice.fill('250000');
+  await priorityMaxPrice.press('Enter');
+  await includeTraderPrices.check();
+  await expect(priorityMaxPrice).toHaveValue('250000');
+
   await page.setViewportSize({ width: 360, height: 800 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
     .toBe(true);
-  await expect.poll(() => characteristicSettings.evaluate(element => {
+  await expect.poll(() => config.evaluate(element => {
     const rect = element.getBoundingClientRect();
     return rect.left >= 0 && rect.right <= document.documentElement.clientWidth;
   })).toBe(true);
 
   await saveBuild(page, 'Priority build');
+  const savedSettings = await page.evaluate(savedBuildsKey => (
+    JSON.parse(localStorage.getItem(savedBuildsKey))[0].settings
+  ), SAVED_BUILDS_KEY);
+  expect(savedSettings.targetType).toBe('custom');
+  expect(savedSettings.characteristicMode).toBe('priorities');
+  expect(savedSettings.priorityAttributes).toEqual([
+    'verticalRecoil',
+    'ergonomics',
+    'horizontalRecoil',
+    'weight',
+  ]);
+  expect(savedSettings.sharedMaxPrice).toBe(250000);
+  expect(savedSettings.maxPrice).toBe(250000);
+  expect(savedSettings.priorityMaxPrice).toBe(250000);
+  expect(savedSettings.customProfile.price).toBe(250000);
+  expect(savedSettings.requiredModuleIds).toContain('mod-2');
+  expect(savedSettings.customExactTargets.price).toBe(false);
+
   await openSavedBuild(page, 'Priority build');
-  const restoredCharacteristicSettings = page.locator('.custom-characteristic-settings');
-  await expect(restoredCharacteristicSettings).toBeVisible();
-  await expect(restoredCharacteristicSettings.getByRole('tab', { name: /^Priorities/ }))
-    .toHaveAttribute('aria-selected', 'true');
-  await expect(restoredCharacteristicSettings.getByRole('spinbutton', {
+  await expect(page.getByRole('group', { name: 'Build Goal' })
+    .getByRole('button', { name: 'By priorities', exact: true }))
+    .toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('spinbutton', {
     name: 'Maximum price',
     exact: true,
   })).toHaveValue('250000');
-  await expect(restoredCharacteristicSettings.getByRole('button', { name: 'Horizontal recoil', exact: true }))
+  await expect(page.getByRole('button', { name: 'Horizontal recoil', exact: true }))
     .toHaveAttribute('aria-pressed', 'true');
-  await expect(restoredCharacteristicSettings.getByRole('button', { name: 'Weight', exact: true }))
+  await expect(page.getByRole('button', { name: 'Weight', exact: true }))
     .toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.custom-priority-attributes__item').nth(0))
+    .toContainText('Rank 1Vertical recoil');
+  await expect(page.locator('.required-module').filter({ hasText: 'Alternative Grip' })).toBeVisible();
 });
 
 test('keeps loading indicators visible and static when reduced motion is requested', async ({ page }) => {

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-test('calculator worker forwards characteristic mode and priority maximum price while keeping old messages compatible', async () => {
+test('calculator worker forwards characteristic mode and the shared maxPrice option', async () => {
   const messages = [];
   const previousSelf = globalThis.self;
   globalThis.self = {
@@ -68,7 +68,7 @@ test('calculator worker forwards characteristic mode and priority maximum price 
         targetType: 'custom',
         customProfile,
         customExactTargets: { ergonomics: true },
-        priorityAttributes: ['ergonomics', 'ergonomics', 'price'],
+        priorityAttributes: ['ergonomics', 'ergonomics', 'price', 'weight', 'verticalRecoil'],
         options: {},
       },
     });
@@ -83,8 +83,7 @@ test('calculator worker forwards characteristic mode and priority maximum price 
         customExactTargets: { ergonomics: true },
         priorityAttributes: ['ergonomics'],
         characteristicMode: 'priorities',
-        priorityMaxPrice: 0,
-        options: {},
+        options: { maxPrice: 0 },
       },
     });
     globalThis.self.onmessage({

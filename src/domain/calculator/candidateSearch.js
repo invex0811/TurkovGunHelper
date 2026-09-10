@@ -6,7 +6,6 @@ import {
 } from './buildResultMessages.js';
 import { createCalculationCache } from './calculationCache.js';
 import { createCompatibilityTools } from './compatibility.js';
-import { PRICE_AWARE_TARGET } from './constants.js';
 import { createPricingTools } from './pricing.js';
 import { scopeSupportsZoom } from '../scopeZoom.js';
 
@@ -23,6 +22,7 @@ export function _calculateWeighted(
   overflowErgoWeight = 0,
   ergoSoftCap = ergoCap,
   calculationCache = createCalculationCache(),
+  searchCapabilities = {},
 ) {
   const {
     getSlotSearchName,
@@ -42,6 +42,7 @@ export function _calculateWeighted(
   } = createPricingTools(calculationCache, options);
 
   const build = [];
+  const budgetAwareSearch = searchCapabilities?.budgetAwareSearch === true;
   let branchEvaluatorOptions = options;
 
   function clearForcedBranchCaches() {
@@ -531,7 +532,7 @@ export function _calculateWeighted(
     evaluateBranch,
     isBetterBranch,
   } = createBranchEvaluator({
-    get PRICE_AWARE_TARGET() { return PRICE_AWARE_TARGET; },
+    get budgetAwareSearch() { return budgetAwareSearch; },
     get addItemConflictsToSet() { return addItemConflictsToSet; },
     get branchHasOnlyOptionalSight() { return branchHasOnlyOptionalSight; },
     get branchHasRequiredSight() { return branchHasRequiredSight; },
@@ -713,12 +714,12 @@ export function _calculateWeighted(
       }
 
       const isMount = hasCategory(rootItem, 'Mount');
-      const isOptionalErgoOnlyPriceAwarePart = targetType === PRICE_AWARE_TARGET
+      const isOptionalErgoOnlyBudgetAwarePart = budgetAwareSearch
         && (rootItem.ergonomicsModifier || 0) > 0
         && (rootItem.recoilModifier || 0) >= 0
         && !hasCategory(rootItem, 'Magazine');
       if (
-        (isMount || isOptionalErgoOnlyPriceAwarePart)
+        (isMount || isOptionalErgoOnlyBudgetAwarePart)
         && slot.required !== true
         && bestCandidate.score <= 0
         && !(options.requireSuppressor && !hasSuppressorGlobal && bestCandidate.hasSuppressor)
@@ -735,13 +736,13 @@ export function _calculateWeighted(
   const {
     optimizeFinalBarrelBlock,
     optimizeFinalMuzzleBlock,
-    optimizePriceAwareLeafRecoilUpgrades,
+    optimizeBudgetAwareLeafRecoilUpgrades,
   } = createBuildOptimizers({
-    get PRICE_AWARE_TARGET() { return PRICE_AWARE_TARGET; },
     get addItemConflictsToSet() { return addItemConflictsToSet; },
     get applyBranchPlan() { return applyBranchPlan; },
     get baseRecoilH() { return baseRecoilH; },
     get baseRecoilV() { return baseRecoilV; },
+    get budgetAwareSearch() { return budgetAwareSearch; },
     get build() { return build; },
     get clearForcedBranchCaches() { return clearForcedBranchCaches; },
     get ergoCap() { return ergoCap; },
@@ -776,7 +777,7 @@ export function _calculateWeighted(
   processSlots(weapon.properties.slots);
   optimizeFinalBarrelBlock();
   optimizeFinalMuzzleBlock();
-  optimizePriceAwareLeafRecoilUpgrades();
+  optimizeBudgetAwareLeafRecoilUpgrades();
   rebuildBuildState();
 
   const finalRecoilV = baseRecoilV * (1 + (totalRecoilMod / 100));

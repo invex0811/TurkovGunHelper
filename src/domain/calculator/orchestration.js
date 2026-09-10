@@ -15,6 +15,8 @@ import {
   getCustomRequirementMatches,
   meetsNonExactRequirements,
 } from './constraints.js';
+import { generatePriorityCandidates } from './priorityCandidates.js';
+import { selectCustomPriorityCandidate } from './prioritySelection.js';
 import {
   getBuildTieKey,
   getCustomScore,
@@ -22,10 +24,7 @@ import {
   getPriceAwareResultScore,
 } from './scoring.js';
 import {
-  compareCustomPriorityScores,
-  getCustomPriorityScore,
   normalizeCustomCharacteristicMode,
-  normalizePriorityMaxPrice,
   normalizePriorityAttributes,
 } from '../customPriorityAttributes.js';
 
@@ -40,7 +39,6 @@ export function calculateBestBuild(
   customExactTargets = null,
   priorityAttributes = [],
   characteristicMode = 'constraints',
-  priorityMaxPrice = 0,
 ) {
   const calculationCache = createCalculationCache();
   const effectiveTargetType = targetType === 'custom'
@@ -71,6 +69,7 @@ export function calculateBestBuild(
       overflowErgoWeight,
       ergoSoftCap,
       calculationCache,
+      isPriceAwareCalculation ? { budgetAwareSearch: true } : undefined,
     );
 
     if (effectiveTargetType === 'meta' && options.maxPrice > 0) {
@@ -123,6 +122,7 @@ export function calculateBestBuild(
       overflowErgoWeight,
       ergoSoftCap,
       calculationCache,
+      { budgetAwareSearch: true },
     );
 
     const scoringOptions = {
@@ -150,7 +150,6 @@ export function calculateBestBuild(
   const normalizedCharacteristicMode = normalizeCustomCharacteristicMode(characteristicMode);
   const isPriorityMode = normalizedCharacteristicMode === 'priorities';
   const normalizedPriorityAttributes = normalizePriorityAttributes(priorityAttributes);
-  const hasPriorityAttributes = normalizedPriorityAttributes.length > 0;
   const hasCustomProfile = Boolean(customProfile && typeof customProfile === 'object');
   const normalizedExactTargets = normalizeCustomExactTargets(customExactTargets);
   const hasExactTargets = !isPriorityMode
@@ -171,12 +170,11 @@ export function calculateBestBuild(
     : Number(customProfile?.weight) || 0;
   const exactMaxPrice = normalizedExactTargets.price
     ? customTargetValues.price + getCustomExactTolerance('price', customTargetValues.price)
-    : Number(customProfile?.price) || 0;
+    : Number(options.maxPrice) || 0;
   const customOptions = isPriorityMode
     ? {
         ...options,
         maxWeight: 0,
-        maxPrice: normalizePriorityMaxPrice(priorityMaxPrice),
       }
     : hasCustomProfile
       ? {
@@ -265,52 +263,6 @@ export function calculateBestBuild(
     }
   }
 
-  function isEligiblePriorityCandidate(result) {
-    const maxPrice = customOptions.maxPrice;
-    return !(maxPrice > 0)
-      || (result.stats.price != null && result.stats.price <= maxPrice);
-  }
-
-  function selectPriorityCandidate(candidates) {
-    const results = candidates.map(candidate => candidate.result);
-    let selected = null;
-    let selectedScore = -Infinity;
-    let selectedTieKey = '';
-
-    for (const candidate of candidates) {
-      const priorityScore = getCustomPriorityScore(
-        candidate.result,
-        results,
-        normalizedPriorityAttributes,
-      );
-      const tieKey = getBuildTieKey(candidate.result);
-      const priorityComparison = hasPriorityAttributes && selected
-        ? compareCustomPriorityScores(priorityScore, selectedScore)
-        : 0;
-      const better = !selected
-        || priorityComparison > 0
-        || (
-          priorityComparison === 0
-          && (
-            (candidate.result.stats.price ?? Number.POSITIVE_INFINITY)
-              < (selected.result.stats.price ?? Number.POSITIVE_INFINITY)
-            || (
-              candidate.result.stats.price === selected.result.stats.price
-              && tieKey.localeCompare(selectedTieKey) < 0
-            )
-          )
-        );
-
-      if (better) {
-        selected = candidate;
-        selectedScore = priorityScore;
-        selectedTieKey = tieKey;
-      }
-    }
-
-    return selected?.result ?? null;
-  }
-
   if (hasCustomProfile && !isPriorityMode) {
     const metaCandidate = _calculateWeighted(
       weapon,
@@ -347,53 +299,20 @@ export function calculateBestBuild(
   }
 
   if (isPriorityMode) {
-    const priorityCandidates = new Map();
-    const customSearchRoutes = Array.from({ length: 21 }, (_, index) => ({
-      ergoWeight: index / 20,
-      recoilWeight: 1 - (index / 20),
-      weightWeight: 0.001,
-    }));
+    const priorityCandidates = generatePriorityCandidates({
+      weapon,
+      modMap,
+      options: customOptions,
+      calculationCache,
+    });
+    firstCalculationError ||= priorityCandidates.firstCalculationError;
+    successfulCalculationCount += priorityCandidates.successfulCalculationCount;
 
-    // The greedy slot search needs a few weight-led routes to expose light builds;
-    // the established 21 ergo/recoil routes remain the main bounded candidate sweep.
-    if (normalizedPriorityAttributes.includes('weight')) {
-      customSearchRoutes.push(
-        { ergoWeight: 0, recoilWeight: 0, weightWeight: 15 },
-        { ergoWeight: 1, recoilWeight: 0, weightWeight: 15 },
-        { ergoWeight: 0, recoilWeight: 1, weightWeight: 15 },
-      );
-    }
-
-    function collectPriorityCandidate(result) {
-      if (!isEligiblePriorityCandidate(result)) return;
-      priorityCandidates.set(getBuildTieKey(result), { result });
-    }
-
-    for (const route of customSearchRoutes) {
-      const result = _calculateWeighted(
-        weapon,
-        route.ergoWeight,
-        route.recoilWeight,
-        0,
-        modMap,
-        customOptions,
-        100,
-        'custom',
-        route.weightWeight,
-        0,
-        100,
-        calculationCache,
-      );
-      if (result.error) {
-        firstCalculationError ||= result;
-        continue;
-      }
-      successfulCalculationCount += 1;
-      collectPriorityCandidate(result);
-    }
-
-    const selectedPriorityBuild = selectPriorityCandidate([...priorityCandidates.values()]);
-    if (selectedPriorityBuild) return selectedPriorityBuild;
+    const selectedPriorityCandidate = selectCustomPriorityCandidate(
+      priorityCandidates.candidates,
+      normalizedPriorityAttributes,
+    );
+    if (selectedPriorityCandidate) return selectedPriorityCandidate.result;
   } else for (let i = 0; i <= 20; i++) {
     const ergoWeight = i / 20;
     const recoilWeight = 1 - ergoWeight;

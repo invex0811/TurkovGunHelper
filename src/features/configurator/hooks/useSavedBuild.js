@@ -39,15 +39,21 @@ export default function useSavedBuild({
         buildResult,
         settings: {
           ...settings,
+          customProfile: {
+            ...settings.customProfile,
+            price: settings.maxPrice,
+          },
+          sharedMaxPrice: settings.maxPrice,
+          priorityMaxPrice: settings.maxPrice,
           customErgonomics: settings.customProfile.ergonomics,
           customVerticalRecoil: settings.customProfile.verticalRecoil,
           customHorizontalRecoil: settings.customProfile.horizontalRecoil,
           customMaxWeight: settings.customProfile.weight,
-          customMaxPrice: settings.customProfile.price,
+          customMaxPrice: settings.maxPrice,
           customErgo: settings.customProfile.ergonomics,
           customRecoil: settings.customProfile.verticalRecoil,
           maxWeight: settings.customProfile.weight,
-          maxPrice: settings.customProfile.price,
+          maxPrice: settings.maxPrice,
         },
         ownedItems,
       }));

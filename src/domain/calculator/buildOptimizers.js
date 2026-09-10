@@ -382,8 +382,8 @@ export function createBuildOptimizers(context) {
     context.applyBranchPlan(bestCandidate?.branchEval || restoreBranchEval, rootIndex);
   }
 
-  function optimizePriceAwareLeafRecoilUpgrades() {
-    if (context.targetType !== context.PRICE_AWARE_TARGET || context.maxPrice <= 0) return;
+  function optimizeBudgetAwareLeafRecoilUpgrades() {
+    if (!context.budgetAwareSearch || context.maxPrice <= 0) return;
 
     const maxIterations = Math.max(1, context.build.length * 2);
 
@@ -501,6 +501,6 @@ export function createBuildOptimizers(context) {
   return {
     optimizeFinalBarrelBlock,
     optimizeFinalMuzzleBlock,
-    optimizePriceAwareLeafRecoilUpgrades,
+    optimizeBudgetAwareLeafRecoilUpgrades,
   };
 }

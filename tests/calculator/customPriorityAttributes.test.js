@@ -2,11 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  compareCustomPriorityScores,
-  getCustomPriorityScore,
+  CUSTOM_PRIORITY_FLOAT_EPSILON,
+  CUSTOM_PRIORITY_RANK_TOLERANCE,
+  getCustomPriorityBounds,
+  getCustomPriorityVector,
+  getCustomPriorityVectorFromBounds,
+  movePriorityAttribute,
   normalizeCustomCharacteristicMode,
   normalizePriorityAttributes,
-  normalizePriorityMaxPrice,
   togglePriorityAttribute,
 } from '../../src/domain/customPriorityAttributes.js';
 
@@ -16,7 +19,7 @@ function result({ ergonomics, verticalRecoil, horizontalRecoil, weight }) {
   };
 }
 
-test('priority attributes are sanitized, deduplicated, capped, and removable', () => {
+test('priority attributes are ordered, sanitized, deduplicated, capped, and removable', () => {
   assert.deepEqual(normalizePriorityAttributes(), []);
   assert.deepEqual(normalizePriorityAttributes([
     'verticalRecoil',
@@ -25,7 +28,7 @@ test('priority attributes are sanitized, deduplicated, capped, and removable', (
     'ergonomics',
     'weight',
     'horizontalRecoil',
-  ]), ['verticalRecoil', 'ergonomics', 'weight']);
+  ]), ['verticalRecoil', 'ergonomics', 'weight', 'horizontalRecoil']);
   assert.deepEqual(togglePriorityAttribute(['verticalRecoil'], 'ergonomics'), [
     'verticalRecoil',
     'ergonomics',
@@ -34,90 +37,105 @@ test('priority attributes are sanitized, deduplicated, capped, and removable', (
     'verticalRecoil',
     'ergonomics',
     'weight',
-  ], 'horizontalRecoil'), ['verticalRecoil', 'ergonomics', 'weight']);
+    'horizontalRecoil',
+  ], 'invalid'), ['verticalRecoil', 'ergonomics', 'weight', 'horizontalRecoil']);
   assert.deepEqual(togglePriorityAttribute(['verticalRecoil', 'weight'], 'weight'), ['verticalRecoil']);
 });
 
-test('characteristic mode and priority budget safely normalize legacy values', () => {
+test('priority attributes reorder without mutation and safely ignore invalid indexes', () => {
+  const attributes = ['ergonomics', 'verticalRecoil', 'weight', 'horizontalRecoil'];
+  assert.deepEqual(movePriorityAttribute(attributes, 1, 0), [
+    'verticalRecoil',
+    'ergonomics',
+    'weight',
+    'horizontalRecoil',
+  ]);
+  assert.deepEqual(attributes, ['ergonomics', 'verticalRecoil', 'weight', 'horizontalRecoil']);
+  assert.notEqual(movePriorityAttribute(attributes, 1, 1), attributes);
+  assert.deepEqual(movePriorityAttribute(attributes, 1.5, 0), attributes);
+  assert.deepEqual(movePriorityAttribute(attributes, 4, 0), attributes);
+});
+
+test('characteristic mode safely normalizes legacy values', () => {
   assert.equal(normalizeCustomCharacteristicMode(), 'constraints');
   assert.equal(normalizeCustomCharacteristicMode('invalid'), 'constraints');
   assert.equal(normalizeCustomCharacteristicMode('priorities'), 'priorities');
-  assert.equal(normalizePriorityMaxPrice(), 0);
-  assert.equal(normalizePriorityMaxPrice(''), 0);
-  assert.equal(normalizePriorityMaxPrice(-100), 0);
-  assert.equal(normalizePriorityMaxPrice(Number.POSITIVE_INFINITY), 0);
-  assert.equal(normalizePriorityMaxPrice('250000'), 250000);
 });
 
-test('priority scoring normalizes minimize and maximize attributes independently', () => {
+test('priority vectors normalize minimize and maximize attributes in their selected order', () => {
   const lightLowRecoil = result({ ergonomics: 40, verticalRecoil: 60, horizontalRecoil: 120, weight: 3 });
   const ergonomicHeavy = result({ ergonomics: 80, verticalRecoil: 100, horizontalRecoil: 200, weight: 5 });
   const candidates = [lightLowRecoil, ergonomicHeavy];
 
-  assert.equal(getCustomPriorityScore(lightLowRecoil, candidates, ['verticalRecoil']), 1);
-  assert.equal(getCustomPriorityScore(ergonomicHeavy, candidates, ['verticalRecoil']), 0);
-  assert.equal(getCustomPriorityScore(ergonomicHeavy, candidates, ['ergonomics']), 1);
-  assert.equal(getCustomPriorityScore(lightLowRecoil, candidates, ['weight']), 1);
-});
-
-test('priority scoring is equal-weighted, selection-order independent, and ignores unselected attributes', () => {
-  const recoilBuild = result({ ergonomics: 40, verticalRecoil: 60, horizontalRecoil: 120, weight: 6 });
-  const ergonomicBuild = result({ ergonomics: 80, verticalRecoil: 100, horizontalRecoil: 200, weight: 3 });
-  const candidates = [recoilBuild, ergonomicBuild];
-
-  const forward = getCustomPriorityScore(recoilBuild, candidates, ['verticalRecoil', 'ergonomics']);
-  const reversed = getCustomPriorityScore(recoilBuild, candidates, ['ergonomics', 'verticalRecoil']);
-  assert.equal(forward, 0.5);
-  assert.equal(reversed, 0.5);
-  assert.equal(getCustomPriorityScore(recoilBuild, candidates, [
+  assert.deepEqual(getCustomPriorityVector(lightLowRecoil, candidates, [
     'verticalRecoil',
     'ergonomics',
     'weight',
-  ]), 1 / 3);
-  assert.equal(getCustomPriorityScore(recoilBuild, candidates, ['verticalRecoil']), 1);
-
-  const sameSelectedStatsLight = result({
-    ergonomics: 70,
-    verticalRecoil: 80,
-    horizontalRecoil: 110,
-    weight: 3,
-  });
-  const sameSelectedStatsHeavy = result({
-    ergonomics: 70,
-    verticalRecoil: 80,
-    horizontalRecoil: 260,
-    weight: 8,
-  });
-  const sameSelectedStatsCandidates = [sameSelectedStatsLight, sameSelectedStatsHeavy];
-  assert.equal(
-    getCustomPriorityScore(
-      sameSelectedStatsLight,
-      sameSelectedStatsCandidates,
-      ['verticalRecoil', 'ergonomics'],
-    ),
-    getCustomPriorityScore(
-      sameSelectedStatsHeavy,
-      sameSelectedStatsCandidates,
-      ['verticalRecoil', 'ergonomics'],
-    ),
-  );
-});
-
-test('priority scoring stays finite for equal ranges and a one-candidate pool', () => {
-  const candidate = result({ ergonomics: 60, verticalRecoil: 80, horizontalRecoil: 150, weight: 4 });
-  const equalValueCandidate = result({ ergonomics: 60, verticalRecoil: 80, horizontalRecoil: 150, weight: 4 });
-
-  const equalRangeScore = getCustomPriorityScore(candidate, [candidate, equalValueCandidate], [
+  ]), [1, 0, 1]);
+  assert.deepEqual(getCustomPriorityVector(ergonomicHeavy, candidates, [
     'verticalRecoil',
-    'horizontalRecoil',
     'ergonomics',
-  ]);
-  assert.equal(equalRangeScore, 1);
-  assert.equal(getCustomPriorityScore(candidate, [candidate], ['weight']), 1);
-  assert.equal(Number.isFinite(equalRangeScore), true);
+    'weight',
+  ]), [0, 1, 0]);
+  assert.deepEqual(getCustomPriorityVector(ergonomicHeavy, candidates, ['ergonomics']), [1]);
 });
 
-test('priority score comparison treats epsilon-sized floating differences as ties', () => {
-  assert.equal(compareCustomPriorityScores(0.5, 0.5 + 1e-10), 0);
-  assert.equal(compareCustomPriorityScores(0.5 + 1e-6, 0.5), 1);
+test('priority vectors retain all one through four ordered ranks without weighting', () => {
+  const bestVerticalOnly = result({ ergonomics: 0, verticalRecoil: 0, horizontalRecoil: 100, weight: 100 });
+  const opposite = result({ ergonomics: 100, verticalRecoil: 100, horizontalRecoil: 0, weight: 0 });
+  const candidates = [bestVerticalOnly, opposite];
+
+  assert.deepEqual(getCustomPriorityVector(bestVerticalOnly, candidates, ['verticalRecoil']), [1]);
+  assert.deepEqual(getCustomPriorityVector(bestVerticalOnly, candidates, ['verticalRecoil', 'ergonomics']), [1, 0]);
+  assert.deepEqual(getCustomPriorityVector(bestVerticalOnly, candidates, [
+    'verticalRecoil',
+    'ergonomics',
+    'weight',
+  ]), [1, 0, 0]);
+  assert.deepEqual(getCustomPriorityVector(bestVerticalOnly, candidates, [
+    'verticalRecoil',
+    'ergonomics',
+    'weight',
+    'horizontalRecoil',
+  ]), [1, 0, 0, 0]);
+});
+
+test('priority bounds and vectors preserve selected rank order', () => {
+  const verticalLeader = result({ ergonomics: 80, verticalRecoil: 20, horizontalRecoil: 50, weight: 40 });
+  const ergonomicsLeader = result({ ergonomics: 100, verticalRecoil: 60, horizontalRecoil: 50, weight: 40 });
+  const candidates = [verticalLeader, ergonomicsLeader];
+
+  const verticalFirstA = getCustomPriorityVector(verticalLeader, candidates, ['verticalRecoil', 'ergonomics']);
+  const verticalFirstB = getCustomPriorityVector(ergonomicsLeader, candidates, ['verticalRecoil', 'ergonomics']);
+  const ergonomicsFirstA = getCustomPriorityVector(verticalLeader, candidates, ['ergonomics', 'verticalRecoil']);
+  const ergonomicsFirstB = getCustomPriorityVector(ergonomicsLeader, candidates, ['ergonomics', 'verticalRecoil']);
+
+  assert.deepEqual(verticalFirstA, [1, 0]);
+  assert.deepEqual(verticalFirstB, [0, 1]);
+  assert.deepEqual(ergonomicsFirstA, [0, 1]);
+  assert.deepEqual(ergonomicsFirstB, [1, 0]);
+  assert.equal(CUSTOM_PRIORITY_FLOAT_EPSILON, 1e-9);
+  assert.equal(CUSTOM_PRIORITY_RANK_TOLERANCE, 0.10);
+  const bounds = getCustomPriorityBounds(candidates, ['verticalRecoil', 'ergonomics']);
+  assert.deepEqual(getCustomPriorityVectorFromBounds(verticalLeader, bounds), verticalFirstA);
+  assert.deepEqual(getCustomPriorityVectorFromBounds(ergonomicsLeader, bounds), verticalFirstB);
+});
+
+test('priority vectors and comparison are finite for empty, equal, and invalid values', () => {
+  const candidate = result({ ergonomics: 60, verticalRecoil: 80, horizontalRecoil: 150, weight: 4 });
+  const equalCandidate = result({ ergonomics: 60, verticalRecoil: 80, horizontalRecoil: 150, weight: 4 });
+  const invalidCandidate = result({
+    ergonomics: Number.NaN,
+    verticalRecoil: Number.POSITIVE_INFINITY,
+    horizontalRecoil: null,
+    weight: Number.NEGATIVE_INFINITY,
+  });
+  const attributes = ['verticalRecoil', 'horizontalRecoil', 'ergonomics', 'weight'];
+
+  assert.deepEqual(getCustomPriorityVector(candidate, [candidate, equalCandidate], attributes), [1, 1, 1, 1]);
+  assert.deepEqual(getCustomPriorityVector(candidate, [candidate], ['weight']), [1]);
+  assert.deepEqual(getCustomPriorityVector(candidate, [candidate], []), []);
+  assert.deepEqual(getCustomPriorityVector(invalidCandidate, [candidate, invalidCandidate], attributes), [0, 0, 0, 0]);
+  assert.equal(getCustomPriorityVector(candidate, [candidate, equalCandidate], attributes)
+    .every(value => Number.isFinite(value) && value >= 0 && value <= 1), true);
 });

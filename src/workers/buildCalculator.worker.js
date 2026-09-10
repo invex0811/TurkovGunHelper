@@ -52,7 +52,6 @@ self.onmessage = ({ data }) => {
       data.customExactTargets,
       data.priorityAttributes,
       data.characteristicMode,
-      data.priorityMaxPrice,
     );
     const resultWithDisplayStats = {
       ...result,
