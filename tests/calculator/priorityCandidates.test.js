@@ -84,14 +84,13 @@ function createPriorityFixture() {
   };
 }
 
-const THREE_PRIORITIES = ['verticalRecoil', 'ergonomics', 'horizontalRecoil'];
-const FOUR_PRIORITIES = [...THREE_PRIORITIES, 'weight'];
+const THREE_PRIORITIES = ['recoil', 'ergonomics', 'weight'];
 
 test('Priority candidate search routes are independent from selected priority attributes', () => {
   assert.equal(getPrioritySearchRoutes.length, 0);
   assert.equal(generatePriorityCandidates.length, 1);
 
-  for (const selectedAttributeCount of [1, 2, 3, 4]) {
+  for (const selectedAttributeCount of [1, 2, 3]) {
     const routes = getPrioritySearchRoutes();
     assert.equal(routes.length, 24, `route count for ${selectedAttributeCount} priorities`);
     assert.deepEqual(routes.slice(0, 21), Array.from({ length: 21 }, (_, index) => ({
@@ -159,7 +158,7 @@ test('Priority candidate generation retains the latest result for duplicate buil
   assert.equal(diagnostics.candidateResults[0].stats.price, 24);
 });
 
-test('Rank 1 vertical recoil advantage beats lower priority weight across three and four ranks', () => {
+test('Rank 1 recoil advantage beats lower priority weight across all canonical ranks', () => {
   const fixture = createPriorityFixture();
   const withoutWeight = generatePriorityCandidates(fixture);
   const withWeight = generatePriorityCandidates(fixture);
@@ -177,11 +176,11 @@ test('Rank 1 vertical recoil advantage beats lower priority weight across three 
   );
   for (const result of priorityResults) {
     assert.deepEqual(
-      getCustomPriorityVector(result, withoutWeight.candidateResults, FOUR_PRIORITIES),
-      getCustomPriorityVector(result, withWeight.candidateResults, FOUR_PRIORITIES),
+      getCustomPriorityVector(result, withoutWeight.candidateResults, THREE_PRIORITIES),
+      getCustomPriorityVector(result, withWeight.candidateResults, THREE_PRIORITIES),
     );
     assert.equal(
-      getCustomPriorityVector(result, priorityResults, FOUR_PRIORITIES)
+      getCustomPriorityVector(result, priorityResults, THREE_PRIORITIES)
         .every(value => Number.isFinite(value) && value >= 0 && value <= 1),
       true,
     );
@@ -189,11 +188,7 @@ test('Rank 1 vertical recoil advantage beats lower priority weight across three 
 
   assert.deepEqual(
     getCustomPriorityVector(resultByKey['priority-light-build'], priorityResults, THREE_PRIORITIES),
-    [0, 0, 0],
-  );
-  assert.deepEqual(
-    getCustomPriorityVector(resultByKey['priority-light-build'], priorityResults, FOUR_PRIORITIES),
-    [0, 0, 0, 1],
+    [0, 0, 1],
   );
 
   const threePriorityResult = calculateBestBuild(
@@ -208,28 +203,10 @@ test('Rank 1 vertical recoil advantage beats lower priority weight across three 
     THREE_PRIORITIES,
     'priorities',
   );
-  const fourPriorityResult = calculateBestBuild(
-    fixture.weapon,
-    'custom',
-    999,
-    -1,
-    fixture.modMap,
-    fixture.options,
-    { ergonomics: 999, verticalRecoil: -1, horizontalRecoil: -1, weight: 0.01, price: 0 },
-    null,
-    FOUR_PRIORITIES,
-    'priorities',
-  );
-
   assert.equal(
     getBuildTieKey(threePriorityResult),
     'priority-heavy-build',
-    'the heavy build wins its meaningful Rank 1 vertical recoil advantage',
-  );
-  assert.equal(
-    getBuildTieKey(fourPriorityResult),
-    'priority-heavy-build',
-    'the light build’s Rank 4 weight advantage cannot override Rank 1',
+    'the heavy build wins its meaningful Rank 1 recoil advantage',
   );
 
   const emptyPriorityResult = calculateBestBuild(

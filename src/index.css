@@ -868,6 +868,10 @@ a {
   min-width: 0;
 }
 
+.custom-priority-attributes__choice:nth-child(3):last-child {
+  grid-column: 1 / -1;
+}
+
 .build-budget__control {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1141,6 +1145,10 @@ a {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   align-items: stretch;
+}
+
+.limit-fields--single {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .limit-field {

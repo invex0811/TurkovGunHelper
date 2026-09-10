@@ -205,7 +205,7 @@ function MetaWeightSection({
 }) {
   return (
     <section className="config__section">
-      <div className="limit-fields">
+      <div className="limit-fields limit-fields--single">
         <label className="limit-field" htmlFor="maxWeight">
           <span className="field-label limit-field__label">{t('config.maxWeight')}</span>
           <input

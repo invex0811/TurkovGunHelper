@@ -272,6 +272,7 @@ export function createBuildSnapshot({
     ownedItems: ownedItems.map(item => ({ key: item.key, itemId: item.itemId })),
     stats: {
       ergonomics: buildResult.stats.ergonomics,
+      recoilModifier: buildResult.stats.recoilModifier,
       recoilVertical: buildResult.stats.recoilVertical,
       recoilHorizontal: buildResult.stats.recoilHorizontal,
       weight: buildResult.stats.weight,

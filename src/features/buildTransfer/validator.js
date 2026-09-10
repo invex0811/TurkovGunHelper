@@ -4,6 +4,7 @@ import {
   BUILD_GAME_MODES,
   BUILD_IMPORT_LIMITS,
 } from './constants.js';
+import { normalizePriorityAttributes } from '../../domain/customPriorityAttributes.js';
 
 const DANGEROUS_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
@@ -125,7 +126,12 @@ export function parseVersion1BuildExport(data) {
       name,
       gameMode: build.gameMode,
       weaponId: build.weaponId,
-      settings: copySettings(build.settings),
+      settings: {
+        ...copySettings(build.settings),
+        ...(Object.hasOwn(build.settings || {}, 'priorityAttributes')
+          ? { priorityAttributes: normalizePriorityAttributes(build.settings.priorityAttributes) }
+          : {}),
+      },
       ownedItems: copyOwnedItems(build.ownedItems),
       configuration: copyNode(build.configuration),
     };
