@@ -30,7 +30,7 @@ function createSnapshot(overrides = {}) {
     name: 'M4A1 Meta',
     weapon: { id: 'weapon-1', name: 'M4A1', shortName: 'M4A1', imageUrl: '' },
     parts: [{ itemId: 'part-1', itemName: 'Stock', slotName: 'Stock' }],
-    stats: { ergonomics: 60, recoilVertical: 42, recoilHorizontal: 120, weight: 4.2, price: 120000 },
+    stats: { ergonomics: 60, recoilModifier: -20.4, recoilVertical: 42, recoilHorizontal: 120, weight: 4.2, price: 120000 },
     settings: { targetType: 'meta', priceMode: 'pvp' },
     ...overrides,
   };
@@ -44,6 +44,7 @@ test('saved builds can be created, updated, read, and deleted', () => {
   });
 
   assert.equal(getSavedBuild('build-1', storage)?.name, 'M4A1 Meta');
+  assert.equal(getSavedBuild('build-1', storage)?.stats.recoilModifier, -20.4);
 
   const updated = saveBuildSnapshot({ ...created, name: 'Updated build' }, storage, {
     now: '2026-07-11T11:00:00.000Z',
@@ -239,8 +240,7 @@ test('saved builds migrate legacy Custom prices to one shared limit without a sc
   assert.deepEqual(restored.settings.priorityAttributes, [
     'weight',
     'ergonomics',
-    'verticalRecoil',
-    'horizontalRecoil',
+    'recoil',
   ]);
   assert.equal(restored.settings.sharedMaxPrice, 70_000);
   assert.equal(restored.settings.maxPrice, 70_000);

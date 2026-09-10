@@ -199,20 +199,20 @@ test('Priority final ranking does not compensate a meaningful Rank 1 recoil loss
   const expensiveBetterRecoil = {
     result: {
       build: [{ item: { id: 'expensive-better-recoil' } }],
-      stats: { ergonomics: 50, recoilVertical: 40, recoilHorizontal: 40, weight: 4, price: 19_000 },
+      stats: { ergonomics: 50, recoilModifier: -20, recoilVertical: 40, recoilHorizontal: 40, weight: 4, price: 19_000 },
     },
   };
   const cheaperWorseRecoil = {
     result: {
       build: [{ item: { id: 'cheap-worse-recoil' } }],
-      stats: { ergonomics: 50, recoilVertical: 70, recoilHorizontal: 70, weight: 4, price: 100 },
+      stats: { ergonomics: 50, recoilModifier: 0, recoilVertical: 70, recoilHorizontal: 70, weight: 4, price: 100 },
     },
   };
 
   assert.equal(
     getBuildTieKey(selectCustomPriorityCandidate(
       [expensiveBetterRecoil, cheaperWorseRecoil],
-      ['verticalRecoil', 'horizontalRecoil'],
+      ['recoil'],
     ).result),
     'expensive-better-recoil',
   );

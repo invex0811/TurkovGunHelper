@@ -1,26 +1,26 @@
 export const CUSTOM_PRIORITY_ATTRIBUTE_KEYS = Object.freeze([
-  'verticalRecoil',
-  'horizontalRecoil',
+  'recoil',
   'ergonomics',
   'weight',
+]);
+
+const LEGACY_RECOIL_PRIORITY_ATTRIBUTES = new Set([
+  'verticalRecoil',
+  'horizontalRecoil',
 ]);
 
 function getPriorityStatValue(result, statName) {
   const value = result?.stats?.[statName];
   if (value == null || value === '') return Number.NaN;
-  return Number(value);
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : Number.NaN;
 }
 
 export const CUSTOM_PRIORITY_ATTRIBUTE_METADATA = Object.freeze({
-  verticalRecoil: Object.freeze({
+  recoil: Object.freeze({
     direction: 'minimize',
-    labelKey: 'config.priorityAttribute.verticalRecoil',
-    getValue: result => getPriorityStatValue(result, 'recoilVertical'),
-  }),
-  horizontalRecoil: Object.freeze({
-    direction: 'minimize',
-    labelKey: 'config.priorityAttribute.horizontalRecoil',
-    getValue: result => getPriorityStatValue(result, 'recoilHorizontal'),
+    labelKey: 'config.priorityAttribute.recoil',
+    getValue: result => getPriorityStatValue(result, 'recoilModifier'),
   }),
   ergonomics: Object.freeze({
     direction: 'maximize',
@@ -52,7 +52,10 @@ export function normalizePriorityAttributes(value) {
   if (!Array.isArray(value)) return [];
 
   const selected = [];
-  for (const attribute of value) {
+  for (const rawAttribute of value) {
+    const attribute = LEGACY_RECOIL_PRIORITY_ATTRIBUTES.has(rawAttribute)
+      ? 'recoil'
+      : rawAttribute;
     if (
       !CUSTOM_PRIORITY_ATTRIBUTE_KEYS.includes(attribute)
       || selected.includes(attribute)

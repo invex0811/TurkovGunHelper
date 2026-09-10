@@ -20,7 +20,7 @@ test('calculator worker forwards characteristic mode and the shared maxPrice opt
       weight: 0.1,
       avg24hPrice: 1_000,
       ergonomicsModifier: 10,
-      recoilModifier: 0,
+      recoilModifier: -12.5,
       categories: [],
       conflictingItems: [],
       properties: { slots: [] },
@@ -68,7 +68,7 @@ test('calculator worker forwards characteristic mode and the shared maxPrice opt
         targetType: 'custom',
         customProfile,
         customExactTargets: { ergonomics: true },
-        priorityAttributes: ['ergonomics', 'ergonomics', 'price', 'weight', 'verticalRecoil'],
+        priorityAttributes: ['ergonomics', 'recoil', 'weight'],
         options: {},
       },
     });
@@ -81,7 +81,7 @@ test('calculator worker forwards characteristic mode and the shared maxPrice opt
         targetType: 'custom',
         customProfile,
         customExactTargets: { ergonomics: true },
-        priorityAttributes: ['ergonomics'],
+        priorityAttributes: ['recoil', 'ergonomics', 'weight'],
         characteristicMode: 'priorities',
         options: { maxPrice: 0 },
       },
@@ -102,6 +102,7 @@ test('calculator worker forwards characteristic mode and the shared maxPrice opt
     assert.equal(messages[0].result.errorCode, 'CUSTOM_EXACT_TARGETS_UNMET');
     assert.equal(messages[1].requestId, 3);
     assert.equal(messages[1].result.error, undefined);
+    assert.equal(messages[1].result.stats.recoilModifier, -12.5);
     assert.equal(messages[2].requestId, 2);
     assert.equal(messages[2].result.error, undefined);
     assert.equal(messages[2].result.stats.accuracyMoa, 0.34);

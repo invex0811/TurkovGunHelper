@@ -162,8 +162,7 @@ test('export migrates a legacy priority budget to the shared maximum price', () 
   assert.deepEqual(parsed.builds[0].settings.priorityAttributes, [
     'weight',
     'ergonomics',
-    'verticalRecoil',
-    'horizontalRecoil',
+    'recoil',
   ]);
   assert.equal(parsed.builds[0].settings.characteristicMode, 'priorities');
   assert.equal(parsed.builds[0].settings.sharedMaxPrice, 250000);
