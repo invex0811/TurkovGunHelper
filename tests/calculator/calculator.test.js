@@ -54,6 +54,7 @@ function assertStatsMatchParts(result) {
   ).value;
 
   assert.equal(result.stats.ergonomics, Math.min(100, Math.round(totalErgo)));
+  assert.equal(result.stats.recoilModifier, totalRecoilMod);
   assert.equal(result.stats.recoilVertical, Math.round(weapon.properties.recoilVertical * (1 + totalRecoilMod / 100)));
   assert.equal(result.stats.recoilHorizontal, Math.round(weapon.properties.recoilHorizontal * (1 + totalRecoilMod / 100)));
   assert.equal(result.stats.weight, totalWeight.toFixed(2));
@@ -252,6 +253,7 @@ test('legacy Custom calculation keeps its established fixture result', () => {
   ]);
   assert.deepEqual(result.stats, {
     ergonomics: 54,
+    recoilModifier: -59.2,
     recoilVertical: 49,
     recoilHorizontal: 140,
     weight: '4.24',
@@ -2524,6 +2526,7 @@ test('recalculateBuildStats should correctly sum ergonomics, recoil, weight and 
   const result = recalculateBuildStats(testWeapon, buildParts);
 
   assert.equal(result.stats.ergonomics, 53);
+  assert.equal(result.stats.recoilModifier, -8);
   assert.equal(result.stats.recoilVertical, 92);
   assert.equal(result.stats.recoilHorizontal, 92);
   assert.equal(result.stats.weight, '2.50');

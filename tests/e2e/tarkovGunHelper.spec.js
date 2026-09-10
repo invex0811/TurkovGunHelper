@@ -138,6 +138,19 @@ test('build goal modes preserve their state and calculator settings', async ({ p
   await expect(config.getByRole('searchbox', { name: 'Must Include Modules' })).toBeVisible();
   await expectGenerateButtonGreen();
 
+  const metaWeightFields = config.locator('[data-build-goal="meta"] .limit-fields--single');
+  const metaMaxWeight = metaWeightFields.getByRole('spinbutton', {
+    name: 'Max Weight (kg)',
+    exact: true,
+  });
+  const [metaWeightFieldsBox, metaMaxWeightBox] = await Promise.all([
+    metaWeightFields.boundingBox(),
+    metaMaxWeight.boundingBox(),
+  ]);
+  expect(metaWeightFieldsBox).not.toBeNull();
+  expect(metaMaxWeightBox).not.toBeNull();
+  expect(Math.abs(metaWeightFieldsBox.width - metaMaxWeightBox.width)).toBeLessThan(2);
+
   const metaMaxPrice = config.locator('[data-build-goal="meta"]').getByRole('spinbutton', {
     name: 'Maximum price',
     exact: true,
@@ -213,6 +226,12 @@ test('build goal modes preserve their state and calculator settings', async ({ p
   await expectGenerateButtonGreen();
   await expect(characteristicSettings).toHaveCount(0);
   const prioritiesPanel = config.locator('[data-build-goal="priorities"]');
+  await expect(prioritiesPanel.locator('.custom-priority-attributes__count')).toHaveText('0/3');
+  const priorityChoices = prioritiesPanel.locator('.custom-priority-attributes__choices')
+    .getByRole('button');
+  await expect(priorityChoices).toHaveCount(3);
+  await expect(prioritiesPanel.getByRole('button', { name: 'Vertical recoil', exact: true })).toHaveCount(0);
+  await expect(prioritiesPanel.getByRole('button', { name: 'Horizontal recoil', exact: true })).toHaveCount(0);
   const priorityMaxPrice = prioritiesPanel.getByRole('spinbutton', {
     name: 'Maximum price',
     exact: true,
@@ -222,33 +241,34 @@ test('build goal modes preserve their state and calculator settings', async ({ p
   await priorityMaxPrice.press('Enter');
   await expect(priorityMaxPrice).toHaveValue('250000');
 
-  const verticalRecoil = prioritiesPanel.getByRole('button', { name: 'Vertical recoil', exact: true });
-  const horizontalRecoil = prioritiesPanel.getByRole('button', { name: 'Horizontal recoil', exact: true });
+  const recoil = prioritiesPanel.getByRole('button', { name: 'Recoil', exact: true });
   const ergonomics = prioritiesPanel.getByRole('button', { name: 'Ergonomics', exact: true });
   const weight = prioritiesPanel.getByRole('button', { name: 'Weight', exact: true });
   await ergonomics.click();
-  await verticalRecoil.click();
-  await horizontalRecoil.click();
-  await expect(prioritiesPanel.locator('.custom-priority-attributes__count')).toHaveText('3/4');
+  await recoil.click();
+  await weight.click();
+  await expect(prioritiesPanel.locator('.custom-priority-attributes__count')).toHaveText('3/3');
   await expect(prioritiesPanel.locator('.custom-priority-attributes__item').nth(0))
     .toContainText('Rank 1Ergonomics');
   await expect(prioritiesPanel.locator('.custom-priority-attributes__item').nth(1))
-    .toContainText('Rank 2Vertical recoil');
+    .toContainText('Rank 2Recoil');
+  await expect(prioritiesPanel.locator('.custom-priority-attributes__item').nth(2))
+    .toContainText('Rank 3Weight');
   await expect(prioritiesPanel.locator('.custom-priority-attributes__selected')).not.toContainText('%');
 
-  await weight.click();
-  await expect(weight).toHaveAttribute('aria-pressed', 'true');
-  await expect(prioritiesPanel.locator('.custom-priority-attributes__count')).toHaveText('4/4');
+  await prioritiesPanel.getByRole('button', { name: 'Move Recoil up', exact: true }).click();
   await expect(prioritiesPanel.locator('.custom-priority-attributes__item').nth(0))
-    .toContainText('Rank 1Ergonomics');
-  await expect(prioritiesPanel.locator('.custom-priority-attributes__item').nth(3))
-    .toContainText('Rank 4Weight');
-  await prioritiesPanel.getByRole('button', { name: 'Move Vertical recoil up', exact: true }).click();
-  await expect(prioritiesPanel.locator('.custom-priority-attributes__item').nth(0))
-    .toContainText('Rank 1Vertical recoil');
+    .toContainText('Rank 1Recoil');
   await expect(prioritiesPanel.locator('.custom-priority-attributes__item').nth(1))
     .toContainText('Rank 2Ergonomics');
-  await expect(prioritiesPanel.getByRole('button', { name: 'Move Vertical recoil up', exact: true })).toBeDisabled();
+  await prioritiesPanel.getByRole('button', { name: 'Move Recoil down', exact: true }).click();
+  await expect(prioritiesPanel.locator('.custom-priority-attributes__item').nth(0))
+    .toContainText('Rank 1Ergonomics');
+  await prioritiesPanel.getByRole('button', { name: 'Remove Weight priority', exact: true }).click();
+  await expect(prioritiesPanel.locator('.custom-priority-attributes__count')).toHaveText('2/3');
+  await weight.click();
+  await expect(prioritiesPanel.locator('.custom-priority-attributes__item').nth(2))
+    .toContainText('Rank 3Weight');
   await expect(prioritiesPanel.getByRole('button', { name: 'Move Weight down', exact: true })).toBeDisabled();
   await expect(config.locator('.required-module').filter({ hasText: 'Alternative Grip' })).toBeVisible();
   await expect(config.getByRole('button', { name: 'Forbid', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -267,12 +287,11 @@ test('build goal modes preserve their state and calculator settings', async ({ p
 
   await prioritiesButton.click();
   await expect(priorityMaxPrice).toHaveValue('250000');
-  await expect(verticalRecoil).toHaveAttribute('aria-pressed', 'true');
+  await expect(recoil).toHaveAttribute('aria-pressed', 'true');
   await expect(ergonomics).toHaveAttribute('aria-pressed', 'true');
-  await expect(horizontalRecoil).toHaveAttribute('aria-pressed', 'true');
   await expect(weight).toHaveAttribute('aria-pressed', 'true');
   await expect(prioritiesPanel.locator('.custom-priority-attributes__item').nth(0))
-    .toContainText('Rank 1Vertical recoil');
+    .toContainText('Rank 1Ergonomics');
 
   await page.getByRole('button', { name: 'Generate Build', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Save build', exact: true })).toBeVisible();
@@ -333,9 +352,8 @@ test('build goal modes preserve their state and calculator settings', async ({ p
   expect(savedSettings.targetType).toBe('custom');
   expect(savedSettings.characteristicMode).toBe('priorities');
   expect(savedSettings.priorityAttributes).toEqual([
-    'verticalRecoil',
     'ergonomics',
-    'horizontalRecoil',
+    'recoil',
     'weight',
   ]);
   expect(savedSettings.sharedMaxPrice).toBe(250000);
@@ -353,12 +371,12 @@ test('build goal modes preserve their state and calculator settings', async ({ p
     name: 'Maximum price',
     exact: true,
   })).toHaveValue('250000');
-  await expect(page.getByRole('button', { name: 'Horizontal recoil', exact: true }))
+  await expect(page.getByRole('button', { name: 'Recoil', exact: true }))
     .toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('button', { name: 'Weight', exact: true }))
     .toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.custom-priority-attributes__item').nth(0))
-    .toContainText('Rank 1Vertical recoil');
+    .toContainText('Rank 1Ergonomics');
   await expect(page.locator('.required-module').filter({ hasText: 'Alternative Grip' })).toBeVisible();
 });
 
