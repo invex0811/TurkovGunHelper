@@ -370,6 +370,7 @@ export function calculateBestBuild(
       build: [],
       stats: {
         ergonomics: weapon.properties?.ergonomics ?? 0,
+        recoilModifier: 0,
         recoilVertical: weapon.properties?.recoilVertical ?? 0,
         recoilHorizontal: weapon.properties?.recoilHorizontal ?? 0,
         weight: Number(weapon.weight || 0).toFixed(2),
@@ -414,6 +415,7 @@ export function calculateBestBuild(
         build: [],
         stats: {
           ergonomics: weapon.properties?.ergonomics ?? 0,
+          recoilModifier: 0,
           recoilVertical: weapon.properties?.recoilVertical ?? 0,
           recoilHorizontal: weapon.properties?.recoilHorizontal ?? 0,
           weight: Number(weapon.weight || 0).toFixed(2),
@@ -437,6 +439,7 @@ export function calculateBestBuild(
       build: [],
       stats: {
         ergonomics: weapon.properties?.ergonomics ?? 0,
+        recoilModifier: 0,
         recoilVertical: weapon.properties?.recoilVertical ?? 0,
         recoilHorizontal: weapon.properties?.recoilHorizontal ?? 0,
         weight: Number(weapon.weight || 0).toFixed(2),

@@ -787,6 +787,7 @@ export function _calculateWeighted(
     build,
     stats: {
       ergonomics: Math.min(100, Math.round(totalErgo)),
+      recoilModifier: totalRecoilMod,
       recoilVertical: Math.round(finalRecoilV),
       recoilHorizontal: Math.round(finalRecoilH),
       weight: totalWeight.toFixed(2),
