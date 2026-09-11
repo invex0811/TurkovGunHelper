@@ -156,6 +156,8 @@ export function createBuildCalculationWorkerLifecycle({
         customExactTargets: calculationInput.customExactTargets,
         priorityAttributes: calculationInput.priorityAttributes,
         characteristicMode: calculationInput.characteristicMode,
+        prioritySelectionMode: calculationInput.prioritySelectionMode,
+        priorityWeights: calculationInput.priorityWeights,
         options: calculationInput.options,
       });
     } catch (error) {

@@ -16,7 +16,10 @@ import {
   meetsNonExactRequirements,
 } from './constraints.js';
 import { generatePriorityCandidates } from './priorityCandidates.js';
-import { selectCustomPriorityCandidate } from './prioritySelection.js';
+import {
+  selectCustomPriorityCandidate,
+  selectWeightedCustomPriorityCandidate,
+} from './prioritySelection.js';
 import {
   getBuildTieKey,
   getCustomScore,
@@ -26,6 +29,9 @@ import {
 import {
   normalizeCustomCharacteristicMode,
   normalizePriorityAttributes,
+  normalizePrioritySelectionMode,
+  normalizePriorityWeights,
+  PRIORITY_SELECTION_MODES,
 } from '../customPriorityAttributes.js';
 
 export function calculateBestBuild(
@@ -39,6 +45,8 @@ export function calculateBestBuild(
   customExactTargets = null,
   priorityAttributes = [],
   characteristicMode = 'constraints',
+  prioritySelectionMode = 'ordered',
+  priorityWeights = undefined,
 ) {
   const calculationCache = createCalculationCache();
   const effectiveTargetType = targetType === 'custom'
@@ -150,6 +158,8 @@ export function calculateBestBuild(
   const normalizedCharacteristicMode = normalizeCustomCharacteristicMode(characteristicMode);
   const isPriorityMode = normalizedCharacteristicMode === 'priorities';
   const normalizedPriorityAttributes = normalizePriorityAttributes(priorityAttributes);
+  const normalizedPrioritySelectionMode = normalizePrioritySelectionMode(prioritySelectionMode);
+  const normalizedPriorityWeights = normalizePriorityWeights(priorityWeights);
   const hasCustomProfile = Boolean(customProfile && typeof customProfile === 'object');
   const normalizedExactTargets = normalizeCustomExactTargets(customExactTargets);
   const hasExactTargets = !isPriorityMode
@@ -308,10 +318,15 @@ export function calculateBestBuild(
     firstCalculationError ||= priorityCandidates.firstCalculationError;
     successfulCalculationCount += priorityCandidates.successfulCalculationCount;
 
-    const selectedPriorityCandidate = selectCustomPriorityCandidate(
-      priorityCandidates.candidates,
-      normalizedPriorityAttributes,
-    );
+    const selectedPriorityCandidate = normalizedPrioritySelectionMode === PRIORITY_SELECTION_MODES.WEIGHTED
+      ? selectWeightedCustomPriorityCandidate(
+        priorityCandidates.candidates,
+        normalizedPriorityWeights,
+      )
+      : selectCustomPriorityCandidate(
+        priorityCandidates.candidates,
+        normalizedPriorityAttributes,
+      );
     if (selectedPriorityCandidate) return selectedPriorityCandidate.result;
   } else for (let i = 0; i <= 20; i++) {
     const ergoWeight = i / 20;

@@ -5,12 +5,16 @@ import {
   CUSTOM_PRIORITY_ATTRIBUTE_KEYS,
   CUSTOM_PRIORITY_FLOAT_EPSILON,
   CUSTOM_PRIORITY_RANK_TOLERANCE,
+  DEFAULT_PRIORITY_WEIGHTS,
   getCustomPriorityBounds,
   getCustomPriorityVector,
   getCustomPriorityVectorFromBounds,
   movePriorityAttribute,
   normalizeCustomCharacteristicMode,
   normalizePriorityAttributes,
+  normalizePrioritySelectionMode,
+  normalizePriorityWeights,
+  PRIORITY_SELECTION_MODES,
   togglePriorityAttribute,
 } from '../../src/domain/customPriorityAttributes.js';
 
@@ -58,6 +62,19 @@ test('characteristic mode safely normalizes legacy values', () => {
   assert.equal(normalizeCustomCharacteristicMode(), 'constraints');
   assert.equal(normalizeCustomCharacteristicMode('invalid'), 'constraints');
   assert.equal(normalizeCustomCharacteristicMode('priorities'), 'priorities');
+});
+
+test('priority selection mode and weights safely normalize raw and legacy values', () => {
+  assert.equal(normalizePrioritySelectionMode(), PRIORITY_SELECTION_MODES.ORDERED);
+  assert.equal(normalizePrioritySelectionMode('unknown'), PRIORITY_SELECTION_MODES.ORDERED);
+  assert.equal(normalizePrioritySelectionMode('weighted'), PRIORITY_SELECTION_MODES.WEIGHTED);
+  assert.deepEqual(normalizePriorityWeights(), DEFAULT_PRIORITY_WEIGHTS);
+  assert.deepEqual(normalizePriorityWeights({
+    recoil: '80', ergonomics: Number.POSITIVE_INFINITY, weight: -10,
+  }), { recoil: 80, ergonomics: 30, weight: 0 });
+  assert.deepEqual(normalizePriorityWeights({ recoil: 200, ergonomics: '40.5', weight: Number.NaN }), {
+    recoil: 100, ergonomics: 40.5, weight: 20,
+  });
 });
 
 test('recoil priority uses exact aggregate recoilModifier rather than rounded vertical or horizontal recoil', () => {

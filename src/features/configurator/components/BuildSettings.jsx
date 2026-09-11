@@ -4,6 +4,7 @@ import AsyncImage from '../../../ui/AsyncImage.jsx';
 import {
   CUSTOM_PRIORITY_ATTRIBUTE_KEYS,
   CUSTOM_PRIORITY_ATTRIBUTE_METADATA,
+  PRIORITY_SELECTION_MODES,
 } from '../../../domain/customPriorityAttributes.js';
 import {
   BUILD_GOAL_MODES,
@@ -66,20 +67,24 @@ function ModuleRow({ view, action, actionLabel, onAction }) {
   );
 }
 
-function PrioritySelector({ onMove, onToggle, priorityAttributes, t }) {
+function PrioritySelector({ onMove, onToggle, priorityAttributes, showHeader = true, t }) {
   return (
-    <section className="custom-priority-attributes" aria-labelledby="customPriorityAttributesLabel">
-      <div className="custom-priority-attributes__head">
-        <div>
-          <h3 id="customPriorityAttributesLabel" className="field-label">
-            {t('config.priorityAttributes')}
-          </h3>
-          <p className="field-help">{t('config.choosePriorityAttributes')}</p>
-        </div>
-        <span className="custom-priority-attributes__count" aria-hidden="true">
-          {t('config.priorityAttributesCount', { count: priorityAttributes.length })}
-        </span>
-      </div>
+    <div className="custom-priority-attributes__selector">
+      {showHeader && (
+        <>
+          <div className="custom-priority-attributes__head">
+            <div>
+              <h3 id="customPriorityAttributesLabel" className="field-label">
+                {t('config.priorityAttributes')}
+              </h3>
+              <p className="field-help">{t('config.choosePriorityAttributes')}</p>
+            </div>
+            <span className="custom-priority-attributes__count" aria-hidden="true">
+              {t('config.priorityAttributesCount', { count: priorityAttributes.length })}
+            </span>
+          </div>
+        </>
+      )}
       <span className="visually-hidden" aria-live="polite" aria-atomic="true">
         {t('config.priorityAttributesAnnouncement', { count: priorityAttributes.length })}
       </span>
@@ -140,6 +145,116 @@ function PrioritySelector({ onMove, onToggle, priorityAttributes, t }) {
             );
           })}
         </ol>
+      )}
+    </div>
+  );
+}
+
+function getPriorityWeightTotal(priorityWeights) {
+  return CUSTOM_PRIORITY_ATTRIBUTE_KEYS.reduce((total, attribute) => {
+    const value = priorityWeights?.[attribute];
+    if (value == null || String(value).trim() === '') return Number.NaN;
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? total + numericValue : Number.NaN;
+  }, 0);
+}
+
+function hasPriorityWeightsInRange(priorityWeights) {
+  return CUSTOM_PRIORITY_ATTRIBUTE_KEYS.every(attribute => {
+    const value = priorityWeights?.[attribute];
+    if (value == null || String(value).trim() === '') return false;
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) && numericValue >= 0 && numericValue <= 100;
+  });
+}
+
+function PrioritySelectionSettings({
+  onPriorityAttributeMove,
+  onPriorityAttributeToggle,
+  onPrioritySelectionModeChange,
+  onPriorityWeightChange,
+  priorityAttributes,
+  prioritySelectionMode,
+  priorityWeights,
+  t,
+}) {
+  const isWeighted = prioritySelectionMode === PRIORITY_SELECTION_MODES.WEIGHTED;
+  const total = getPriorityWeightTotal(priorityWeights);
+  const hasValidTotal = total === 100 && hasPriorityWeightsInRange(priorityWeights);
+  const priorityWeightValidationId = 'priorityWeightValidation';
+
+  return (
+    <section className="custom-priority-attributes" aria-labelledby="customPriorityAttributesLabel">
+      <div className="custom-priority-attributes__head">
+        <div>
+          <h3 id="customPriorityAttributesLabel" className="field-label">
+            {t('config.priorityAttributes')}
+          </h3>
+          {!isWeighted && <p className="field-help">{t('config.choosePriorityAttributes')}</p>}
+        </div>
+        {!isWeighted && (
+          <span className="custom-priority-attributes__count" aria-hidden="true">
+            {t('config.priorityAttributesCount', { count: priorityAttributes.length })}
+          </span>
+        )}
+      </div>
+      <div className="segmented" role="group" aria-label={t('config.priorityAttributes')}>
+        {[PRIORITY_SELECTION_MODES.ORDERED, PRIORITY_SELECTION_MODES.WEIGHTED].map(mode => (
+          <button
+            key={mode}
+            className={`segmented__btn ${prioritySelectionMode === mode ? 'is-active' : ''}`}
+            type="button"
+            aria-pressed={prioritySelectionMode === mode}
+            onClick={() => onPrioritySelectionModeChange(mode)}
+          >
+            {t(`config.prioritySelectionMode.${mode}`)}
+          </button>
+        ))}
+      </div>
+      {isWeighted ? (
+        <div className="priority-weights">
+          <span className="visually-hidden" aria-live="polite" aria-atomic="true">
+            {Number.isFinite(total) ? t('config.priorityWeightTotal', { total }) : t('config.priorityWeightInvalid')}
+          </span>
+          {CUSTOM_PRIORITY_ATTRIBUTE_KEYS.map(attribute => {
+            const label = t(CUSTOM_PRIORITY_ATTRIBUTE_METADATA[attribute].labelKey);
+            return (
+              <label key={attribute} className="priority-weights__field">
+                <span>{label}</span>
+                <span className="priority-weights__control">
+                  <input
+                    aria-label={label}
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={priorityWeights?.[attribute] ?? ''}
+                    onChange={event => onPriorityWeightChange(attribute, event.target.value)}
+                    aria-invalid={hasValidTotal ? undefined : true}
+                    aria-describedby={hasValidTotal ? undefined : priorityWeightValidationId}
+                  />
+                  <span aria-hidden="true">%</span>
+                </span>
+              </label>
+            );
+          })}
+          <p className={`priority-weights__total ${hasValidTotal ? '' : 'is-invalid'}`.trim()}>
+            {Number.isFinite(total) ? t('config.priorityWeightTotal', { total }) : t('config.priorityWeightTotal', { total: '—' })}
+          </p>
+          {!hasValidTotal && (
+            <p id={priorityWeightValidationId} className="priority-weights__error">
+              {t('config.priorityWeightInvalid')}
+            </p>
+          )}
+        </div>
+      ) : (
+        <PrioritySelector
+          priorityAttributes={priorityAttributes}
+          onMove={onPriorityAttributeMove}
+          onToggle={onPriorityAttributeToggle}
+          showHeader={false}
+          t={t}
+        />
       )}
     </section>
   );
@@ -472,7 +587,7 @@ function RequiredModulesSection({
   );
 }
 
-function GenerateSection({ generating, onGenerate, t }) {
+function GenerateSection({ disabled = false, generating, onGenerate, t }) {
   return (
     <section className="config__section">
       <button
@@ -480,7 +595,7 @@ function GenerateSection({ generating, onGenerate, t }) {
         type="button"
         style={{ width: '100%' }}
         onClick={onGenerate}
-        disabled={generating}
+        disabled={generating || disabled}
       >
         {generating ? t('config.calculating') : t('config.generateBuild')}
       </button>
@@ -516,9 +631,13 @@ export default function BuildSettings(props) {
     onMaxWeightChange,
     onPriorityAttributeToggle,
     onPriorityAttributeMove,
+    onPrioritySelectionModeChange,
+    onPriorityWeightChange,
     onRemoveModule,
     onRequiredModuleSearchChange,
     priorityAttributes,
+    prioritySelectionMode,
+    priorityWeights,
     requiredModuleSearch,
     scopeItemId,
     scopeItems,
@@ -622,8 +741,12 @@ export default function BuildSettings(props) {
       t={t}
     />
   );
+  const priorityWeightTotal = getPriorityWeightTotal(priorityWeights);
+  const priorityWeightsInvalid = activeBuildGoalMode === BUILD_GOAL_MODES.PRIORITIES
+    && prioritySelectionMode === PRIORITY_SELECTION_MODES.WEIGHTED
+    && (priorityWeightTotal !== 100 || !hasPriorityWeightsInRange(priorityWeights));
   const generateSection = (
-    <GenerateSection generating={generating} onGenerate={onGenerate} t={t} />
+    <GenerateSection disabled={priorityWeightsInvalid} generating={generating} onGenerate={onGenerate} t={t} />
   );
 
   return (
@@ -711,10 +834,14 @@ export default function BuildSettings(props) {
       {activeBuildGoalMode === BUILD_GOAL_MODES.PRIORITIES && (
         <div className="config__mode" data-build-goal="priorities">
           <section className="config__section">
-            <PrioritySelector
+            <PrioritySelectionSettings
               priorityAttributes={priorityAttributes}
-              onMove={onPriorityAttributeMove}
-              onToggle={onPriorityAttributeToggle}
+              prioritySelectionMode={prioritySelectionMode}
+              priorityWeights={priorityWeights}
+              onPriorityAttributeMove={onPriorityAttributeMove}
+              onPriorityAttributeToggle={onPriorityAttributeToggle}
+              onPrioritySelectionModeChange={onPrioritySelectionModeChange}
+              onPriorityWeightChange={onPriorityWeightChange}
               t={t}
             />
           </section>

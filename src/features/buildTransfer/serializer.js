@@ -7,6 +7,8 @@ import { buildWeaponAssemblyTree } from '../../domain/weaponAssembly.js';
 import {
   normalizeCustomCharacteristicMode,
   normalizePriorityAttributes,
+  normalizePrioritySelectionMode,
+  normalizePriorityWeights,
 } from '../../domain/customPriorityAttributes.js';
 import {
   migrateSharedMaxPriceSettings,
@@ -19,6 +21,8 @@ const EXPORTED_SETTING_KEYS = [
   'customExactTargets',
   'characteristicMode',
   'priorityAttributes',
+  'prioritySelectionMode',
+  'priorityWeights',
   'sharedMaxPrice',
   'priorityMaxPrice',
   'customErgonomics',
@@ -63,13 +67,21 @@ function copyExportedSettings(settings = {}) {
 
   return Object.fromEntries(
     EXPORTED_SETTING_KEYS
-      .filter(key => Object.hasOwn(source, key))
+      .filter(key => (
+        Object.hasOwn(source, key)
+        || key === 'prioritySelectionMode'
+        || key === 'priorityWeights'
+      ))
       .map(key => [
         key,
         key === 'characteristicMode'
           ? normalizeCustomCharacteristicMode(source[key])
           : key === 'priorityAttributes'
             ? normalizePriorityAttributes(source[key])
+            : key === 'prioritySelectionMode'
+              ? normalizePrioritySelectionMode(source[key])
+              : key === 'priorityWeights'
+                ? normalizePriorityWeights(source[key])
             : ['sharedMaxPrice', 'customMaxPrice', 'maxPrice', 'priorityMaxPrice'].includes(key)
               ? normalizeBuildMaxPrice(source[key])
               : structuredClone(source[key]),

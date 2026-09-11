@@ -37,6 +37,38 @@ export const CUSTOM_PRIORITY_ATTRIBUTE_METADATA = Object.freeze({
 export const CUSTOM_PRIORITY_FLOAT_EPSILON = 1e-9;
 export const CUSTOM_PRIORITY_RANK_TOLERANCE = 0.10;
 
+export const PRIORITY_SELECTION_MODES = Object.freeze({
+  ORDERED: 'ordered',
+  WEIGHTED: 'weighted',
+});
+
+export const DEFAULT_PRIORITY_WEIGHTS = Object.freeze({
+  recoil: 50,
+  ergonomics: 30,
+  weight: 20,
+});
+
+export function normalizePrioritySelectionMode(value) {
+  return value === PRIORITY_SELECTION_MODES.WEIGHTED
+    ? PRIORITY_SELECTION_MODES.WEIGHTED
+    : PRIORITY_SELECTION_MODES.ORDERED;
+}
+
+function normalizePriorityWeight(value, fallback) {
+  if (value == null || (typeof value === 'string' && value.trim() === '')) return fallback;
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return fallback;
+  return Math.min(100, Math.max(0, numericValue));
+}
+
+export function normalizePriorityWeights(value) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  return Object.fromEntries(CUSTOM_PRIORITY_ATTRIBUTE_KEYS.map(attribute => [
+    attribute,
+    normalizePriorityWeight(source[attribute], DEFAULT_PRIORITY_WEIGHTS[attribute]),
+  ]));
+}
+
 export const CUSTOM_CHARACTERISTIC_MODES = Object.freeze({
   CONSTRAINTS: 'constraints',
   PRIORITIES: 'priorities',
