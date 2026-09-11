@@ -4,9 +4,47 @@ import {
   BUILD_GAME_MODES,
   BUILD_IMPORT_LIMITS,
 } from './constants.js';
-import { normalizePriorityAttributes } from '../../domain/customPriorityAttributes.js';
+import {
+  normalizePriorityAttributes,
+  normalizePrioritySelectionMode,
+  normalizePriorityWeights,
+} from '../../domain/customPriorityAttributes.js';
 
 const DANGEROUS_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+const ALLOWED_SETTING_KEYS = new Set([
+  'targetType',
+  'customProfile',
+  'customExactTargets',
+  'characteristicMode',
+  'priorityAttributes',
+  'prioritySelectionMode',
+  'priorityWeights',
+  'sharedMaxPrice',
+  'priorityMaxPrice',
+  'customErgonomics',
+  'customVerticalRecoil',
+  'customHorizontalRecoil',
+  'customMaxWeight',
+  'customMaxPrice',
+  'customErgo',
+  'customRecoil',
+  'suppressorMode',
+  'includeTraderPrices',
+  'strictTraderLevels',
+  'traderLevelsSnapshot',
+  'maxWeight',
+  'maxPrice',
+  'magazineCapacity',
+  'includeLaser',
+  'includeFlashlight',
+  'flashlightItemId',
+  'tblItemId',
+  'scopeMode',
+  'scopeItemId',
+  'scopeZoom',
+  'sightMode',
+  'requiredModuleIds',
+]);
 
 export class BuildImportError extends Error {
   constructor(message, code, details = {}) {
@@ -79,7 +117,11 @@ function copyNode(node) {
 function copySettings(settings) {
   if (settings === undefined) return {};
   if (!isRecord(settings)) fail('Build settings must be an object.', 'INVALID_SETTINGS');
-  return structuredClone(settings);
+  return Object.fromEntries(
+    Object.entries(settings)
+      .filter(([key]) => ALLOWED_SETTING_KEYS.has(key))
+      .map(([key, value]) => [key, structuredClone(value)]),
+  );
 }
 
 function copyOwnedItems(ownedItems) {
@@ -131,6 +173,8 @@ export function parseVersion1BuildExport(data) {
         ...(Object.hasOwn(build.settings || {}, 'priorityAttributes')
           ? { priorityAttributes: normalizePriorityAttributes(build.settings.priorityAttributes) }
           : {}),
+        prioritySelectionMode: normalizePrioritySelectionMode(build.settings?.prioritySelectionMode),
+        priorityWeights: normalizePriorityWeights(build.settings?.priorityWeights),
       },
       ownedItems: copyOwnedItems(build.ownedItems),
       configuration: copyNode(build.configuration),

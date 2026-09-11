@@ -380,6 +380,68 @@ test('build goal modes preserve their state and calculator settings', async ({ p
   await expect(page.locator('.required-module').filter({ hasText: 'Alternative Grip' })).toBeVisible();
 });
 
+test('Priority custom values validate, preserve values, and save weighted settings', async ({ page }) => {
+  await createBuild(page);
+  const config = page.locator('.config');
+  await config.getByRole('group', { name: 'Build Goal' })
+    .getByRole('button', { name: 'By priorities', exact: true }).click();
+  const prioritiesPanel = config.locator('[data-build-goal="priorities"]');
+  await expect(prioritiesPanel.locator('.custom-priority-attributes__selector .visually-hidden'))
+    .toHaveText('Selected priority attributes: 0 of 3.');
+  await prioritiesPanel.getByRole('button', { name: 'Custom values', exact: true }).click();
+
+  const recoil = prioritiesPanel.getByRole('spinbutton', { name: 'Recoil', exact: true });
+  const ergonomics = prioritiesPanel.getByRole('spinbutton', { name: 'Ergonomics', exact: true });
+  const weight = prioritiesPanel.getByRole('spinbutton', { name: 'Weight', exact: true });
+  const generate = prioritiesPanel.getByRole('button', { name: 'Generate Build', exact: true });
+  await expect(recoil).toHaveValue('50');
+  await expect(ergonomics).toHaveValue('30');
+  await expect(weight).toHaveValue('20');
+  await expect(prioritiesPanel.locator('.priority-weights__total')).toHaveText('Total: 100%');
+
+  await recoil.fill('80');
+  await ergonomics.fill('20');
+  await weight.fill('20');
+  await expect(prioritiesPanel.locator('.priority-weights__total')).toHaveText('Total: 120%');
+  await expect(prioritiesPanel.locator('.priority-weights__error')).toHaveText('Priority values must total 100%.');
+  await expect(prioritiesPanel.locator('#priorityWeightValidation')).toHaveText('Priority values must total 100%.');
+  for (const input of [recoil, ergonomics, weight]) {
+    await expect(input).toHaveAttribute('aria-invalid', 'true');
+    await expect(input).toHaveAttribute('aria-describedby', 'priorityWeightValidation');
+  }
+  await expect(generate).toBeDisabled();
+
+  await ergonomics.fill('10');
+  await weight.fill('10');
+  await expect(prioritiesPanel.locator('.priority-weights__total')).toHaveText('Total: 100%');
+  await expect(prioritiesPanel.locator('#priorityWeightValidation')).toHaveCount(0);
+  for (const input of [recoil, ergonomics, weight]) {
+    await expect(input).not.toHaveAttribute('aria-invalid');
+    await expect(input).not.toHaveAttribute('aria-describedby');
+  }
+  await expect(generate).toBeEnabled();
+  await prioritiesPanel.getByRole('button', { name: 'By order', exact: true }).click();
+  await expect(prioritiesPanel.locator('.custom-priority-attributes__choices')).toBeVisible();
+  await prioritiesPanel.getByRole('button', { name: 'Custom values', exact: true }).click();
+  await expect(recoil).toHaveValue('80');
+  await expect(ergonomics).toHaveValue('10');
+  await expect(weight).toHaveValue('10');
+
+  await saveBuild(page, 'Weighted priority build');
+  const settings = await page.evaluate(savedBuildsKey => (
+    JSON.parse(localStorage.getItem(savedBuildsKey))[0].settings
+  ), SAVED_BUILDS_KEY);
+  expect(settings.prioritySelectionMode).toBe('weighted');
+  expect(settings.priorityWeights).toEqual({ recoil: 80, ergonomics: 10, weight: 10 });
+
+  await openSavedBuild(page, 'Weighted priority build');
+  await expect(page.getByRole('button', { name: 'Custom values', exact: true }))
+    .toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('spinbutton', { name: 'Recoil', exact: true })).toHaveValue('80');
+  await expect(page.getByRole('spinbutton', { name: 'Ergonomics', exact: true })).toHaveValue('10');
+  await expect(page.getByRole('spinbutton', { name: 'Weight', exact: true })).toHaveValue('10');
+});
+
 test('keeps loading indicators visible and static when reduced motion is requested', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');

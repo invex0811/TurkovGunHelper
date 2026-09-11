@@ -1,9 +1,11 @@
 import {
+  CUSTOM_PRIORITY_ATTRIBUTE_KEYS,
   CUSTOM_PRIORITY_FLOAT_EPSILON,
   CUSTOM_PRIORITY_RANK_TOLERANCE,
   getCustomPriorityBounds,
   getCustomPriorityVectorFromBounds,
   normalizePriorityAttributes,
+  normalizePriorityWeights,
 } from '../customPriorityAttributes.js';
 import { getBuildTieKey } from './scoring.js';
 
@@ -84,4 +86,56 @@ export function selectCustomPriorityCandidate(candidates, priorityAttributes) {
 
 export function getCustomPrioritySelectionDiagnostics(candidates, priorityAttributes) {
   return selectCustomPriorityCandidateWithDiagnostics(candidates, priorityAttributes).diagnostics;
+}
+
+function selectWeightedCustomPriorityCandidateWithDiagnostics(candidates, priorityWeights) {
+  const originalPool = Array.isArray(candidates) ? [...candidates] : [];
+  const weights = normalizePriorityWeights(priorityWeights);
+  const bounds = getCustomPriorityBounds(
+    originalPool.map(getCandidateResult),
+    CUSTOM_PRIORITY_ATTRIBUTE_KEYS,
+  );
+  const entries = originalPool.map(candidate => {
+    const vector = getCustomPriorityVectorFromBounds(getCandidateResult(candidate), bounds);
+    const weightedScore = vector.reduce(
+      (score, contribution, index) => score + (contribution * (weights[CUSTOM_PRIORITY_ATTRIBUTE_KEYS[index]] / 100)),
+      0,
+    );
+    return Object.freeze({ candidate, vector, weightedScore });
+  });
+  const maximumWeightedScore = entries.length > 0
+    ? Math.max(...entries.map(entry => entry.weightedScore))
+    : 0;
+  const highestScoreEntries = entries.filter(entry => (
+    maximumWeightedScore - entry.weightedScore <= CUSTOM_PRIORITY_FLOAT_EPSILON
+  ));
+  const selectedEntry = [...highestScoreEntries].sort(
+    (left, right) => compareCandidatesByTieBreak(left.candidate, right.candidate),
+  )[0];
+  const selectedVector = Object.fromEntries(CUSTOM_PRIORITY_ATTRIBUTE_KEYS.map((attribute, index) => [
+    attribute,
+    selectedEntry?.vector[index] ?? 0,
+  ]));
+
+  return Object.freeze({
+    candidate: selectedEntry?.candidate ?? null,
+    diagnostics: Object.freeze({
+      mode: 'weighted',
+      weights: Object.freeze({ ...weights }),
+      vector: Object.freeze(selectedVector),
+      weightedScore: selectedEntry?.weightedScore ?? 0,
+    }),
+  });
+}
+
+/**
+ * Select from the complete Priority candidate pool using normalized recoil,
+ * ergonomics, and weight contributions. Price remains a tie-break only.
+ */
+export function selectWeightedCustomPriorityCandidate(candidates, priorityWeights) {
+  return selectWeightedCustomPriorityCandidateWithDiagnostics(candidates, priorityWeights).candidate;
+}
+
+export function getWeightedCustomPrioritySelectionDiagnostics(candidates, priorityWeights) {
+  return selectWeightedCustomPriorityCandidateWithDiagnostics(candidates, priorityWeights).diagnostics;
 }

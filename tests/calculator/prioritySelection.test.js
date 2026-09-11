@@ -4,8 +4,14 @@ import assert from 'node:assert/strict';
 import {
   getCustomPrioritySelectionDiagnostics,
   selectCustomPriorityCandidate,
+  getWeightedCustomPrioritySelectionDiagnostics,
+  selectWeightedCustomPriorityCandidate,
 } from '../../src/domain/calculator/prioritySelection.js';
-import { CUSTOM_PRIORITY_FLOAT_EPSILON } from '../../src/domain/customPriorityAttributes.js';
+import {
+  CUSTOM_PRIORITY_FLOAT_EPSILON,
+  getCustomPriorityBounds,
+  getCustomPriorityVectorFromBounds,
+} from '../../src/domain/customPriorityAttributes.js';
 
 function candidate(id, {
   ergonomics = 50,
@@ -25,6 +31,10 @@ function candidate(id, {
 
 function selectedId(candidates, attributes) {
   return selectCustomPriorityCandidate(candidates, attributes)?.result.build[0].item.id;
+}
+
+function selectedWeightedId(candidates, weights) {
+  return selectWeightedCustomPriorityCandidate(candidates, weights)?.result.build[0].item.id;
 }
 
 test('recoil priority minimizes exact recoilModifier even when rounded recoil displays match', () => {
@@ -155,4 +165,118 @@ test('empty priorities and invalid values remain deterministic', () => {
     true,
   );
   assert.equal(CUSTOM_PRIORITY_FLOAT_EPSILON, 1e-9);
+});
+
+test('weighted selection uses full-pool normalization and changes winner for 80/10/10 versus 40/30/30', () => {
+  const candidates = [
+    candidate('recoil-leader', { recoilModifier: -30, ergonomics: 20, weight: 5 }),
+    candidate('balanced-leader', { recoilModifier: -10, ergonomics: 100, weight: 1 }),
+  ];
+
+  assert.equal(selectedWeightedId(candidates, { recoil: 80, ergonomics: 10, weight: 10 }), 'recoil-leader');
+  assert.equal(selectedWeightedId(candidates, { recoil: 40, ergonomics: 30, weight: 30 }), 'balanced-leader');
+  assert.deepEqual(
+    getWeightedCustomPrioritySelectionDiagnostics(candidates, { recoil: 80, ergonomics: 10, weight: 10 }),
+    {
+      mode: 'weighted',
+      weights: { recoil: 80, ergonomics: 10, weight: 10 },
+      vector: { recoil: 1, ergonomics: 0, weight: 0 },
+      weightedScore: 0.8,
+    },
+  );
+});
+
+test('weighted zeroes ignore an attribute and weighted ties use price then build key independent of order', () => {
+  const candidates = [
+    candidate('z-expensive', { recoilModifier: -30, ergonomics: 20, weight: 10, price: 200 }),
+    candidate('a-cheap', { recoilModifier: -30, ergonomics: 20, weight: 1, price: 100 }),
+    candidate('a-key', { recoilModifier: -30, ergonomics: 20, weight: 5, price: 100 }),
+  ];
+  const weights = { recoil: 100, ergonomics: 0, weight: 0 };
+  const permutations = [candidates, [...candidates].reverse(), [candidates[1], candidates[2], candidates[0]]];
+
+  assert.deepEqual(permutations.map(pool => selectedWeightedId(pool, weights)), [
+    'a-cheap', 'a-cheap', 'a-cheap',
+  ]);
+  assert.equal(
+    getWeightedCustomPrioritySelectionDiagnostics(candidates, weights).weightedScore,
+    1,
+  );
+  const equalPriceCandidates = [
+    candidate('z-key', { recoilModifier: -30, ergonomics: 20, weight: 10, price: 100 }),
+    candidate('a-key', { recoilModifier: -30, ergonomics: 20, weight: 1, price: 100 }),
+  ];
+  assert.equal(selectedWeightedId(equalPriceCandidates, weights), 'a-key');
+});
+
+test('80/20/0 ignores changed weight values without changing weighted score or selection', () => {
+  const heavyWinner = candidate('winner', {
+    recoilModifier: -30, ergonomics: 100, weight: 100, price: 200,
+  });
+  const lightLoser = candidate('loser', {
+    recoilModifier: -10, ergonomics: 0, weight: 1, price: 100,
+  });
+  const weights = { recoil: 80, ergonomics: 20, weight: 0 };
+  const before = getWeightedCustomPrioritySelectionDiagnostics([heavyWinner, lightLoser], weights);
+
+  heavyWinner.result.stats.weight = 1;
+  lightLoser.result.stats.weight = 100;
+  const after = getWeightedCustomPrioritySelectionDiagnostics([heavyWinner, lightLoser], weights);
+
+  assert.equal(selectedWeightedId([heavyWinner, lightLoser], weights), 'winner');
+  assert.equal(before.weightedScore, 1);
+  assert.equal(after.weightedScore, 1);
+});
+
+test('100/0/0 is pure normalized recoil optimization across the complete three-candidate pool', () => {
+  const candidates = [
+    candidate('best-recoil', { recoilModifier: -30, ergonomics: 0, weight: 10, price: 500 }),
+    candidate('middle-recoil', { recoilModifier: -20, ergonomics: 100, weight: 1, price: 100 }),
+    candidate('worst-recoil', { recoilModifier: -10, ergonomics: 50, weight: 5, price: 1 }),
+  ];
+  const bounds = getCustomPriorityBounds(candidates.map(entry => entry.result), ['recoil']);
+
+  assert.deepEqual(candidates.map(entry => getCustomPriorityVectorFromBounds(entry.result, bounds)), [
+    [1], [0.5], [0],
+  ]);
+  assert.equal(selectedWeightedId(candidates, { recoil: 100, ergonomics: 0, weight: 0 }), 'best-recoil');
+  assert.equal(
+    getWeightedCustomPrioritySelectionDiagnostics(candidates, { recoil: 100, ergonomics: 0, weight: 0 }).weightedScore,
+    1,
+  );
+});
+
+test('weighted score differences within FLOAT_EPSILON use the existing lower-price tie-break', () => {
+  const candidates = [
+    candidate('slightly-better', { recoilModifier: -30, price: 200 }),
+    candidate('within-epsilon-cheaper', {
+      recoilModifier: -30 + (20 * (CUSTOM_PRIORITY_FLOAT_EPSILON / 2)), price: 100,
+    }),
+    candidate('normalization-bound', { recoilModifier: -10, price: 1 }),
+  ];
+
+  assert.equal(
+    selectedWeightedId(candidates, { recoil: 100, ergonomics: 0, weight: 0 }),
+    'within-epsilon-cheaper',
+  );
+});
+
+test('weighted global-max epsilon shortlist is stable across chained near-ties and permutations', () => {
+  const anchors = [
+    candidate('recoil-anchor', { recoilModifier: -30, ergonomics: 0, price: 100 }),
+    candidate('ergo-anchor', { recoilModifier: -10, ergonomics: 100, price: 100 }),
+  ];
+  const chainedCandidates = [
+    candidate('A', { recoilModifier: -20, ergonomics: 50, price: 1 }),
+    candidate('B', { recoilModifier: -20, ergonomics: 50.00000015, price: 2 }),
+    candidate('C', { recoilModifier: -20, ergonomics: 50.0000003, price: 3 }),
+  ];
+  const weights = { recoil: 50, ergonomics: 50, weight: 0 };
+  const permutations = [
+    [...anchors, ...chainedCandidates],
+    [...anchors, ...chainedCandidates].reverse(),
+    [anchors[1], chainedCandidates[0], anchors[0], chainedCandidates[2], chainedCandidates[1]],
+  ];
+
+  assert.deepEqual(permutations.map(pool => selectedWeightedId(pool, weights)), ['B', 'B', 'B']);
 });

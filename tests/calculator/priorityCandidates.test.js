@@ -235,3 +235,32 @@ test('Priority candidate generation keeps hard maxPrice eligibility independent 
   assert.equal(capped.candidateResults.every(result => result.stats.price <= 3_000), true);
   assert.notDeepEqual(capped.candidateBuildKeys, generatePriorityCandidates(fixture).candidateBuildKeys);
 });
+
+test('weighted Priority selection changes only final selection and preserves the common candidate pool', () => {
+  const fixture = createPriorityFixture();
+  const pool = generatePriorityCandidates(fixture);
+  const recoilOnly = calculateBestBuild(
+    fixture.weapon, 'custom', 0, 0, fixture.modMap, fixture.options, null, null,
+    THREE_PRIORITIES, 'priorities', 'weighted', { recoil: 100, ergonomics: 0, weight: 0 },
+  );
+  const weightOnly = calculateBestBuild(
+    fixture.weapon, 'custom', 0, 0, fixture.modMap, fixture.options, null, null,
+    THREE_PRIORITIES, 'priorities', 'weighted', { recoil: 0, ergonomics: 0, weight: 100 },
+  );
+
+  assert.deepEqual(pool.candidateBuildKeys, generatePriorityCandidates(fixture).candidateBuildKeys);
+  assert.equal(getBuildTieKey(recoilOnly), 'priority-heavy-build');
+  assert.equal(getBuildTieKey(weightOnly), 'priority-light-build');
+});
+
+test('weighted Priority respects maxPrice before final scoring', () => {
+  const fixture = createPriorityFixture();
+  const result = calculateBestBuild(
+    fixture.weapon, 'custom', 0, 0, fixture.modMap,
+    { ...fixture.options, maxPrice: 3_000 }, null, null,
+    THREE_PRIORITIES, 'priorities', 'weighted', { recoil: 100, ergonomics: 0, weight: 0 },
+  );
+
+  assert.equal(getBuildTieKey(result), 'priority-light-build');
+  assert.equal(result.stats.price <= 3_000, true);
+});

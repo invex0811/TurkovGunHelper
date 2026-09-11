@@ -224,6 +224,8 @@ test('saved builds migrate legacy Custom prices to one shared limit without a sc
       customExactTargets,
       characteristicMode: 'priorities',
       priorityAttributes,
+      prioritySelectionMode: 'weighted',
+      priorityWeights: { recoil: '80', ergonomics: Number.POSITIVE_INFINITY, weight: -1 },
       priorityMaxPrice: '250000',
       customErgo: customProfile.ergonomics,
       customRecoil: customProfile.verticalRecoil,
@@ -242,6 +244,8 @@ test('saved builds migrate legacy Custom prices to one shared limit without a sc
     'ergonomics',
     'recoil',
   ]);
+  assert.equal(restored.settings.prioritySelectionMode, 'weighted');
+  assert.deepEqual(restored.settings.priorityWeights, { recoil: 80, ergonomics: 30, weight: 0 });
   assert.equal(restored.settings.sharedMaxPrice, 70_000);
   assert.equal(restored.settings.maxPrice, 70_000);
   assert.equal(restored.settings.priorityMaxPrice, 70_000);
@@ -262,6 +266,10 @@ test('old saved builds default every Custom Exact target to disabled', () => {
   });
   assert.deepEqual(getSavedBuild('before-exact-targets', storage).settings.priorityAttributes, []);
   assert.equal(getSavedBuild('before-exact-targets', storage).settings.characteristicMode, 'constraints');
+  assert.equal(getSavedBuild('before-exact-targets', storage).settings.prioritySelectionMode, 'ordered');
+  assert.deepEqual(getSavedBuild('before-exact-targets', storage).settings.priorityWeights, {
+    recoil: 50, ergonomics: 30, weight: 20,
+  });
   assert.equal(getSavedBuild('before-exact-targets', storage).settings.sharedMaxPrice, 0);
   assert.equal(getSavedBuild('before-exact-targets', storage).settings.priorityMaxPrice, 0);
 });

@@ -83,6 +83,8 @@ test('calculator worker forwards characteristic mode and the shared maxPrice opt
         customExactTargets: { ergonomics: true },
         priorityAttributes: ['recoil', 'ergonomics', 'weight'],
         characteristicMode: 'priorities',
+        prioritySelectionMode: 'weighted',
+        priorityWeights: { recoil: 80, ergonomics: 10, weight: 10 },
         options: { maxPrice: 0 },
       },
     });
