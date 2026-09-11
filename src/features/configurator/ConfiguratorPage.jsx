@@ -51,6 +51,9 @@ import {
   movePriorityAttribute,
   normalizeCustomCharacteristicMode,
   normalizePriorityAttributes,
+  normalizePrioritySelectionMode,
+  normalizePriorityWeights,
+  PRIORITY_SELECTION_MODES,
   togglePriorityAttribute,
 } from '../../domain/customPriorityAttributes.js';
 import {
@@ -1025,6 +1028,8 @@ function Configurator() {
   }), [customExactTargets]);
   const [characteristicMode, setCharacteristicMode] = useState('constraints');
   const [priorityAttributes, setPriorityAttributes] = useState([]);
+  const [prioritySelectionMode, setPrioritySelectionMode] = useState(PRIORITY_SELECTION_MODES.ORDERED);
+  const [priorityWeights, setPriorityWeights] = useState(() => normalizePriorityWeights());
   const [maxPrice, setMaxPrice] = useState(
     () => resolveSharedMaxPrice(requestedSavedBuild?.settings),
   );
@@ -1117,6 +1122,8 @@ function Configurator() {
       customExactTargets: effectiveCustomExactTargets,
       characteristicMode,
       priorityAttributes,
+      prioritySelectionMode,
+      priorityWeights: normalizePriorityWeights(priorityWeights),
       maxPrice,
       suppressorMode,
       priceMode,
@@ -1271,6 +1278,8 @@ function Configurator() {
         setCustomExactTargets(normalizeCustomExactTargets(settings.customExactTargets));
         setCharacteristicMode(normalizeCustomCharacteristicMode(settings.characteristicMode));
         setPriorityAttributes(normalizePriorityAttributes(settings.priorityAttributes));
+        setPrioritySelectionMode(normalizePrioritySelectionMode(settings.prioritySelectionMode));
+        setPriorityWeights(normalizePriorityWeights(settings.priorityWeights));
         setMaxPrice(resolveSharedMaxPrice(settings));
         setMaxPriceDraft(null);
         setSuppressorMode(settings.suppressorMode || 'allow');
@@ -1583,6 +1592,20 @@ function Configurator() {
 
   const handleGenerate = useCallback(async () => {
     if (!allMods) return;
+    const canonicalPriorityWeights = normalizePriorityWeights(priorityWeights);
+    const isWeightedPrioritySelection = characteristicMode === 'priorities'
+      && prioritySelectionMode === PRIORITY_SELECTION_MODES.WEIGHTED;
+    const priorityWeightTotal = Object.values(priorityWeights).reduce((total, value) => {
+      if (value == null || String(value).trim() === '') return Number.NaN;
+      const numericValue = Number(value);
+      return Number.isFinite(numericValue) ? total + numericValue : Number.NaN;
+    }, 0);
+    const priorityWeightsAreInRange = Object.values(priorityWeights).every(value => {
+      if (value == null || String(value).trim() === '') return false;
+      const numericValue = Number(value);
+      return Number.isFinite(numericValue) && numericValue >= 0 && numericValue <= 100;
+    });
+    if (isWeightedPrioritySelection && (priorityWeightTotal !== 100 || !priorityWeightsAreInRange)) return;
     setGenerating(true);
     setGenerationError(null);
     setReplacementError(null);
@@ -1617,6 +1640,8 @@ function Configurator() {
         customExactTargets: effectiveCustomExactTargets,
         characteristicMode,
         priorityAttributes,
+        prioritySelectionMode,
+        priorityWeights: canonicalPriorityWeights,
         allMods,
         options,
       });
@@ -1641,6 +1666,8 @@ function Configurator() {
     effectiveCustomExactTargets,
     customProfile,
     priorityAttributes,
+    prioritySelectionMode,
+    priorityWeights,
     maxPrice,
     includeFlashlight,
     includeLaser,
@@ -2023,6 +2050,8 @@ function Configurator() {
         customExactTargets={effectiveCustomExactTargets}
         customProfile={customProfile}
         priorityAttributes={priorityAttributes}
+        prioritySelectionMode={prioritySelectionMode}
+        priorityWeights={priorityWeights}
         generating={generating}
         includeFlashlight={includeFlashlight}
         includeLaser={includeLaser}
@@ -2046,6 +2075,11 @@ function Configurator() {
         onPriorityAttributeMove={(fromIndex, toIndex) => setPriorityAttributes(current => (
           movePriorityAttribute(current, fromIndex, toIndex)
         ))}
+        onPrioritySelectionModeChange={mode => setPrioritySelectionMode(normalizePrioritySelectionMode(mode))}
+        onPriorityWeightChange={(attribute, value) => setPriorityWeights(current => ({
+          ...current,
+          [attribute]: value,
+        }))}
         onGenerate={handleGenerate}
         onIncludeTraderPricesChange={handleIncludeTraderPricesChange}
         onMaxPriceBlur={value => {

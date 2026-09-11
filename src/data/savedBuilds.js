@@ -2,6 +2,8 @@ import { normalizeCustomExactTargets } from '../domain/customExactTargets.js';
 import {
   normalizeCustomCharacteristicMode,
   normalizePriorityAttributes,
+  normalizePrioritySelectionMode,
+  normalizePriorityWeights,
 } from '../domain/customPriorityAttributes.js';
 import { migrateSharedMaxPriceSettings } from '../domain/buildMaxPrice.js';
 import { buildWeaponAssemblyTree } from '../domain/weaponAssembly.js';
@@ -127,6 +129,8 @@ export function readSavedBuilds(storage = getDefaultStorage()) {
           customExactTargets: normalizeCustomExactTargets(build.settings.customExactTargets),
           characteristicMode: normalizeCustomCharacteristicMode(build.settings.characteristicMode),
           priorityAttributes: normalizePriorityAttributes(build.settings.priorityAttributes),
+          prioritySelectionMode: normalizePrioritySelectionMode(build.settings.prioritySelectionMode),
+          priorityWeights: normalizePriorityWeights(build.settings.priorityWeights),
         }),
       }))
       .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
@@ -282,6 +286,8 @@ export function createBuildSnapshot({
       ...settings,
       characteristicMode: normalizeCustomCharacteristicMode(settings.characteristicMode),
       priorityAttributes: normalizePriorityAttributes(settings.priorityAttributes),
+      prioritySelectionMode: normalizePrioritySelectionMode(settings.prioritySelectionMode),
+      priorityWeights: normalizePriorityWeights(settings.priorityWeights),
     }),
   };
 }

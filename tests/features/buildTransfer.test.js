@@ -156,6 +156,8 @@ test('export migrates a legacy priority budget to the shared maximum price', () 
     targetType: 'custom',
     characteristicMode: 'priorities',
     priorityAttributes: ['weight', 'ergonomics', 'verticalRecoil', 'horizontalRecoil'],
+    prioritySelectionMode: 'weighted',
+    priorityWeights: { recoil: '80', ergonomics: 10, weight: -1, ignored: 99 },
     priorityMaxPrice: '250000',
   };
   const parsed = parseBuildImport(JSON.stringify(exportBuilds([build])));
@@ -165,9 +167,21 @@ test('export migrates a legacy priority budget to the shared maximum price', () 
     'recoil',
   ]);
   assert.equal(parsed.builds[0].settings.characteristicMode, 'priorities');
+  assert.equal(parsed.builds[0].settings.prioritySelectionMode, 'weighted');
+  assert.deepEqual(parsed.builds[0].settings.priorityWeights, { recoil: 80, ergonomics: 10, weight: 0 });
   assert.equal(parsed.builds[0].settings.sharedMaxPrice, 250000);
   assert.equal(parsed.builds[0].settings.maxPrice, 250000);
   assert.equal(parsed.builds[0].settings.priorityMaxPrice, 250000);
+});
+
+test('legacy imports default weighted settings and ignore unknown setting keys', () => {
+  const build = importedBuild();
+  build.settings.unrelated = 'ignored';
+  const parsed = parseBuildImport(JSON.stringify(envelope([build])));
+
+  assert.equal(parsed.builds[0].settings.prioritySelectionMode, 'ordered');
+  assert.deepEqual(parsed.builds[0].settings.priorityWeights, { recoil: 50, ergonomics: 30, weight: 20 });
+  assert.equal(Object.hasOwn(parsed.builds[0].settings, 'unrelated'), false);
 });
 
 test('export excludes dynamic stats, images, prices and full item objects', () => {

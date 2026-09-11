@@ -50,6 +50,8 @@ function input(allMods = { part: { id: 'part' } }) {
     allMods,
     weapon: { id: 'weapon' },
     targetType: 'balanced',
+    prioritySelectionMode: 'weighted',
+    priorityWeights: { recoil: 80, ergonomics: 10, weight: 10 },
     options: {},
   };
 }
@@ -58,6 +60,8 @@ function assertInitializeThenCalculate(worker, requestId) {
   assert.deepEqual(worker.messages.map(message => message.type), ['initialize', 'calculate']);
   assert.equal(worker.messages[1].requestId, requestId);
   assert.equal(worker.messages[0].modMapVersion, worker.messages[1].modMapVersion);
+  assert.equal(worker.messages[1].prioritySelectionMode, 'weighted');
+  assert.deepEqual(worker.messages[1].priorityWeights, { recoil: 80, ergonomics: 10, weight: 10 });
 }
 
 test('keeps a successful worker alive after initializing and calculating a normal request', async () => {
