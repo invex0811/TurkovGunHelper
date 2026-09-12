@@ -216,24 +216,40 @@ function PrioritySelectionSettings({
           </span>
           {CUSTOM_PRIORITY_ATTRIBUTE_KEYS.map(attribute => {
             const label = t(CUSTOM_PRIORITY_ATTRIBUTE_METADATA[attribute].labelKey);
+            const weightValue = priorityWeights?.[attribute] ?? 0;
             return (
-              <label key={attribute} className="priority-weights__field">
-                <span>{label}</span>
-                <span className="priority-weights__control">
+              <div key={attribute} className="priority-weights__field">
+                <span className="priority-weights__label">{label}</span>
+                <div className="priority-weights__inputs">
                   <input
-                    aria-label={label}
-                    type="number"
+                    className="priority-weights__slider"
+                    aria-label={t('config.priorityWeightSliderLabel', { attribute: label })}
+                    aria-valuetext={`${weightValue}%`}
+                    type="range"
                     min="0"
                     max="100"
                     step="1"
-                    value={priorityWeights?.[attribute] ?? ''}
+                    value={weightValue}
                     onChange={event => onPriorityWeightChange(attribute, event.target.value)}
                     aria-invalid={hasValidTotal ? undefined : true}
                     aria-describedby={hasValidTotal ? undefined : priorityWeightValidationId}
                   />
-                  <span aria-hidden="true">%</span>
-                </span>
-              </label>
+                  <span className="priority-weights__control">
+                    <input
+                      aria-label={t('config.priorityWeightValueLabel', { attribute: label })}
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={weightValue}
+                      onChange={event => onPriorityWeightChange(attribute, event.target.value)}
+                      aria-invalid={hasValidTotal ? undefined : true}
+                      aria-describedby={hasValidTotal ? undefined : priorityWeightValidationId}
+                    />
+                    <span aria-hidden="true">%</span>
+                  </span>
+                </div>
+              </div>
             );
           })}
           <p className={`priority-weights__total ${hasValidTotal ? '' : 'is-invalid'}`.trim()}>

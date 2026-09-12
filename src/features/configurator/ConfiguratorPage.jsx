@@ -54,6 +54,7 @@ import {
   PRIORITY_SELECTION_MODES,
   togglePriorityAttribute,
 } from '../../domain/customPriorityAttributes.js';
+import { rebalancePriorityWeights } from './priorityWeightControls.js';
 import {
   normalizeBuildMaxPrice,
   resolveSharedMaxPrice,
@@ -2042,6 +2043,9 @@ function Configurator() {
       instance,
     ));
   };
+  const handlePriorityWeightChange = (attribute, value) => {
+    setPriorityWeights(current => rebalancePriorityWeights(current, attribute, value));
+  };
 
   return (
     <div className="layout">
@@ -2078,10 +2082,7 @@ function Configurator() {
           movePriorityAttribute(current, fromIndex, toIndex)
         ))}
         onPrioritySelectionModeChange={mode => setPrioritySelectionMode(normalizePrioritySelectionMode(mode))}
-        onPriorityWeightChange={(attribute, value) => setPriorityWeights(current => ({
-          ...current,
-          [attribute]: value,
-        }))}
+        onPriorityWeightChange={handlePriorityWeightChange}
         onGenerate={handleGenerate}
         onIncludeTraderPricesChange={handleIncludeTraderPricesChange}
         onMaxPriceBlur={value => {
