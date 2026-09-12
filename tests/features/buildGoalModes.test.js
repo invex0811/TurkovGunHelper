@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   BUILD_GOAL_MODES,
   getBuildGoalMode,
+  getBuildGoalModeFromSettings,
   getCalculatorGoalState,
 } from '../../src/features/configurator/buildGoalModes.js';
 
@@ -27,4 +28,23 @@ test('restores legacy targetType and characteristicMode pairs as top-level UI mo
   assert.equal(getBuildGoalMode('custom', 'constraints'), BUILD_GOAL_MODES.CONSTRAINTS);
   assert.equal(getBuildGoalMode('custom', 'priorities'), BUILD_GOAL_MODES.PRIORITIES);
   assert.equal(getBuildGoalMode('custom', 'invalid'), BUILD_GOAL_MODES.CONSTRAINTS);
+});
+
+test('restores saved build modes with the new field taking priority over legacy fields', () => {
+  assert.equal(getBuildGoalModeFromSettings({
+    targetType: 'meta',
+  }), BUILD_GOAL_MODES.META);
+  assert.equal(getBuildGoalModeFromSettings({
+    targetType: 'custom',
+    characteristicMode: 'constraints',
+  }), BUILD_GOAL_MODES.CONSTRAINTS);
+  assert.equal(getBuildGoalModeFromSettings({
+    targetType: 'custom',
+    characteristicMode: 'priorities',
+  }), BUILD_GOAL_MODES.PRIORITIES);
+  assert.equal(getBuildGoalModeFromSettings({
+    buildGoalMode: 'meta',
+    targetType: 'custom',
+    characteristicMode: 'priorities',
+  }), BUILD_GOAL_MODES.META);
 });

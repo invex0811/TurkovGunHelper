@@ -10,10 +10,21 @@ const LAST_SELECTED_FLASHLIGHT_ID_STORAGE_KEY = 'tarkovGunHelper.lastSelectedFla
 const LAST_SELECTED_TBL_ID_STORAGE_KEY = 'tarkovGunHelper.lastSelectedTblId';
 const REMEMBER_TACTICAL_DEVICE_SELECTION_STORAGE_KEY = 'tarkovGunHelper.rememberTacticalDeviceSelection';
 const NO_TACTICAL_DEVICE_STORAGE_VALUE = '__none__';
+const BUILD_GOAL_MODE_STORAGE_KEY = 'tarkovGunHelper.buildGoalMode';
+const TARGET_TYPE_STORAGE_KEY = 'tarkovGunHelper.targetType';
+const SUPPORTED_TARGET_TYPES = ['meta', 'custom'];
 
 export const DEFAULT_INCLUDE_TRADER_PRICES = true;
 export const DEFAULT_STRICT_TRADER_LEVELS = false;
 export const DEFAULT_REMEMBER_TACTICAL_DEVICE_SELECTION = false;
+export const BUILD_GOAL_MODES = Object.freeze({
+  META: 'meta',
+  CONSTRAINTS: 'constraints',
+  PRIORITIES: 'priorities',
+});
+export const DEFAULT_BUILD_GOAL_MODE = BUILD_GOAL_MODES.META;
+
+const SUPPORTED_BUILD_GOAL_MODES = Object.values(BUILD_GOAL_MODES);
 
 export function loadPriceModePreference() {
   if (typeof window === 'undefined') {
@@ -41,8 +52,45 @@ export function savePriceModePreference(priceMode) {
   }
 }
 
-const TARGET_TYPE_STORAGE_KEY = 'tarkovGunHelper.targetType';
-const SUPPORTED_TARGET_TYPES = ['meta', 'custom'];
+export function isSupportedBuildGoalMode(buildGoalMode) {
+  return SUPPORTED_BUILD_GOAL_MODES.includes(buildGoalMode);
+}
+
+export function normalizeBuildGoalMode(buildGoalMode) {
+  return isSupportedBuildGoalMode(buildGoalMode)
+    ? buildGoalMode
+    : DEFAULT_BUILD_GOAL_MODE;
+}
+
+export function loadBuildGoalModePreference() {
+  if (typeof window === 'undefined') {
+    return DEFAULT_BUILD_GOAL_MODE;
+  }
+
+  try {
+    const storedMode = window.localStorage.getItem(BUILD_GOAL_MODE_STORAGE_KEY);
+    if (isSupportedBuildGoalMode(storedMode)) return storedMode;
+
+    const legacyTargetType = window.localStorage.getItem(TARGET_TYPE_STORAGE_KEY);
+    return legacyTargetType === 'custom'
+      ? BUILD_GOAL_MODES.CONSTRAINTS
+      : DEFAULT_BUILD_GOAL_MODE;
+  } catch {
+    return DEFAULT_BUILD_GOAL_MODE;
+  }
+}
+
+export function saveBuildGoalModePreference(buildGoalMode) {
+  if (typeof window === 'undefined' || !isSupportedBuildGoalMode(buildGoalMode)) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(BUILD_GOAL_MODE_STORAGE_KEY, buildGoalMode);
+  } catch {
+    // Ignore storage errors.
+  }
+}
 
 export function normalizeTargetType(targetType) {
   return SUPPORTED_TARGET_TYPES.includes(targetType) ? targetType : 'meta';

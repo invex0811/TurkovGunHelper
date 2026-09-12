@@ -962,11 +962,34 @@ a {
 
 .priority-weights__field {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(96px, 40%);
-  align-items: center;
-  gap: 8px;
+  gap: 6px;
   color: var(--text-primary);
   font-size: .8rem;
+}
+
+.priority-weights__label {
+  font-weight: 700;
+}
+
+.priority-weights__inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(78px, 96px);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.priority-weights__slider {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  margin: 0;
+  accent-color: var(--color-accent-gold);
+  cursor: pointer;
+}
+
+.priority-weights__slider:focus-visible {
+  outline-offset: 3px;
 }
 
 .priority-weights__control {

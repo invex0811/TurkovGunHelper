@@ -2,9 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  BUILD_GOAL_MODES,
+  DEFAULT_BUILD_GOAL_MODE,
   DEFAULT_INCLUDE_TRADER_PRICES,
   DEFAULT_REMEMBER_TACTICAL_DEVICE_SELECTION,
   DEFAULT_STRICT_TRADER_LEVELS,
+  loadBuildGoalModePreference,
   loadIncludeTraderPricesPreference,
   loadLastSelectedFlashlightId,
   loadLastSelectedTblId,
@@ -12,7 +15,9 @@ import {
   loadRememberTacticalDeviceSelectionPreference,
   loadStrictTraderLevelsPreference,
   loadTargetTypePreference,
+  normalizeBuildGoalMode,
   normalizeTargetType,
+  saveBuildGoalModePreference,
   saveIncludeTraderPricesPreference,
   saveLastSelectedFlashlightId,
   saveLastSelectedTblId,
@@ -64,6 +69,53 @@ test('price mode defaults safely and persists both supported modes', () => {
     assert.equal(loadPriceModePreference(), 'pvp');
     savePriceModePreference('invalid');
     assert.equal(loadPriceModePreference(), 'pvp');
+  });
+});
+
+test('build goal mode defaults to Meta and persists every supported UI mode', () => {
+  const storage = createStorage();
+
+  withWindow(storage, () => {
+    assert.equal(DEFAULT_BUILD_GOAL_MODE, BUILD_GOAL_MODES.META);
+    assert.equal(loadBuildGoalModePreference(), BUILD_GOAL_MODES.META);
+
+    for (const mode of Object.values(BUILD_GOAL_MODES)) {
+      saveBuildGoalModePreference(mode);
+      assert.equal(loadBuildGoalModePreference(), mode);
+    }
+
+    saveBuildGoalModePreference('invalid');
+    assert.equal(loadBuildGoalModePreference(), BUILD_GOAL_MODES.PRIORITIES);
+  });
+});
+
+test('build goal mode preference handles invalid and legacy targetType values safely', () => {
+  const storage = createStorage();
+
+  withWindow(storage, () => {
+    storage.setItem('tarkovGunHelper.buildGoalMode', 'invalid');
+    storage.setItem('tarkovGunHelper.targetType', 'meta');
+    assert.equal(loadBuildGoalModePreference(), BUILD_GOAL_MODES.META);
+
+    storage.setItem('tarkovGunHelper.targetType', 'custom');
+    assert.equal(loadBuildGoalModePreference(), BUILD_GOAL_MODES.CONSTRAINTS);
+
+    storage.setItem('tarkovGunHelper.buildGoalMode', 'priorities');
+    assert.equal(loadBuildGoalModePreference(), BUILD_GOAL_MODES.PRIORITIES);
+  });
+
+  assert.equal(normalizeBuildGoalMode('invalid'), DEFAULT_BUILD_GOAL_MODE);
+});
+
+test('build goal mode preference safely handles unavailable storage', () => {
+  const localStorage = {
+    getItem() { throw new Error('blocked'); },
+    setItem() { throw new Error('blocked'); },
+  };
+
+  withWindow(localStorage, () => {
+    assert.equal(loadBuildGoalModePreference(), DEFAULT_BUILD_GOAL_MODE);
+    assert.doesNotThrow(() => saveBuildGoalModePreference(BUILD_GOAL_MODES.PRIORITIES));
   });
 });
 

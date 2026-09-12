@@ -8,9 +8,8 @@ import {
 } from '../../../domain/customPriorityAttributes.js';
 import {
   BUILD_GOAL_MODES,
-  getBuildGoalMode,
-  getCalculatorGoalState,
 } from '../buildGoalModes.js';
+import { getPriorityWeightMax } from '../priorityWeightControls.js';
 import { scopeSupportsZoom } from '../scopeOptions.js';
 import { SCOPE_MODES, SCOPE_NONE_OPTION_ID } from '../scopeSelection.js';
 import {
@@ -218,24 +217,41 @@ function PrioritySelectionSettings({
           </span>
           {CUSTOM_PRIORITY_ATTRIBUTE_KEYS.map(attribute => {
             const label = t(CUSTOM_PRIORITY_ATTRIBUTE_METADATA[attribute].labelKey);
+            const weightValue = priorityWeights?.[attribute] ?? 0;
+            const weightMax = getPriorityWeightMax(priorityWeights, attribute);
             return (
-              <label key={attribute} className="priority-weights__field">
-                <span>{label}</span>
-                <span className="priority-weights__control">
+              <div key={attribute} className="priority-weights__field">
+                <span className="priority-weights__label">{label}</span>
+                <div className="priority-weights__inputs">
                   <input
-                    aria-label={label}
-                    type="number"
+                    className="priority-weights__slider"
+                    aria-label={t('config.priorityWeightSliderLabel', { attribute: label })}
+                    aria-valuetext={`${weightValue}%`}
+                    type="range"
                     min="0"
                     max="100"
                     step="1"
-                    value={priorityWeights?.[attribute] ?? ''}
+                    value={weightValue}
                     onChange={event => onPriorityWeightChange(attribute, event.target.value)}
                     aria-invalid={hasValidTotal ? undefined : true}
                     aria-describedby={hasValidTotal ? undefined : priorityWeightValidationId}
                   />
-                  <span aria-hidden="true">%</span>
-                </span>
-              </label>
+                  <span className="priority-weights__control">
+                    <input
+                      aria-label={t('config.priorityWeightValueLabel', { attribute: label })}
+                      type="number"
+                      min="0"
+                      max={weightMax}
+                      step="1"
+                      value={weightValue}
+                      onChange={event => onPriorityWeightChange(attribute, event.target.value)}
+                      aria-invalid={hasValidTotal ? undefined : true}
+                      aria-describedby={hasValidTotal ? undefined : priorityWeightValidationId}
+                    />
+                    <span aria-hidden="true">%</span>
+                  </span>
+                </div>
+              </div>
             );
           })}
           <p className={`priority-weights__total ${hasValidTotal ? '' : 'is-invalid'}`.trim()}>
@@ -605,8 +621,8 @@ function GenerateSection({ disabled = false, generating, onGenerate, t }) {
 
 export default function BuildSettings(props) {
   const {
-    activeCharacteristicMode,
     availableCapacities,
+    buildGoalMode,
     customExactTargets,
     customProfile,
     flashlightItemId,
@@ -621,7 +637,7 @@ export default function BuildSettings(props) {
     maxWeight,
     moduleResults,
     onAddModule,
-    onCharacteristicModeChange,
+    onBuildGoalModeChange,
     onExactChange,
     onGenerate,
     onIncludeTraderPricesChange,
@@ -649,12 +665,10 @@ export default function BuildSettings(props) {
     strictTraderLevels,
     suppressorMode,
     t,
-    targetType,
     tblItemId,
     tblItems,
     weapon,
   } = props;
-  const activeBuildGoalMode = getBuildGoalMode(targetType, activeCharacteristicMode);
   const scopeSelectionId = scopeMode === SCOPE_MODES.NONE
     ? SCOPE_NONE_OPTION_ID
     : scopeMode === SCOPE_MODES.MANUAL
@@ -671,14 +685,6 @@ export default function BuildSettings(props) {
     t,
     scopeMode === SCOPE_MODES.AUTO ? scopeZoom : null,
   );
-
-  const selectBuildGoalMode = buildGoalMode => {
-    const nextState = getCalculatorGoalState(buildGoalMode);
-    setters.targetType(nextState.targetType);
-    if (nextState.characteristicMode) {
-      onCharacteristicModeChange(nextState.characteristicMode);
-    }
-  };
 
   const suppressorSection = (
     <SuppressorSection
@@ -742,7 +748,7 @@ export default function BuildSettings(props) {
     />
   );
   const priorityWeightTotal = getPriorityWeightTotal(priorityWeights);
-  const priorityWeightsInvalid = activeBuildGoalMode === BUILD_GOAL_MODES.PRIORITIES
+  const priorityWeightsInvalid = buildGoalMode === BUILD_GOAL_MODES.PRIORITIES
     && prioritySelectionMode === PRIORITY_SELECTION_MODES.WEIGHTED
     && (priorityWeightTotal !== 100 || !hasPriorityWeightsInRange(priorityWeights));
   const generateSection = (
@@ -756,14 +762,14 @@ export default function BuildSettings(props) {
         <span className="field-label">{t('config.goal')}</span>
         <div className="segmented segmented--goals" role="group" aria-label={t('config.goal')}>
           {BUILD_GOAL_OPTIONS.map(option => {
-            const selected = activeBuildGoalMode === option.id;
+            const selected = buildGoalMode === option.id;
             return (
               <button
                 key={option.id}
                 className={`segmented__btn ${selected ? 'is-active' : ''}`}
                 type="button"
                 aria-pressed={selected}
-                onClick={() => selectBuildGoalMode(option.id)}
+                onClick={() => onBuildGoalModeChange(option.id)}
               >
                 {t(option.labelKey)}
               </button>
@@ -772,7 +778,7 @@ export default function BuildSettings(props) {
         </div>
       </section>
 
-      {activeBuildGoalMode === BUILD_GOAL_MODES.META && (
+      {buildGoalMode === BUILD_GOAL_MODES.META && (
         <div className="config__mode" data-build-goal="meta">
           {suppressorSection}
           {traderPricesSection}
@@ -799,7 +805,7 @@ export default function BuildSettings(props) {
         </div>
       )}
 
-      {activeBuildGoalMode === BUILD_GOAL_MODES.CONSTRAINTS && (
+      {buildGoalMode === BUILD_GOAL_MODES.CONSTRAINTS && (
         <div className="config__mode" data-build-goal="constraints">
           <section className="custom-characteristic-settings" aria-labelledby="customCharacteristicSettingsTitle">
             <h3 id="customCharacteristicSettingsTitle">{t('config.characteristicSettings')}</h3>
@@ -831,7 +837,7 @@ export default function BuildSettings(props) {
         </div>
       )}
 
-      {activeBuildGoalMode === BUILD_GOAL_MODES.PRIORITIES && (
+      {buildGoalMode === BUILD_GOAL_MODES.PRIORITIES && (
         <div className="config__mode" data-build-goal="priorities">
           <section className="config__section">
             <PrioritySelectionSettings
