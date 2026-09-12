@@ -9,6 +9,7 @@ import {
 import {
   BUILD_GOAL_MODES,
 } from '../buildGoalModes.js';
+import { getPriorityWeightMax } from '../priorityWeightControls.js';
 import { scopeSupportsZoom } from '../scopeOptions.js';
 import { SCOPE_MODES, SCOPE_NONE_OPTION_ID } from '../scopeSelection.js';
 import {
@@ -217,6 +218,7 @@ function PrioritySelectionSettings({
           {CUSTOM_PRIORITY_ATTRIBUTE_KEYS.map(attribute => {
             const label = t(CUSTOM_PRIORITY_ATTRIBUTE_METADATA[attribute].labelKey);
             const weightValue = priorityWeights?.[attribute] ?? 0;
+            const weightMax = getPriorityWeightMax(priorityWeights, attribute);
             return (
               <div key={attribute} className="priority-weights__field">
                 <span className="priority-weights__label">{label}</span>
@@ -239,7 +241,7 @@ function PrioritySelectionSettings({
                       aria-label={t('config.priorityWeightValueLabel', { attribute: label })}
                       type="number"
                       min="0"
-                      max="100"
+                      max={weightMax}
                       step="1"
                       value={weightValue}
                       onChange={event => onPriorityWeightChange(attribute, event.target.value)}

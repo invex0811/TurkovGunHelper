@@ -10,25 +10,46 @@ function normalizeLinkedWeight(value, fallback) {
   return Math.round(Math.min(100, Math.max(0, numericValue)));
 }
 
-export function rebalancePriorityWeights(currentWeights, changedAttribute, newValue) {
+function normalizeHierarchicalWeights(currentWeights) {
   const normalizedWeights = normalizePriorityWeights(currentWeights);
+  const recoil = normalizeLinkedWeight(normalizedWeights.recoil, 50);
+  const remaining = 100 - recoil;
+  const weight = Math.min(normalizeLinkedWeight(normalizedWeights.weight, 20), remaining);
+
+  return {
+    recoil,
+    ergonomics: remaining - weight,
+    weight,
+  };
+}
+
+export function getPriorityWeightMax(currentWeights, attribute) {
+  if (attribute === 'recoil') return 100;
+  if (attribute !== 'ergonomics' && attribute !== 'weight') return 0;
+  return 100 - normalizeHierarchicalWeights(currentWeights).recoil;
+}
+
+export function rebalancePriorityWeights(currentWeights, changedAttribute, newValue) {
+  const normalizedWeights = normalizeHierarchicalWeights(currentWeights);
   if (!CUSTOM_PRIORITY_ATTRIBUTE_KEYS.includes(changedAttribute)) {
     return normalizedWeights;
   }
 
-  const changedWeight = normalizeLinkedWeight(newValue, normalizedWeights[changedAttribute]);
-  const remaining = 100 - changedWeight;
-  const otherAttributes = CUSTOM_PRIORITY_ATTRIBUTE_KEYS.filter(attribute => attribute !== changedAttribute);
-  const otherTotal = otherAttributes.reduce((total, attribute) => total + normalizedWeights[attribute], 0);
+  if (changedAttribute === 'recoil') {
+    const recoil = normalizeLinkedWeight(newValue, normalizedWeights.recoil);
+    const remaining = 100 - recoil;
+    const weight = Math.min(normalizedWeights.weight, remaining);
+    return { recoil, ergonomics: remaining - weight, weight };
+  }
 
-  const firstOtherWeight = otherTotal > 0
-    ? Math.round(remaining * normalizedWeights[otherAttributes[0]] / otherTotal)
-    : Math.ceil(remaining / 2);
+  const recoil = normalizedWeights.recoil;
+  const remaining = 100 - recoil;
+  const changedWeight = Math.min(
+    normalizeLinkedWeight(newValue, normalizedWeights[changedAttribute]),
+    remaining,
+  );
 
-  return {
-    ...normalizedWeights,
-    [changedAttribute]: changedWeight,
-    [otherAttributes[0]]: firstOtherWeight,
-    [otherAttributes[1]]: remaining - firstOtherWeight,
-  };
+  return changedAttribute === 'ergonomics'
+    ? { recoil, ergonomics: changedWeight, weight: remaining - changedWeight }
+    : { recoil, ergonomics: remaining - changedWeight, weight: changedWeight };
 }
