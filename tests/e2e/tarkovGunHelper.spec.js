@@ -5,6 +5,7 @@ import { mockTarkovApi } from './fixtures/tarkovApi.js';
 const SAVED_BUILDS_KEY = 'tarkov-gun-helper:saved-builds';
 const LANGUAGE_KEY = 'tarkovGunHelper.language';
 const PRICE_MODE_KEY = 'tarkovGunHelper.priceMode';
+const BUILD_GOAL_MODE_KEY = 'tarkovGunHelper.buildGoalMode';
 const FOCUSABLE_SELECTOR = [
   'a[href]',
   'button:not([disabled])',
@@ -351,6 +352,7 @@ test('build goal modes preserve their state and calculator settings', async ({ p
   ), SAVED_BUILDS_KEY);
   expect(savedSettings.targetType).toBe('custom');
   expect(savedSettings.characteristicMode).toBe('priorities');
+  expect(savedSettings.buildGoalMode).toBe('priorities');
   expect(savedSettings.priorityAttributes).toEqual([
     'ergonomics',
     'recoil',
@@ -378,6 +380,44 @@ test('build goal modes preserve their state and calculator settings', async ({ p
   await expect(page.locator('.custom-priority-attributes__item').nth(0))
     .toContainText('Rank 1Ergonomics');
   await expect(page.locator('.required-module').filter({ hasText: 'Alternative Grip' })).toBeVisible();
+});
+
+test('build goal mode persists across weapons and page reloads', async ({ page }) => {
+  const openWeapon = async shortName => {
+    await page.getByRole('link').filter({
+      has: page.getByRole('heading', { name: shortName, exact: true }),
+    }).click();
+  };
+  const expectSelectedGoal = async name => {
+    await expect(page.getByRole('group', { name: 'Build Goal' })
+      .getByRole('button', { name, exact: true }))
+      .toHaveAttribute('aria-pressed', 'true');
+  };
+
+  await page.goto('/');
+  await openWeapon('TW');
+  await expectSelectedGoal('Meta');
+
+  await page.getByRole('link', { name: 'Weapons', exact: true }).click();
+  await openWeapon('TW2');
+  await expectSelectedGoal('Meta');
+
+  await page.getByRole('group', { name: 'Build Goal' })
+    .getByRole('button', { name: 'By constraints', exact: true }).click();
+  await page.getByRole('link', { name: 'Weapons', exact: true }).click();
+  await openWeapon('TW');
+  await expectSelectedGoal('By constraints');
+
+  await page.getByRole('group', { name: 'Build Goal' })
+    .getByRole('button', { name: 'By priorities', exact: true }).click();
+  await page.getByRole('link', { name: 'Weapons', exact: true }).click();
+  await openWeapon('TW2');
+  await expectSelectedGoal('By priorities');
+  await expect.poll(() => page.evaluate(key => localStorage.getItem(key), BUILD_GOAL_MODE_KEY))
+    .toBe('priorities');
+
+  await page.reload();
+  await expectSelectedGoal('By priorities');
 });
 
 test('Priority custom values validate, preserve values, and save weighted settings', async ({ page }) => {

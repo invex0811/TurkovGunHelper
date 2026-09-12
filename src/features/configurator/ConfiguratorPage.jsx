@@ -14,6 +14,7 @@ import {
   sumPurchasePrices,
 } from '../../data/price/priceMapper.js';
 import {
+  loadBuildGoalModePreference,
   loadIncludeTraderPricesPreference,
   loadLastSelectedFlashlightId,
   loadLastSelectedTblId,
@@ -21,9 +22,7 @@ import {
   saveIncludeTraderPricesPreference,
   saveLastSelectedFlashlightId,
   saveLastSelectedTblId,
-  loadTargetTypePreference,
-  normalizeTargetType,
-  saveTargetTypePreference,
+  saveBuildGoalModePreference,
 } from '../../data/settings/buildPreferences.js';
 import { useI18n } from '../../i18n/useI18n.js';
 import {
@@ -49,7 +48,6 @@ import {
 } from '../../domain/customExactTargets.js';
 import {
   movePriorityAttribute,
-  normalizeCustomCharacteristicMode,
   normalizePriorityAttributes,
   normalizePrioritySelectionMode,
   normalizePriorityWeights,
@@ -118,6 +116,10 @@ import {
 } from './formatters.js';
 import BuildParts from './components/BuildParts.jsx';
 import BuildSettings from './components/BuildSettings.jsx';
+import {
+  getBuildGoalModeFromSettings,
+  getCalculatorGoalState,
+} from './buildGoalModes.js';
 import BuildWarnings from './components/BuildWarnings.jsx';
 import {
   ConfiguratorLoading,
@@ -1019,14 +1021,14 @@ function Configurator() {
   );
   const [weapon, setWeapon] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [targetType, setTargetType] = useState(loadTargetTypePreference);
+  const [buildGoalMode, setBuildGoalMode] = useState(loadBuildGoalModePreference);
+  const { targetType, characteristicMode } = getCalculatorGoalState(buildGoalMode);
   const [customProfile, setCustomProfile] = useState(CUSTOM_BUILD_DEFAULT_PROFILE);
   const [customExactTargets, setCustomExactTargets] = useState(DEFAULT_CUSTOM_EXACT_TARGETS);
   const effectiveCustomExactTargets = useMemo(() => ({
     ...customExactTargets,
     price: false,
   }), [customExactTargets]);
-  const [characteristicMode, setCharacteristicMode] = useState('constraints');
   const [priorityAttributes, setPriorityAttributes] = useState([]);
   const [prioritySelectionMode, setPrioritySelectionMode] = useState(PRIORITY_SELECTION_MODES.ORDERED);
   const [priorityWeights, setPriorityWeights] = useState(() => normalizePriorityWeights());
@@ -1117,6 +1119,7 @@ function Configurator() {
     buildResult,
     ownedItems: reconciledOwnedItems,
     settings: {
+      buildGoalMode,
       targetType,
       customProfile,
       customExactTargets: effectiveCustomExactTargets,
@@ -1160,8 +1163,8 @@ function Configurator() {
   }, [includeTraderPrices]);
 
   useEffect(() => {
-    saveTargetTypePreference(targetType);
-  }, [targetType]);
+    saveBuildGoalModePreference(buildGoalMode);
+  }, [buildGoalMode]);
 
   useConfiguratorCatalog({
     weaponId,
@@ -1273,10 +1276,9 @@ function Configurator() {
             : undefined,
         });
         setOwnedItems(requestedSavedBuild.ownedItems || []);
-        setTargetType(normalizeTargetType(settings.targetType));
+        setBuildGoalMode(getBuildGoalModeFromSettings(settings));
         setCustomProfile(createCustomBuildProfileFromSettings(settings, weaponData));
         setCustomExactTargets(normalizeCustomExactTargets(settings.customExactTargets));
-        setCharacteristicMode(normalizeCustomCharacteristicMode(settings.characteristicMode));
         setPriorityAttributes(normalizePriorityAttributes(settings.priorityAttributes));
         setPrioritySelectionMode(normalizePrioritySelectionMode(settings.prioritySelectionMode));
         setPriorityWeights(normalizePriorityWeights(settings.priorityWeights));
@@ -2046,7 +2048,7 @@ function Configurator() {
       {/* Левый сайдбар с конфигурацией сборки */}
       <BuildSettings
         availableCapacities={availableCapacities}
-        activeCharacteristicMode={characteristicMode}
+        buildGoalMode={buildGoalMode}
         customExactTargets={effectiveCustomExactTargets}
         customProfile={customProfile}
         priorityAttributes={priorityAttributes}
@@ -2067,7 +2069,7 @@ function Configurator() {
         maxWeightLimit={WEAPON_STAT_UI_RANGES.weight.max}
         moduleResults={requiredModuleResultViews}
         onAddModule={handleAddRequiredModule}
-        onCharacteristicModeChange={setCharacteristicMode}
+        onBuildGoalModeChange={setBuildGoalMode}
         onExactChange={(axisKey, enabled) => setCustomExactTargets(current => ({ ...current, [axisKey]: enabled }))}
         onPriorityAttributeToggle={attribute => setPriorityAttributes(current => (
           togglePriorityAttribute(current, attribute)
@@ -2106,7 +2108,6 @@ function Configurator() {
           scopeZoom: setScopeZoom,
           magazineCapacity: setMagazineCapacity,
           suppressorMode: setSuppressorMode,
-          targetType: setTargetType,
         }}
         sightMode={sightMode}
         scopeItems={scopeItems}
@@ -2116,7 +2117,6 @@ function Configurator() {
         scopeZoomLevels={scopeZoomLevels}
         suppressorMode={suppressorMode}
         suppressorOptions={SUPPRESSOR_MODE_OPTIONS}
-        targetType={targetType}
         tblItems={tblItems}
           tblItemId={tblItemId}
         t={t}

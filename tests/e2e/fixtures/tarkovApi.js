@@ -28,6 +28,15 @@ function createCatalogResponses(priceMultiplier = 1) {
     'mod-1',
     'mod-2',
   ];
+  fixture.items.data.items['weapon-2'] = {
+    ...structuredClone(fixture.items.data.items['weapon-1']),
+    id: 'weapon-2',
+    name: 'weapon-2 Name',
+    shortName: 'weapon-2 ShortName',
+    normalizedName: 'second-test-weapon',
+  };
+  fixture.itemTranslations.data['weapon-2 Name'] = 'Second test weapon';
+  fixture.itemTranslations.data['weapon-2 ShortName'] = 'TW2';
   Object.values(fixture.items.data.items).forEach(item => {
     for (const field of ['avg24hPrice', 'lastLowPrice', 'low24hPrice', 'high24hPrice']) {
       if (Number.isFinite(item[field])) item[field] *= priceMultiplier;
