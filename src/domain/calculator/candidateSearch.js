@@ -762,14 +762,17 @@ export function _calculateWeighted(
         && (rootItem.ergonomicsModifier || 0) > 0
         && (rootItem.recoilModifier || 0) >= 0
         && !hasCategory(rootItem, 'Magazine');
-      if (
-        (isMount || isOptionalErgoOnlyBudgetAwarePart)
+      const isUnrequiredNonImprovement = !hasRequiredItemRequirements
         && slot.required !== true
         && bestCandidate.score <= 0
         && !(options.requireSuppressor && !hasSuppressorGlobal && bestCandidate.hasSuppressor)
         && !(requireSight && !hasSight && bestCandidate.hasSight)
-        && bestCandidate.requiredMatches.size === 0
-      ) {
+        && bestCandidate.requiredMatches.size === 0;
+      const shouldSkipTargetWorseningBranch = targetMatching && isUnrequiredNonImprovement;
+      const shouldSkipLegacyOptionalPart = !targetMatching
+        && (isMount || isOptionalErgoOnlyBudgetAwarePart)
+        && isUnrequiredNonImprovement;
+      if (shouldSkipTargetWorseningBranch || shouldSkipLegacyOptionalPart) {
         continue;
       }
 

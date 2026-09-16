@@ -1,6 +1,6 @@
 export const uiMessages = {
   en: {
-    'ui.radar.help': 'Drag points or enter targets below. The builder returns the best match found in its search.',
+    'ui.radar.help': 'Drag points or enter targets below. The builder returns the best match found by its bounded search.',
     'ui.radar.exactTolerance': 'Exact requires the same displayed value with no tolerance.',
     'ui.radar.requirements': 'Custom build targets',
     'ui.radar.value': '{label} value',
@@ -80,7 +80,7 @@ export const uiMessages = {
     'ui.slot.removedFeedback': 'Module removed. Build stats and price updated.',
   },
   ru: {
-    'ui.radar.help': 'Перетаскивайте точки или введите цели ниже. Сборщик вернёт лучшее совпадение, найденное при поиске.',
+    'ui.radar.help': 'Перетаскивайте точки или введите цели ниже. Сборщик вернёт лучшее совпадение, найденное ограниченным поиском.',
     'ui.radar.exactTolerance': '«Точно» требует того же отображаемого значения без допуска.',
     'ui.radar.requirements': 'Цели своей сборки',
     'ui.radar.value': 'Значение: {label}',

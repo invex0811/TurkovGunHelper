@@ -303,7 +303,7 @@ test('Custom profile enforces vertical and horizontal recoil independently', () 
   assertInstalled(horizontalResult, recoilPart.id);
 });
 
-test('Custom profile returns the closest achievable build for non-Exact targets', () => {
+test('Custom profile returns the best match found for non-Exact targets', () => {
   const ergonomicPart = createTestMod({ id: 'limited-ergo-part', ergonomicsModifier: 10 });
   const testWeapon = createTestWeapon({
     ergonomics: 50,
@@ -321,6 +321,74 @@ test('Custom profile returns the closest achievable build for non-Exact targets'
 
   assert.equal(result.error, undefined);
   assertInstalled(result, ergonomicPart.id);
+});
+
+test('Constraints leaves an optional branch empty when the base build already matches its targets', () => {
+  const worseningPart = createTestMod({
+    id: 'optional-target-worsening',
+    recoilModifier: -10,
+    weight: 0.1,
+  });
+  const testWeapon = createTestWeapon({
+    weight: 1,
+    slots: [createSlot('Optional stock', [worseningPart.id])],
+  });
+  const profile = {
+    ergonomics: 50,
+    verticalRecoil: 100,
+    horizontalRecoil: 100,
+    weight: 1,
+    price: 0,
+  };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(worseningPart),
+    defaultOptions,
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.targetMatching.totalDistance, 0);
+  assertNotInstalled(result, worseningPart.id);
+});
+
+test('Constraints Exact leaves an already exact optional target build unchanged', () => {
+  const worseningPart = createTestMod({
+    id: 'optional-exact-target-worsening',
+    recoilModifier: -10,
+    weight: 0.1,
+  });
+  const testWeapon = createTestWeapon({
+    weight: 1,
+    slots: [createSlot('Optional stock', [worseningPart.id])],
+  });
+  const profile = {
+    ergonomics: 50,
+    verticalRecoil: 100,
+    horizontalRecoil: 100,
+    weight: 1,
+    price: 0,
+  };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(worseningPart),
+    defaultOptions,
+    profile,
+    { verticalRecoil: true },
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.errorCode, undefined);
+  assert.equal(result.targetMatching.exactMatches, true);
+  assertNotInstalled(result, worseningPart.id);
 });
 
 test('Custom profile passes weight and price limits through the existing price policy', () => {

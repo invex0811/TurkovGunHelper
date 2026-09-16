@@ -18,3 +18,8 @@ test('provides localized Priority weighted-selection labels', () => {
   assert.equal(configMessages.ru['config.prioritySelectionMode.weighted'], 'Свои значения');
   assert.equal(configMessages.ru['config.priorityWeightInvalid'], 'Сумма приоритетов должна быть 100%.');
 });
+
+test('describes Exact failures as a bounded-search result', () => {
+  assert.match(configMessages.en['config.exactTargetsUnmet'], /bounded search/i);
+  assert.match(configMessages.ru['config.exactTargetsUnmet'], /Ограниченный поиск/i);
+});
