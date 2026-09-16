@@ -532,26 +532,33 @@ export function _calculateWeighted(
       || slotNameId.includes('equipment');
   }
 
-  function getTargetBranchImprovement(branchEval) {
+  function getTargetBranchImprovement(
+    branchEval,
+    {
+      ergonomics = totalErgo,
+      recoilModifier = totalRecoilMod,
+      weight = totalWeight,
+    } = {},
+  ) {
     if (!targetMatching) return null;
 
     const baseMatching = evaluateCustomTargetMatching(
       {
-        ergonomics: totalErgo,
-        verticalRecoil: baseRecoilV * (1 + (totalRecoilMod / 100)),
-        horizontalRecoil: baseRecoilH * (1 + (totalRecoilMod / 100)),
-        weight: totalWeight,
+        ergonomics,
+        verticalRecoil: baseRecoilV * (1 + (recoilModifier / 100)),
+        horizontalRecoil: baseRecoilH * (1 + (recoilModifier / 100)),
+        weight,
       },
       targetMatching.targets,
       targetMatching.exactTargets,
     );
-    const projectedRecoilModifier = totalRecoilMod + branchEval.statsDelta.recoil;
+    const projectedRecoilModifier = recoilModifier + branchEval.statsDelta.recoil;
     const projectedMatching = evaluateCustomTargetMatching(
       {
-        ergonomics: totalErgo + branchEval.statsDelta.ergonomics,
+        ergonomics: ergonomics + branchEval.statsDelta.ergonomics,
         verticalRecoil: baseRecoilV * (1 + (projectedRecoilModifier / 100)),
         horizontalRecoil: baseRecoilH * (1 + (projectedRecoilModifier / 100)),
-        weight: totalWeight + branchEval.statsDelta.weight,
+        weight: weight + branchEval.statsDelta.weight,
       },
       targetMatching.targets,
       targetMatching.exactTargets,
@@ -608,6 +615,7 @@ export function _calculateWeighted(
     get targetMatching() { return targetMatching; },
     get targetType() { return targetType; },
     get totalPrice() { return totalPrice; },
+    get totalRecoilModifier() { return totalRecoilMod; },
     get totalWeight() { return totalWeight; },
     get weaponHasSeparateStockSlot() { return weaponHasSeparateStockSlot; },
     get weightEpsilon() { return weightEpsilon; },
@@ -700,6 +708,7 @@ export function _calculateWeighted(
           reservedPrice,
           reservedWeight,
           slot.nameId || slot.id,
+          totalRecoilMod,
         );
         if (!branchEval.isValid) return;
         if (hasSight && branchEval.hasSight && !branchHasRequiredSight(branchEval)) return;
@@ -762,8 +771,7 @@ export function _calculateWeighted(
         && (rootItem.ergonomicsModifier || 0) > 0
         && (rootItem.recoilModifier || 0) >= 0
         && !hasCategory(rootItem, 'Magazine');
-      const isUnrequiredNonImprovement = !hasRequiredItemRequirements
-        && slot.required !== true
+      const isUnrequiredNonImprovement = slot.required !== true
         && bestCandidate.score <= 0
         && !(options.requireSuppressor && !hasSuppressorGlobal && bestCandidate.hasSuppressor)
         && !(requireSight && !hasSight && bestCandidate.hasSight)

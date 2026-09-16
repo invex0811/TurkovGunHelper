@@ -391,6 +391,87 @@ test('Constraints Exact leaves an already exact optional target build unchanged'
   assertNotInstalled(result, worseningPart.id);
 });
 
+test('Constraints skips an unrelated worsening root branch when another root provides a required item', () => {
+  const requiredPart = createTestMod({
+    id: 'separate-required-part',
+    weight: 0,
+  });
+  const worseningPart = createTestMod({
+    id: 'separate-optional-worsening',
+    recoilModifier: -10,
+    weight: 0.1,
+  });
+  const testWeapon = createTestWeapon({
+    weight: 1,
+    slots: [
+      createSlot('Optional stock', [worseningPart.id]),
+      createSlot('Required receiver', [requiredPart.id]),
+    ],
+  });
+  const profile = {
+    ergonomics: 50,
+    verticalRecoil: 100,
+    horizontalRecoil: 100,
+    weight: 1,
+    price: 0,
+  };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(requiredPart, worseningPart),
+    { ...defaultOptions, requiredItemIds: [requiredPart.id] },
+    profile,
+    { verticalRecoil: true },
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.targetMatching.totalDistance, 0);
+  assertInstalled(result, requiredPart.id);
+  assertNotInstalled(result, worseningPart.id);
+});
+
+test('Constraints scores an optional child from its required parent state', () => {
+  const optionalChild = createTestMod({
+    id: 'parent-state-optional-child',
+    ergonomicsModifier: 5,
+  });
+  const requiredParent = createTestMod({
+    id: 'parent-state-required-parent',
+    ergonomicsModifier: 10,
+    slots: [createSlot('Optional child', [optionalChild.id])],
+  });
+  const testWeapon = createTestWeapon({
+    ergonomics: 50,
+    slots: [createSlot('Parent', [requiredParent.id])],
+  });
+  const profile = {
+    ergonomics: 60,
+    verticalRecoil: 100,
+    horizontalRecoil: 100,
+    weight: 0,
+    price: 0,
+  };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(requiredParent, optionalChild),
+    { ...defaultOptions, requiredItemIds: [requiredParent.id] },
+    profile,
+    { ergonomics: true },
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.targetMatching.exactMatches, true);
+  assertInstalled(result, requiredParent.id);
+  assertNotInstalled(result, optionalChild.id);
+});
+
 test('Custom profile passes weight and price limits through the existing price policy', () => {
   const validPart = createTestMod({
     id: 'custom-valid-part',
@@ -1177,7 +1258,7 @@ test('budget Custom prioritizes required module branches before expensive option
   const result = calculateBestBuild(
     testWeapon,
     'custom',
-    0,
+    1,
     200,
     createModMap(expensiveGrip, cheapGrip, receiver, requiredScope, requiredCup),
     {
@@ -1185,7 +1266,7 @@ test('budget Custom prioritizes required module branches before expensive option
       requiredItemIds: [requiredScope.id, requiredCup.id],
     },
     {
-      ergonomics: 0,
+      ergonomics: 1,
       verticalRecoil: 200,
       horizontalRecoil: 200,
       weight: 0,

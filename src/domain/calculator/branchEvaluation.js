@@ -143,6 +143,7 @@ export function createBranchEvaluator(context) {
     reservedPrice = 0,
     reservedWeight = 0,
     slotNameId = '',
+    currentRecoilModifier = context.totalRecoilModifier,
   ) {
     const item = context.modMap[itemId];
     if (!item) return invalidBranchEvaluation();
@@ -258,6 +259,7 @@ export function createBranchEvaluator(context) {
 
     let branchErgo = Math.max(0, currentErgo + ergoMod);
     let branchTotalWeight = currentWeight + itemWeight;
+    let branchRecoilModifier = currentRecoilModifier + recoilMod;
     let branchTotalPrice = currentPrice + price;
 
     const branchInstalledIds = new Set(parentBranchInstalledIds);
@@ -333,6 +335,7 @@ export function createBranchEvaluator(context) {
             childReservedPrice,
             childReservedWeight,
             slot.nameId || slot.id,
+            branchRecoilModifier,
           );
 
           if (childEval.isValid && childEval.score !== -Infinity) {
@@ -377,6 +380,7 @@ export function createBranchEvaluator(context) {
 
           branchErgo = Math.max(0, branchErgo + bestChildEval.statsDelta.ergonomics);
           branchTotalWeight += bestChildEval.statsDelta.weight;
+          branchRecoilModifier += bestChildEval.statsDelta.recoil;
           branchTotalPrice += bestChildEval.statsDelta.price;
 
           bestChildEval.items.forEach(part => branchInstalledIds.add(part.item.id));
@@ -386,7 +390,11 @@ export function createBranchEvaluator(context) {
     }
 
     if (typeof context.getTargetBranchImprovement === 'function') {
-      const targetImprovement = context.getTargetBranchImprovement(branchEval);
+      const targetImprovement = context.getTargetBranchImprovement(branchEval, {
+        ergonomics: currentErgo,
+        recoilModifier: currentRecoilModifier,
+        weight: currentWeight,
+      });
       if (Number.isFinite(targetImprovement)) branchEval.score = targetImprovement;
     }
 
