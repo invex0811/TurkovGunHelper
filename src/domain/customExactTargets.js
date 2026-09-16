@@ -1,8 +1,11 @@
+import {
+  CUSTOM_TARGET_AXIS_KEYS,
+  evaluateCustomTargetMatching,
+  getNormalizedCustomTargetError,
+} from './customTargetMatching.js';
+
 export const CUSTOM_EXACT_TARGET_KEYS = Object.freeze([
-  'ergonomics',
-  'verticalRecoil',
-  'horizontalRecoil',
-  'weight',
+  ...CUSTOM_TARGET_AXIS_KEYS,
   'price',
 ]);
 
@@ -11,90 +14,41 @@ export const DEFAULT_CUSTOM_EXACT_TARGETS = Object.freeze({
   verticalRecoil: false,
   horizontalRecoil: false,
   weight: false,
+  // Persisted legacy settings may contain this key. Price is intentionally never Exact.
   price: false,
 });
 
-const FIXED_TOLERANCES = Object.freeze({
-  ergonomics: 1,
-  verticalRecoil: 1,
-  horizontalRecoil: 2,
-  weight: 0.05,
-});
-
-export function normalizeCustomExactTargets(value) {
+export function normalizeCustomExactTargets(value, targets = null) {
   const source = value && typeof value === 'object' ? value : {};
 
   return CUSTOM_EXACT_TARGET_KEYS.reduce((normalized, key) => {
-    normalized[key] = source[key] === true;
+    normalized[key] = source[key] === true
+      && !(key === 'weight' && targets && !(Number(targets.weight) > 0));
     return normalized;
   }, {});
 }
 
 export function hasEnabledCustomExactTargets(value) {
   const normalized = normalizeCustomExactTargets(value);
-  return CUSTOM_EXACT_TARGET_KEYS.some(key => normalized[key]);
+  return CUSTOM_TARGET_AXIS_KEYS.some(key => normalized[key]);
 }
 
-export function getCustomExactTolerance(key, target) {
-  if (key === 'price') {
-    const numericTarget = Number(target);
-    return Number.isFinite(numericTarget)
-      ? Math.max(1000, Math.abs(numericTarget) * 0.01)
-      : Number.NaN;
-  }
+// Kept as a compatibility export for callers from the earlier tolerance-based UI.
+export function getCustomExactTolerance() { return 0; }
 
-  return FIXED_TOLERANCES[key] ?? Number.NaN;
-}
-
-export function getNormalizedCustomExactDeviation(actual, target, tolerance) {
-  if (actual == null || actual === '' || target == null || target === '') {
-    return Number.POSITIVE_INFINITY;
-  }
-
-  const numericActual = Number(actual);
-  const numericTarget = Number(target);
-  const numericTolerance = Number(tolerance);
-
-  if (
-    !Number.isFinite(numericActual)
-    || !Number.isFinite(numericTarget)
-    || !Number.isFinite(numericTolerance)
-    || numericTolerance <= 0
-  ) {
-    return Number.POSITIVE_INFINITY;
-  }
-
-  return Math.abs(numericActual - numericTarget) / numericTolerance;
+export function getNormalizedCustomExactDeviation(actual, target) {
+  return getNormalizedCustomTargetError(Number(actual), Number(target));
 }
 
 export function evaluateCustomExactTargets(stats, targets, enabledTargets) {
-  const normalized = normalizeCustomExactTargets(enabledTargets);
-  const failures = [];
-  let totalError = 0;
-
-  for (const key of CUSTOM_EXACT_TARGET_KEYS) {
-    if (!normalized[key]) continue;
-
-    const target = Number(targets?.[key]);
-    const actual = Number(stats?.[key]);
-    const tolerance = getCustomExactTolerance(key, target);
-    const normalizedDeviation = getNormalizedCustomExactDeviation(actual, target, tolerance);
-    totalError += normalizedDeviation;
-
-    if (normalizedDeviation > 1 + Number.EPSILON * 16) {
-      failures.push({
-        key,
-        target,
-        actual,
-        tolerance,
-        normalizedDeviation,
-      });
-    }
-  }
-
+  const matching = evaluateCustomTargetMatching(
+    stats,
+    targets,
+    normalizeCustomExactTargets(enabledTargets, targets),
+  );
   return {
-    totalError,
-    failures,
-    matches: failures.length === 0 && Number.isFinite(totalError),
+    totalError: matching.totalDistance,
+    failures: matching.exactFailures,
+    matches: matching.exactMatches && Number.isFinite(matching.totalDistance),
   };
 }

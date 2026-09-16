@@ -303,7 +303,7 @@ test('Custom profile enforces vertical and horizontal recoil independently', () 
   assertInstalled(horizontalResult, recoilPart.id);
 });
 
-test('Custom profile returns an error instead of a violating closest build', () => {
+test('Custom profile returns the closest achievable build for non-Exact targets', () => {
   const ergonomicPart = createTestMod({ id: 'limited-ergo-part', ergonomicsModifier: 10 });
   const testWeapon = createTestWeapon({
     ergonomics: 50,
@@ -319,8 +319,8 @@ test('Custom profile returns an error instead of a violating closest build', () 
     { ergonomics: 90, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 },
   );
 
-  assert.deepEqual(result.build, []);
-  assert.match(result.error, /No available build satisfies all Custom requirements/);
+  assert.equal(result.error, undefined);
+  assertInstalled(result, ergonomicPart.id);
 });
 
 test('Custom profile passes weight and price limits through the existing price policy', () => {
@@ -537,7 +537,7 @@ test('Priorities order selects different required-slot modules and ignores const
   assert.equal(prioritiesByVerticalRecoil.stats.price <= hardBudget, true);
 });
 
-test('Custom reuses a Meta build when its displayed stats satisfy the profile', () => {
+test('Custom Constraints uses target matching instead of the former Meta early return', () => {
   const metaResult = calculateBestBuild(weapon, 'meta', 0, 0, modMap, defaultOptions);
   const profile = {
     ergonomics: metaResult.stats.ergonomics,
@@ -557,8 +557,8 @@ test('Custom reuses a Meta build when its displayed stats satisfy the profile', 
   );
 
   assert.equal(customResult.error, undefined);
-  assert.deepEqual(getInstalledItemIds(customResult), getInstalledItemIds(metaResult));
-  assert.deepEqual(customResult.stats, metaResult.stats);
+  assert.ok(customResult.targetMatching);
+  assert.equal(customResult.targetMatching.totalDistance >= 0, true);
 });
 
 test('Custom with every Exact flag disabled keeps the established result unchanged', () => {
@@ -675,7 +675,7 @@ test('Exact vertical and horizontal recoil can be enabled together', () => {
   assertInstalled(result, recoilPart.id);
 });
 
-test('Exact ranking minimizes total normalized error before the existing Custom score', () => {
+test('Exact targets reject the nearest build when its displayed target does not match', () => {
   const lowerScorePart = createTestMod({
     id: 'exact-total-error-a',
     ergonomicsModifier: 9,
@@ -710,13 +710,11 @@ test('Exact ranking minimizes total normalized error before the existing Custom 
     { ergonomics: true, verticalRecoil: true },
   );
 
-  assert.equal(result.error, undefined);
-  assertInstalled(result, lowerErrorPart.id);
-  assert.equal(result.stats.ergonomics, 61);
-  assert.equal(result.stats.recoilVertical, 95);
+  assert.equal(result.errorCode, 'CUSTOM_EXACT_TARGETS_UNMET');
+  assert.deepEqual(result.build, []);
 });
 
-test('Exact ranking uses the existing Custom score when normalized errors tie', () => {
+test('Exact targets do not use the legacy Custom score as a fallback', () => {
   const betterCustomScorePart = createTestMod({
     id: 'exact-score-a',
     ergonomicsModifier: 9,
@@ -751,12 +749,11 @@ test('Exact ranking uses the existing Custom score when normalized errors tie', 
     { ergonomics: true },
   );
 
-  assert.equal(result.error, undefined);
-  assertInstalled(result, betterCustomScorePart.id);
-  assert.equal(result.stats.ergonomics, 59);
+  assert.equal(result.errorCode, 'CUSTOM_EXACT_TARGETS_UNMET');
+  assert.deepEqual(result.build, []);
 });
 
-test('Exact weight and price allow their tolerance above the entered targets', () => {
+test('Exact weight is strict and the legacy Exact price flag is ignored', () => {
   const exactPart = createTestMod({
     id: 'exact-weight-price',
     weight: 0.55,
@@ -792,12 +789,11 @@ test('Exact weight and price allow their tolerance above the entered targets', (
     { weight: true, price: true },
   );
 
-  assert.equal(result.error, undefined);
-  assert.equal(result.stats.weight, '1.55');
-  assert.equal(result.stats.price, 6_000);
+  assert.equal(result.errorCode, 'CUSTOM_EXACT_TARGETS_UNMET');
+  assert.deepEqual(result.build, []);
 });
 
-test('Exact price uses the active trader policy', () => {
+test('legacy Exact price is ignored while active trader policy still determines price', () => {
   const pricedPart = createTestMod({
     id: 'exact-trader-price',
     avg24hPrice: 10_000,
@@ -840,7 +836,8 @@ test('Exact price uses the active trader policy', () => {
 
   assert.equal(withTrader.error, undefined);
   assert.equal(withTrader.stats.price, 5_000);
-  assert.equal(fleaOnly.errorCode, 'CUSTOM_EXACT_TARGETS_UNMET');
+  assert.equal(fleaOnly.error, undefined);
+  assert.equal(fleaOnly.stats.price, 11_000);
 });
 
 test('impossible Exact targets return structured failures without a violating build', () => {
@@ -890,7 +887,7 @@ test('Meta ignores Custom Exact flags', () => {
   assert.deepEqual(withCustomFlags, normal);
 });
 
-test('Custom retries another weighting when an early recoil route starves a required charging handle', () => {
+test('Custom targets do not turn the target weight into a hard maxWeight', () => {
   const heavyRecoilStock = createTestMod({
     id: 'heavy-recoil-stock',
     weight: 3,
@@ -939,10 +936,10 @@ test('Custom retries another weighting when an early recoil route starves a requ
   );
 
   assert.equal(result.error, undefined);
-  assertInstalled(result, lightErgoStock.id);
+  assertInstalled(result, heavyRecoilStock.id);
   assertInstalled(result, requiredChargingHandle.id);
-  assertNotInstalled(result, heavyRecoilStock.id);
-  assert.equal(Number(result.stats.weight) <= 4, true);
+  assertNotInstalled(result, lightErgoStock.id);
+  assert.equal(Number(result.stats.weight) > 4, true);
 });
 
 test('budget Custom prioritizes required module branches before expensive optional root parts', () => {

@@ -8,6 +8,7 @@ import { createCalculationCache } from './calculationCache.js';
 import { createCompatibilityTools } from './compatibility.js';
 import { createPricingTools } from './pricing.js';
 import { scopeSupportsZoom } from '../scopeZoom.js';
+import { evaluateCustomTargetMatching } from '../customTargetMatching.js';
 
 export function _calculateWeighted(
   weapon,
@@ -43,6 +44,7 @@ export function _calculateWeighted(
 
   const build = [];
   const budgetAwareSearch = searchCapabilities?.budgetAwareSearch === true;
+  const targetMatching = searchCapabilities?.targetMatching ?? null;
   let branchEvaluatorOptions = options;
 
   function clearForcedBranchCaches() {
@@ -528,6 +530,34 @@ export function _calculateWeighted(
       || slotNameId.includes('equipment');
   }
 
+  function getTargetBranchImprovement(branchEval) {
+    if (!targetMatching) return null;
+
+    const baseMatching = evaluateCustomTargetMatching(
+      {
+        ergonomics: totalErgo,
+        verticalRecoil: baseRecoilV * (1 + (totalRecoilMod / 100)),
+        horizontalRecoil: baseRecoilH * (1 + (totalRecoilMod / 100)),
+        weight: totalWeight,
+      },
+      targetMatching.targets,
+      targetMatching.exactTargets,
+    );
+    const projectedRecoilModifier = totalRecoilMod + branchEval.statsDelta.recoil;
+    const projectedMatching = evaluateCustomTargetMatching(
+      {
+        ergonomics: totalErgo + branchEval.statsDelta.ergonomics,
+        verticalRecoil: baseRecoilV * (1 + (projectedRecoilModifier / 100)),
+        horizontalRecoil: baseRecoilH * (1 + (projectedRecoilModifier / 100)),
+        weight: totalWeight + branchEval.statsDelta.weight,
+      },
+      targetMatching.targets,
+      targetMatching.exactTargets,
+    );
+
+    return baseMatching.totalDistance - projectedMatching.totalDistance;
+  }
+
   const {
     evaluateBranch,
     isBetterBranch,
@@ -545,6 +575,7 @@ export function _calculateWeighted(
     get getRemainingRequiredSlotPrice() { return getRemainingRequiredSlotPrice; },
     get getRemainingRequiredSlotWeight() { return getRemainingRequiredSlotWeight; },
     get getSortedSlots() { return getSortedSlots; },
+    get getTargetBranchImprovement() { return getTargetBranchImprovement; },
     get hasCategory() { return hasCategory; },
     get hasFlashlightDevice() { return hasFlashlightDevice; },
     get hasLaserDevice() { return hasLaserDevice; },

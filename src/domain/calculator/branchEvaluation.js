@@ -369,6 +369,11 @@ export function createBranchEvaluator(context) {
       }
     }
 
+    if (typeof context.getTargetBranchImprovement === 'function') {
+      const targetImprovement = context.getTargetBranchImprovement(branchEval);
+      if (Number.isFinite(targetImprovement)) branchEval.score = targetImprovement;
+    }
+
     return branchEval;
   }
 
