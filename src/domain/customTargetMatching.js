@@ -54,7 +54,7 @@ export function evaluateCustomTargetMatching(actualValues, targetValues, exactTa
   for (const key of CUSTOM_TARGET_AXIS_KEYS) {
     const definition = AXIS_DEFINITIONS[key];
     const target = targets[key];
-    const active = key !== 'weight' || target > 0;
+    const active = target !== null && (key !== 'weight' || target > 0);
     const exact = active && exactTargets?.[key] === true;
     const axisActual = actual[key];
     const delta = axisActual === null || target === null ? null : axisActual - target;

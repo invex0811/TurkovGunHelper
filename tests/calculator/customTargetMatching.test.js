@@ -63,3 +63,16 @@ test('Exact failures retain structured actual, target, delta, and normalized err
     distance: 14 / 61,
   });
 });
+
+test('missing or invalid targets are inactive and cannot enable Exact', () => {
+  const matching = evaluateCustomTargetMatching(
+    { ergonomics: 61, recoilVertical: 44, recoilHorizontal: 35, weight: 4.01 },
+    { ergonomics: '', verticalRecoil: Number.NaN, horizontalRecoil: undefined, weight: -1 },
+    { ergonomics: true, verticalRecoil: true, horizontalRecoil: true, weight: true },
+  );
+
+  assert.equal(matching.totalDistance, 0);
+  assert.equal(matching.exactMatches, true);
+  assert.deepEqual(matching.exactFailures, []);
+  assert.equal(Object.values(matching.axes).every(axis => axis.active === false && axis.exact === false), true);
+});

@@ -1100,6 +1100,7 @@ function Configurator() {
   const [priceModeNotice, setPriceModeNotice] = useState(null);
   const [maxPriceDraft, setMaxPriceDraft] = useState(null);
   const maxWeight = customProfile.weight > 0 ? String(customProfile.weight) : '';
+  const effectiveHardMaxWeight = targetType === 'meta' ? maxWeight : 0;
   const {
     cancelPendingCalculations,
     latestCalculationRequestIdRef,
@@ -1396,7 +1397,7 @@ function Configurator() {
       traderLevels: activeTraderLevels,
       strictTraderLevels,
       ownedItems: reconciledOwnedItems,
-      maxWeight,
+      maxWeight: effectiveHardMaxWeight,
       maxPrice,
       requiredItemIds,
       suppressorMode,
@@ -1449,7 +1450,7 @@ function Configurator() {
       traderLevels: activeTraderLevels,
       strictTraderLevels,
       ownedItems: reconciledOwnedItems,
-      maxWeight,
+      maxWeight: effectiveHardMaxWeight,
       maxPrice,
       requiredItemIds,
       suppressorMode,
@@ -1473,7 +1474,7 @@ function Configurator() {
     includeTraderPrices,
     strictTraderLevels,
     maxPrice,
-    maxWeight,
+    effectiveHardMaxWeight,
     priceMode,
     reconciledOwnedItems,
     requiredItemIds,

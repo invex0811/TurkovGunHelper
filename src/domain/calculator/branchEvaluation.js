@@ -86,7 +86,23 @@ export function createBranchEvaluator(context) {
       return candidate.hasSight;
     }
 
-    return candidate.score > bestCandidate.score;
+    if (candidate.score !== bestCandidate.score) return candidate.score > bestCandidate.score;
+
+    if (context.targetMatching) {
+      const candidateBranch = candidate.branchEval ?? candidate;
+      const bestBranch = bestCandidate.branchEval ?? bestCandidate;
+      const candidatePrice = candidateBranch.statsDelta.price;
+      const bestCandidatePrice = bestBranch.statsDelta.price;
+      if (candidatePrice !== bestCandidatePrice) return candidatePrice < bestCandidatePrice;
+
+      const getTieKey = branch => branch.items
+        .map(part => String(part.item?.id ?? ''))
+        .sort()
+        .join('|');
+      return getTieKey(candidateBranch).localeCompare(getTieKey(bestBranch)) < 0;
+    }
+
+    return false;
   }
 
   function shouldApplyChildBranch(

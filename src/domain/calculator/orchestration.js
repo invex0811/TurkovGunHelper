@@ -28,6 +28,90 @@ import {
   PRIORITY_SELECTION_MODES,
 } from '../customPriorityAttributes.js';
 
+const CONSTRAINT_ROUTE_BEAM_WIDTH = 24;
+const CONSTRAINT_ROUTE_OPTIONS_PER_SLOT = 8;
+
+function getRouteKey(slot) {
+  return slot.nameId || slot.id || slot.name;
+}
+
+function getRoutePrice(item) {
+  const price = Number(item?.price?.value ?? item?.avg24hPrice ?? item?.basePrice);
+  return Number.isFinite(price) ? price : Number.MAX_SAFE_INTEGER;
+}
+
+function getRouteTieKey(route) {
+  return Object.values(route.choices)
+    .filter(Boolean)
+    .sort()
+    .join('|');
+}
+
+function getRouteMatching(weapon, route, targets, exactTargets) {
+  const recoilModifier = route.recoilModifier;
+  return evaluateCustomTargetMatching(
+    {
+      ergonomics: (weapon.properties?.ergonomics || 0) + route.ergonomics,
+      verticalRecoil: (weapon.properties?.recoilVertical || 0) * (1 + (recoilModifier / 100)),
+      horizontalRecoil: (weapon.properties?.recoilHorizontal || 0) * (1 + (recoilModifier / 100)),
+      weight: (weapon.weight || 0) + route.weight,
+    },
+    targets,
+    exactTargets,
+  );
+}
+
+function compareRoutes(left, right, weapon, targets, exactTargets) {
+  const distance = getRouteMatching(weapon, left, targets, exactTargets).totalDistance
+    - getRouteMatching(weapon, right, targets, exactTargets).totalDistance;
+  if (distance !== 0) return distance;
+  if (left.price !== right.price) return left.price - right.price;
+  return getRouteTieKey(left).localeCompare(getRouteTieKey(right));
+}
+
+export function createConstraintSearchRoutes(weapon, modMap, targets, exactTargets) {
+  let routes = [{
+    choices: {}, ergonomics: 0, recoilModifier: 0, weight: 0, price: 0,
+  }];
+  const slots = weapon.properties?.slots || [];
+
+  for (const slot of slots) {
+    // Required roots are where a greedy early choice can prevent a later required
+    // composition. Optional roots retain the target-aware branch scorer below.
+    if (slot.required !== true) continue;
+    const routeKey = getRouteKey(slot);
+    if (!routeKey) continue;
+    const allowed = (slot.filters?.allowedItems || [])
+      .map(allowedItem => modMap[allowedItem.id])
+      .filter(Boolean)
+      .sort((left, right) => String(left.id).localeCompare(String(right.id)))
+      .slice(0, CONSTRAINT_ROUTE_OPTIONS_PER_SLOT);
+    if (allowed.length === 0) continue;
+
+    const choices = slot.required === true ? allowed : [null, ...allowed];
+    routes = routes.flatMap(route => choices.map(item => ({
+      choices: { ...route.choices, [routeKey]: item?.id ?? null },
+      ergonomics: route.ergonomics + (item?.ergonomicsModifier || 0),
+      recoilModifier: route.recoilModifier + (item?.recoilModifier || 0),
+      weight: route.weight + (item?.weight || 0),
+      price: route.price + (item ? getRoutePrice(item) : 0),
+    })));
+    routes.sort((left, right) => compareRoutes(left, right, weapon, targets, exactTargets));
+    routes = routes.slice(0, CONSTRAINT_ROUTE_BEAM_WIDTH);
+  }
+
+  return routes;
+}
+
+export function compareConstraintCandidates(left, right) {
+  const distance = left.targetMatching.totalDistance - right.targetMatching.totalDistance;
+  if (distance !== 0) return distance;
+  const leftPrice = left.result.stats.price ?? Number.POSITIVE_INFINITY;
+  const rightPrice = right.result.stats.price ?? Number.POSITIVE_INFINITY;
+  if (leftPrice !== rightPrice) return leftPrice - rightPrice;
+  return left.tieKey.localeCompare(right.tieKey);
+}
+
 export function calculateBestBuild(
   weapon,
   targetType,
@@ -205,9 +289,15 @@ export function calculateBestBuild(
         exactTargets: normalizedExactTargets,
       },
     };
-    // This remains a greedy slot-tree search, but each branch is now ranked by its
-    // improvement toward the target vector instead of by a fixed ergo/recoil sweep.
-    const candidates = [_calculateWeighted(
+    // Bounded deterministic beam over root slots. Each route still relies on the
+    // compatibility-aware recursive builder for nested chains and hard constraints.
+    const routes = createConstraintSearchRoutes(
+      weapon,
+      modMap,
+      customTargetValues,
+      normalizedExactTargets,
+    );
+    const candidates = routes.map(route => _calculateWeighted(
       weapon,
       1,
       1,
@@ -220,8 +310,8 @@ export function calculateBestBuild(
       0,
       100,
       calculationCache,
-      targetSearchCapabilities,
-    )];
+      { ...targetSearchCapabilities, forcedRootChoices: route.choices },
+    ));
     let closestCandidate = null;
     let validExactCandidate = null;
 
@@ -233,19 +323,7 @@ export function calculateBestBuild(
         normalizedExactTargets,
       );
       const candidate = { result, targetMatching, tieKey: getBuildTieKey(result) };
-      const isBetter = current => !current
-        || candidate.targetMatching.totalDistance < current.targetMatching.totalDistance
-        || (
-          candidate.targetMatching.totalDistance === current.targetMatching.totalDistance
-          && (
-            (candidate.result.stats.price ?? Number.POSITIVE_INFINITY)
-              < (current.result.stats.price ?? Number.POSITIVE_INFINITY)
-            || (
-              candidate.result.stats.price === current.result.stats.price
-              && candidate.tieKey.localeCompare(current.tieKey) < 0
-            )
-          )
-        );
+      const isBetter = current => !current || compareConstraintCandidates(candidate, current) < 0;
       if (isBetter(closestCandidate)) closestCandidate = candidate;
       if (targetMatching.exactMatches && isBetter(validExactCandidate)) {
         validExactCandidate = candidate;

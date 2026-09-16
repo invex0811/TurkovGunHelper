@@ -598,7 +598,7 @@ test('Custom with every Exact flag disabled keeps the established result unchang
   assert.deepEqual(exactOffResult, previousResult);
 });
 
-test('Exact ergonomics replaces the directional minimum with a tolerance window', () => {
+test('Exact ergonomics requires the normalized displayed target value', () => {
   const closePart = createTestMod({
     id: 'exact-ergo-close',
     ergonomicsModifier: 10,
@@ -673,6 +673,70 @@ test('Exact vertical and horizontal recoil can be enabled together', () => {
   assert.equal(result.stats.recoilVertical, 80);
   assert.equal(result.stats.recoilHorizontal, 160);
   assertInstalled(result, recoilPart.id);
+});
+
+test('Constraints beam finds a reachable Exact composition across required slots', () => {
+  const overshootingPart = createTestMod({ id: 'exact-ergo-plus-nine', ergonomicsModifier: 9 });
+  const exactPart = createTestMod({ id: 'exact-ergo-plus-six', ergonomicsModifier: 6 });
+  const requiredLaterPart = createTestMod({ id: 'exact-ergo-plus-four', ergonomicsModifier: 4 });
+  const testWeapon = createTestWeapon({
+    ergonomics: 50,
+    slots: [
+      createSlot('Stock', [overshootingPart.id, exactPart.id], 'mod_stock', true),
+      createSlot('Required receiver', [requiredLaterPart.id], 'mod_reciever', true),
+    ],
+  });
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    60,
+    100,
+    createModMap(overshootingPart, exactPart, requiredLaterPart),
+    defaultOptions,
+    { ergonomics: 60, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 },
+    { ergonomics: true },
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.stats.ergonomics, 60);
+  assertInstalled(result, exactPart.id);
+  assertInstalled(result, requiredLaterPart.id);
+  assertNotInstalled(result, overshootingPart.id);
+});
+
+test('Constraints final ties choose lower price independently of allowed-item order', () => {
+  const expensive = createTestMod({ id: 'target-expensive', ergonomicsModifier: 10, avg24hPrice: 1_100 });
+  const cheap = createTestMod({ id: 'target-cheap', ergonomicsModifier: 10, avg24hPrice: 200 });
+  const testWeapon = createTestWeapon({
+    slots: [createSlot('Stock', [expensive.id, cheap.id], 'mod_stock', true)],
+  });
+  const profile = { ergonomics: 60, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon, 'custom', 60, 100, createModMap(expensive, cheap), defaultOptions, profile,
+  );
+
+  assert.equal(result.targetMatching.totalDistance, 0);
+  assertInstalled(result, cheap.id);
+  assertNotInstalled(result, expensive.id);
+});
+
+test('Constraints final ties choose build key independently of allowed-item order', () => {
+  const laterKey = createTestMod({ id: 'z-target-tie', ergonomicsModifier: 10, avg24hPrice: 200 });
+  const earlierKey = createTestMod({ id: 'a-target-tie', ergonomicsModifier: 10, avg24hPrice: 200 });
+  const testWeapon = createTestWeapon({
+    slots: [createSlot('Stock', [laterKey.id, earlierKey.id], 'mod_stock', true)],
+  });
+  const profile = { ergonomics: 60, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon, 'custom', 60, 100, createModMap(laterKey, earlierKey), defaultOptions, profile,
+  );
+
+  assert.equal(result.targetMatching.totalDistance, 0);
+  assertInstalled(result, earlierKey.id);
+  assertNotInstalled(result, laterKey.id);
 });
 
 test('Exact targets reject the nearest build when its displayed target does not match', () => {

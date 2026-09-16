@@ -45,6 +45,7 @@ export function _calculateWeighted(
   const build = [];
   const budgetAwareSearch = searchCapabilities?.budgetAwareSearch === true;
   const targetMatching = searchCapabilities?.targetMatching ?? null;
+  const forcedRootChoices = searchCapabilities?.forcedRootChoices ?? null;
   let branchEvaluatorOptions = options;
 
   function clearForcedBranchCaches() {
@@ -603,6 +604,7 @@ export function _calculateWeighted(
     get requireSight() { return requireSight; },
     get requiredItemIds() { return requiredItemIds; },
     get targetCapacity() { return targetCapacity; },
+    get targetMatching() { return targetMatching; },
     get targetType() { return targetType; },
     get totalPrice() { return totalPrice; },
     get totalWeight() { return totalWeight; },
@@ -643,6 +645,16 @@ export function _calculateWeighted(
 
       if (isMagazineSlot(slot)) {
         allowed = filterAllowedItems(allowed, targetCapacity);
+      }
+
+      const routeKey = slot.nameId || slot.id || slot.name;
+      if (forcedRootChoices && Object.hasOwn(forcedRootChoices, routeKey)) {
+        const forcedItemId = forcedRootChoices[routeKey];
+        if (forcedItemId == null) {
+          if (slot.required === true) missingRequiredSlotNames.add(slot.name || slot.nameId || 'Unknown slot');
+          continue;
+        }
+        allowed = allowed.filter(allowedItem => allowedItem.id === forcedItemId);
       }
 
       if (allowed.length === 0) {
