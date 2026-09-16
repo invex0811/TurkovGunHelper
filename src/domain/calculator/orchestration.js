@@ -343,7 +343,7 @@ export function calculateBestBuild(
         exactTargetFailures: closestCandidate.targetMatching.exactFailures,
         targetMatching: closestCandidate.targetMatching,
         closestTargetMatching: closestCandidate.targetMatching,
-        error: 'No available build matches all enabled Exact targets. Disable Exact for one or more axes to use the closest achievable build.',
+        error: 'No available build matches all enabled Exact targets. Disable Exact for one or more axes to use the best match found by the builder.',
       };
     }
 

@@ -13,6 +13,7 @@ test('normalizes missing and legacy Exact settings to all disabled', () => {
     ...DEFAULT_CUSTOM_EXACT_TARGETS,
     ergonomics: true,
   });
+  assert.equal(normalizeCustomExactTargets({ price: true }).price, false);
 });
 
 test('multiple Exact targets require the normalized displayed values to match', () => {

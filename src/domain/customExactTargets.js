@@ -22,7 +22,8 @@ export function normalizeCustomExactTargets(value, targets = null) {
   const source = value && typeof value === 'object' ? value : {};
 
   return CUSTOM_EXACT_TARGET_KEYS.reduce((normalized, key) => {
-    normalized[key] = source[key] === true
+    normalized[key] = key !== 'price'
+      && source[key] === true
       && !(key === 'weight' && targets && !(Number(targets.weight) > 0));
     return normalized;
   }, {});
