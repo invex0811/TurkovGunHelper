@@ -86,7 +86,8 @@ function ConstraintValueInput({
       <label className="custom-constraints__exact-toggle" title={t('ui.radar.exactTooltip')}>
         <input
           type="checkbox"
-          checked={exact}
+          checked={exact && !(axis.key === 'weight' && !(value > 0))}
+          disabled={axis.key === 'weight' && !(value > 0)}
           aria-label={t('ui.radar.exactTarget', { label })}
           onChange={event => onExactChange(axis.key, event.target.checked)}
         />

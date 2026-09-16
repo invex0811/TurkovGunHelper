@@ -1026,10 +1026,10 @@ function Configurator() {
   const { targetType, characteristicMode } = getCalculatorGoalState(buildGoalMode);
   const [customProfile, setCustomProfile] = useState(CUSTOM_BUILD_DEFAULT_PROFILE);
   const [customExactTargets, setCustomExactTargets] = useState(DEFAULT_CUSTOM_EXACT_TARGETS);
-  const effectiveCustomExactTargets = useMemo(() => ({
-    ...customExactTargets,
-    price: false,
-  }), [customExactTargets]);
+  const effectiveCustomExactTargets = useMemo(
+    () => normalizeCustomExactTargets(customExactTargets, customProfile),
+    [customExactTargets, customProfile],
+  );
   const [priorityAttributes, setPriorityAttributes] = useState([]);
   const [prioritySelectionMode, setPrioritySelectionMode] = useState(PRIORITY_SELECTION_MODES.ORDERED);
   const [priorityWeights, setPriorityWeights] = useState(() => normalizePriorityWeights());
@@ -1619,7 +1619,7 @@ function Configurator() {
     try {
       const options = {
         ...getSuppressorOptions(suppressorMode),
-        maxWeight: customProfile.weight,
+        maxWeight: targetType === 'meta' ? customProfile.weight : 0,
         maxPrice,
         magazineCapacity: Number(magazineCapacity) || 30,
         priceMode,
@@ -2074,7 +2074,10 @@ function Configurator() {
         moduleResults={requiredModuleResultViews}
         onAddModule={handleAddRequiredModule}
         onBuildGoalModeChange={setBuildGoalMode}
-        onExactChange={(axisKey, enabled) => setCustomExactTargets(current => ({ ...current, [axisKey]: enabled }))}
+        onExactChange={(axisKey, enabled) => setCustomExactTargets(current => ({
+          ...current,
+          [axisKey]: axisKey === 'weight' && !(customProfile.weight > 0) ? false : enabled,
+        }))}
         onPriorityAttributeToggle={attribute => setPriorityAttributes(current => (
           togglePriorityAttribute(current, attribute)
         ))}
