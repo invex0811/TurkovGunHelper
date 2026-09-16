@@ -237,7 +237,10 @@ test('saved builds migrate legacy Custom prices to one shared limit without a sc
   const restored = getSavedBuild('custom-radar', storage);
   assert.equal(restored.version, 1);
   assert.deepEqual(restored.settings.customProfile, customProfile);
-  assert.deepEqual(restored.settings.customExactTargets, customExactTargets);
+  assert.deepEqual(restored.settings.customExactTargets, {
+    ...customExactTargets,
+    price: false,
+  });
   assert.equal(restored.settings.characteristicMode, 'priorities');
   assert.deepEqual(restored.settings.priorityAttributes, [
     'weight',
