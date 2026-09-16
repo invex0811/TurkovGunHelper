@@ -9,6 +9,7 @@ import { createCompatibilityTools } from './compatibility.js';
 import { createPricingTools } from './pricing.js';
 import { scopeSupportsZoom } from '../scopeZoom.js';
 import { evaluateCustomTargetMatching } from '../customTargetMatching.js';
+import { getRootSlotRouteKey } from './constraints.js';
 
 export function _calculateWeighted(
   weapon,
@@ -647,7 +648,7 @@ export function _calculateWeighted(
         allowed = filterAllowedItems(allowed, targetCapacity);
       }
 
-      const routeKey = slot.nameId || slot.id || slot.name;
+      const routeKey = getRootSlotRouteKey(slot, weapon.properties.slots);
       if (forcedRootChoices && Object.hasOwn(forcedRootChoices, routeKey)) {
         const forcedItemId = forcedRootChoices[routeKey];
         if (forcedItemId == null) {
@@ -868,6 +869,8 @@ export function _calculateWeighted(
       params: { maxPrice },
       fallback: 'The build exceeds the selected max price.',
     });
+    result.errorCode = 'MAX_PRICE_EXCEEDED';
+    errors.push(`The build exceeds the selected max price of ${maxPrice} RUB.`);
   }
   if (!Number.isFinite(totalPrice)) {
     const missingItemCount = [

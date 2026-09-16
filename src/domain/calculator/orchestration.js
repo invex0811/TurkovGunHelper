@@ -20,6 +20,7 @@ import {
   getPriceAwareResultScore,
 } from './scoring.js';
 import { evaluateCustomTargetMatching } from '../customTargetMatching.js';
+import { getRootSlotRouteKey } from './constraints.js';
 import {
   normalizeCustomCharacteristicMode,
   normalizePriorityAttributes,
@@ -30,10 +31,6 @@ import {
 
 const CONSTRAINT_ROUTE_BEAM_WIDTH = 24;
 const CONSTRAINT_ROUTE_OPTIONS_PER_SLOT = 8;
-
-function getRouteKey(slot) {
-  return slot.nameId || slot.id || slot.name;
-}
 
 function getRoutePrice(item) {
   const price = Number(item?.price?.value ?? item?.avg24hPrice ?? item?.basePrice);
@@ -79,7 +76,7 @@ export function createConstraintSearchRoutes(weapon, modMap, targets, exactTarge
     // Required roots are where a greedy early choice can prevent a later required
     // composition. Optional roots retain the target-aware branch scorer below.
     if (slot.required !== true) continue;
-    const routeKey = getRouteKey(slot);
+    const routeKey = getRootSlotRouteKey(slot, slots);
     if (!routeKey) continue;
     const allowed = (slot.filters?.allowedItems || [])
       .map(allowedItem => modMap[allowedItem.id])

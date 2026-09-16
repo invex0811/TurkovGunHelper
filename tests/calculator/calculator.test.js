@@ -705,6 +705,68 @@ test('Constraints beam finds a reachable Exact composition across required slots
   assertNotInstalled(result, overshootingPart.id);
 });
 
+test('Constraints beam keeps repeated root identifiers as distinct required slot instances', () => {
+  const firstPart = createTestMod({ id: 'duplicate-root-first', ergonomicsModifier: 5 });
+  const secondPart = createTestMod({ id: 'duplicate-root-second', ergonomicsModifier: 5 });
+  const testWeapon = createTestWeapon({
+    ergonomics: 50,
+    slots: [
+      createSlot('Duplicate root A', [firstPart.id], 'duplicate_root', true),
+      createSlot('Duplicate root B', [secondPart.id], 'duplicate_root', true),
+    ],
+  });
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    60,
+    100,
+    createModMap(firstPart, secondPart),
+    defaultOptions,
+    { ergonomics: 60, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 },
+    { ergonomics: true },
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.stats.ergonomics, 60);
+  assertInstalled(result, firstPart.id);
+  assertInstalled(result, secondPart.id);
+});
+
+test('Constraints reject a base weapon that already exceeds the maximum price', () => {
+  const targetPart = createTestMod({ id: 'budget-target-part', ergonomicsModifier: 10, avg24hPrice: 200 });
+  const testWeapon = createTestWeapon({
+    basePrice: 1_000,
+    avg24hPrice: 1_000,
+    slots: [createSlot('Stock', [targetPart.id], 'mod_stock', true)],
+  });
+  const profile = { ergonomics: 60, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const overBudget = calculateBestBuild(
+    testWeapon,
+    'custom',
+    60,
+    100,
+    createModMap(targetPart),
+    { ...defaultOptions, maxPrice: 500 },
+    profile,
+  );
+  const affordable = calculateBestBuild(
+    testWeapon,
+    'custom',
+    60,
+    100,
+    createModMap(targetPart),
+    { ...defaultOptions, maxPrice: 1_500 },
+    profile,
+  );
+
+  assert.equal(overBudget.errorCode, 'MAX_PRICE_EXCEEDED');
+  assert.match(overBudget.error, /selected max price/i);
+  assert.equal(affordable.error, undefined);
+  assertInstalled(affordable, targetPart.id);
+});
+
 test('Constraints final ties choose lower price independently of allowed-item order', () => {
   const expensive = createTestMod({ id: 'target-expensive', ergonomicsModifier: 10, avg24hPrice: 1_100 });
   const cheap = createTestMod({ id: 'target-cheap', ergonomicsModifier: 10, avg24hPrice: 200 });
@@ -2548,7 +2610,8 @@ test('Budget Limit Option: should restrict the build cost to maxPrice', () => {
       maxPrice: 5000,
     }
   );
-  assert.match(resultTooLow.warning, /exceeds the selected max price/i);
+  assert.equal(resultTooLow.errorCode, 'MAX_PRICE_EXCEEDED');
+  assert.match(resultTooLow.error, /selected max price/i);
 });
 
 test('recalculateBuildStats should correctly sum ergonomics, recoil, weight and price', () => {

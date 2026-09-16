@@ -1,3 +1,9 @@
+export function getRootSlotRouteKey(slot, rootSlots = []) {
+  const baseKey = slot?.nameId || slot?.id || slot?.name || 'root-slot';
+  const ordinal = Math.max(0, rootSlots.indexOf(slot));
+  return `${baseKey}#${ordinal}`;
+}
+
 export function getCustomRequirementMatches(
   result,
   {
