@@ -1076,6 +1076,130 @@ test('Constraints routes retain a ninth maximum-price-feasible required choice',
   assertInstalled(result, affordablePart.id);
 });
 
+test('Constraints global frontier retains required coverage from an earlier root', () => {
+  const regularFirstRootParts = Array.from({ length: 8 }, (_, index) => createTestMod({
+    id: `frontier-regular-first-${String(index + 1).padStart(2, '0')}`,
+    weight: 0,
+  }));
+  const requiredPart = createTestMod({
+    id: 'frontier-required-first-09',
+    ergonomicsModifier: -50,
+    weight: 0,
+  });
+  const secondRootParts = Array.from({ length: 9 }, (_, index) => createTestMod({
+    id: `frontier-second-${String(index + 1).padStart(2, '0')}`,
+    weight: 0,
+  }));
+  const testWeapon = createTestWeapon({
+    slots: [
+      createSlot('First required root', [...regularFirstRootParts, requiredPart].map(part => part.id), 'mod_first', true),
+      createSlot('Second required root', secondRootParts.map(part => part.id), 'mod_second', true),
+    ],
+  });
+  const profile = { ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(...regularFirstRootParts, requiredPart, ...secondRootParts),
+    { ...defaultOptions, requiredItemIds: [requiredPart.id] },
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, requiredPart.id);
+});
+
+test('Constraints global frontier retains the cheapest complete maximum-price route', () => {
+  const createRootParts = prefix => [
+    ...Array.from({ length: 8 }, (_, index) => createTestMod({
+      id: `${prefix}-expensive-${String(index + 1).padStart(2, '0')}`,
+      ergonomicsModifier: 10,
+      avg24hPrice: 200,
+      basePrice: 200,
+      weight: 0,
+    })),
+    createTestMod({
+      id: `${prefix}-cheap-09`,
+      ergonomicsModifier: -10,
+      avg24hPrice: 100,
+      basePrice: 100,
+      weight: 0,
+    }),
+  ];
+  const firstRootParts = createRootParts('frontier-price-first');
+  const secondRootParts = createRootParts('frontier-price-second');
+  const testWeapon = createTestWeapon({
+    avg24hPrice: 100,
+    basePrice: 100,
+    slots: [
+      createSlot('First required root', firstRootParts.map(part => part.id), 'mod_first', true),
+      createSlot('Second required root', secondRootParts.map(part => part.id), 'mod_second', true),
+    ],
+  });
+  const profile = { ergonomics: 70, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(...firstRootParts, ...secondRootParts),
+    { ...defaultOptions, maxPrice: 300 },
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.stats.price, 300);
+  assertInstalled(result, firstRootParts.at(-1).id);
+  assertInstalled(result, secondRootParts.at(-1).id);
+});
+
+test('Constraints ignores conflicting nested suppressor paths when retaining routes', () => {
+  const blockedSuppressor = createTestMod({
+    id: 'frontier-blocked-suppressor',
+    categories: createCategories(['Silencer']),
+    weight: 0,
+  });
+  const falseProviders = Array.from({ length: 24 }, (_, index) => createTestMod({
+    id: `frontier-false-suppressor-${String(index + 1).padStart(2, '0')}`,
+    conflictingItemIds: [blockedSuppressor.id],
+    slots: [createSlot('Blocked suppressor', [blockedSuppressor.id])],
+    weight: 0,
+  }));
+  const directSuppressor = createTestMod({
+    id: 'frontier-direct-suppressor',
+    ergonomicsModifier: -10,
+    categories: createCategories(['Silencer']),
+    weight: 0,
+  });
+  const testWeapon = createTestWeapon({
+    slots: [createSlot(
+      'Required muzzle',
+      [...falseProviders, directSuppressor].map(part => part.id),
+      'mod_muzzle',
+      true,
+    )],
+  });
+  const profile = { ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(...falseProviders, blockedSuppressor, directSuppressor),
+    { ...defaultOptions, requireSuppressor: true },
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, directSuppressor.id);
+  assertNotInstalled(result, blockedSuppressor.id);
+});
+
 test('Exact targets reject the nearest build when its displayed target does not match', () => {
   const lowerScorePart = createTestMod({
     id: 'exact-total-error-a',
