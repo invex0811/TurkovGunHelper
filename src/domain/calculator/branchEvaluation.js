@@ -1,3 +1,5 @@
+import { getNestedSlotRouteKey } from './constraints.js';
+
 export function createBranchEvaluator(context) {
   function invalidBranchEvaluation() {
     return {
@@ -86,6 +88,12 @@ export function createBranchEvaluator(context) {
       return candidate.hasSight;
     }
 
+    if (context.targetMatching) {
+      const candidateTacticalCount = context.countMissingTacticalDevicesProvided(candidate);
+      const bestTacticalCount = context.countMissingTacticalDevicesProvided(bestCandidate);
+      if (candidateTacticalCount !== bestTacticalCount) return candidateTacticalCount > bestTacticalCount;
+    }
+
     if (candidate.score !== bestCandidate.score) return candidate.score > bestCandidate.score;
 
     if (context.targetMatching) {
@@ -128,6 +136,8 @@ export function createBranchEvaluator(context) {
       return childEval.hasSight;
     }
 
+    if (context.targetMatching && context.countMissingTacticalDevicesProvided(childEval) > 0) return true;
+
     return childEval.score > 0;
   }
 
@@ -144,6 +154,7 @@ export function createBranchEvaluator(context) {
     reservedWeight = 0,
     slotNameId = '',
     currentRecoilModifier = context.totalRecoilModifier,
+    branchPath = '',
   ) {
     const item = context.modMap[itemId];
     if (!item) return invalidBranchEvaluation();
@@ -206,7 +217,14 @@ export function createBranchEvaluator(context) {
     }
 
     const price = context.getItemPrice(item);
-    if (context.maxPrice > 0 && currentPrice + price + reservedPrice > context.maxPrice) {
+    if (
+      context.maxPrice > 0
+      && (
+        !Number.isFinite(price)
+        || !Number.isFinite(currentPrice)
+        || currentPrice + price + reservedPrice > context.maxPrice
+      )
+    ) {
       return invalidBranchEvaluation();
     }
 
@@ -276,11 +294,26 @@ export function createBranchEvaluator(context) {
 
       for (let slotIndex = 0; slotIndex < sortedSlots.length; slotIndex += 1) {
         const slot = sortedSlots[slotIndex];
-        if (context.isSkippedSlot(slot)) continue;
+        const slotPath = getNestedSlotRouteKey(
+          branchPath,
+          item,
+          slot,
+          item.properties?.slots || [],
+        );
+        const forcedChildItemId = context.getForcedNestedChoice?.(slotPath);
+        const hasForcedChild = forcedChildItemId !== undefined;
+        if (hasForcedChild && forcedChildItemId === null) {
+          if (slot.required === true) return invalidBranchEvaluation();
+          continue;
+        }
+        if (context.isSkippedSlot(slot)) {
+          if (hasForcedChild) return invalidBranchEvaluation();
+          continue;
+        }
 
         let allowed = slot.filters?.allowedItems;
         if (!allowed || allowed.length === 0) {
-          if (slot.required === true) return invalidBranchEvaluation();
+          if (slot.required === true || hasForcedChild) return invalidBranchEvaluation();
           continue;
         }
 
@@ -288,8 +321,12 @@ export function createBranchEvaluator(context) {
           allowed = context.filterAllowedItems(allowed, context.targetCapacity);
         }
 
+        if (hasForcedChild) {
+          allowed = allowed.filter(allowedItem => allowedItem.id === forcedChildItemId);
+        }
+
         if (allowed.length === 0) {
-          if (slot.required === true) return invalidBranchEvaluation();
+          if (slot.required === true || hasForcedChild) return invalidBranchEvaluation();
           continue;
         }
 
@@ -298,8 +335,8 @@ export function createBranchEvaluator(context) {
           slotIndex,
           nextPathIds,
         );
-        if (!Number.isFinite(remainingRequiredPrice)) return invalidBranchEvaluation();
-        const childReservedPrice = reservedPrice + remainingRequiredPrice;
+        if (context.maxPrice > 0 && !Number.isFinite(remainingRequiredPrice)) return invalidBranchEvaluation();
+        const childReservedPrice = reservedPrice + (Number.isFinite(remainingRequiredPrice) ? remainingRequiredPrice : 0);
         const remainingRequiredWeight = context.getRemainingRequiredSlotWeight(
           sortedSlots,
           slotIndex,
@@ -336,6 +373,7 @@ export function createBranchEvaluator(context) {
             childReservedWeight,
             slot.nameId || slot.id,
             branchRecoilModifier,
+            slotPath,
           );
 
           if (childEval.isValid && childEval.score !== -Infinity) {
@@ -368,10 +406,10 @@ export function createBranchEvaluator(context) {
           activeMustFindSuppressor,
           activeMustFindSight,
           activeMustFindRequired,
-          slot.required === true,
+          slot.required === true || hasForcedChild,
         );
 
-        if (slot.required === true && !shouldApply) {
+        if ((slot.required === true || hasForcedChild) && !shouldApply) {
           return invalidBranchEvaluation();
         }
 

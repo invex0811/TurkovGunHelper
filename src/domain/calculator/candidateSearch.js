@@ -47,6 +47,7 @@ export function _calculateWeighted(
   const budgetAwareSearch = searchCapabilities?.budgetAwareSearch === true;
   const targetMatching = searchCapabilities?.targetMatching ?? null;
   const forcedRootChoices = searchCapabilities?.forcedRootChoices ?? null;
+  const forcedNestedChoices = searchCapabilities?.forcedNestedChoices ?? null;
   let branchEvaluatorOptions = options;
 
   function clearForcedBranchCaches() {
@@ -476,6 +477,15 @@ export function _calculateWeighted(
     return false;
   }
 
+  function countMissingTacticalDevicesProvided(branchEval) {
+    if (!targetMatching) return 0;
+    const items = (branchEval.branchEval ?? branchEval).items;
+    return Number(options.includeLaser === true && !hasLaserDevice(installedIds)
+      && items.some(part => hasCategory(part.item, 'Comb. tact. device')))
+      + Number(options.includeFlashlight === true && !hasFlashlightDevice(installedIds)
+      && items.some(part => hasCategory(part.item, 'Flashlight')));
+  }
+
   function isReservedForRequiredTacticalDevice(item) {
     if (requiredItemIds.has(item.id)) return false;
 
@@ -575,6 +585,7 @@ export function _calculateWeighted(
     get addItemConflictsToSet() { return addItemConflictsToSet; },
     get branchHasOnlyOptionalSight() { return branchHasOnlyOptionalSight; },
     get branchHasRequiredSight() { return branchHasRequiredSight; },
+    get countMissingTacticalDevicesProvided() { return countMissingTacticalDevicesProvided; },
     get ergoCap() { return ergoCap; },
     get ergoSoftCap() { return ergoSoftCap; },
     get ergoWeight() { return ergoWeight; },
@@ -585,6 +596,11 @@ export function _calculateWeighted(
     get getRemainingRequiredSlotWeight() { return getRemainingRequiredSlotWeight; },
     get getSortedSlots() { return getSortedSlots; },
     get getTargetBranchImprovement() { return getTargetBranchImprovement; },
+    get getForcedNestedChoice() {
+      return slotPath => (forcedNestedChoices && Object.hasOwn(forcedNestedChoices, slotPath)
+        ? forcedNestedChoices[slotPath]
+        : undefined);
+    },
     get hasCategory() { return hasCategory; },
     get hasFlashlightDevice() { return hasFlashlightDevice; },
     get hasLaserDevice() { return hasLaserDevice; },
@@ -709,6 +725,7 @@ export function _calculateWeighted(
           reservedWeight,
           slot.nameId || slot.id,
           totalRecoilMod,
+          routeKey,
         );
         if (!branchEval.isValid) return;
         if (hasSight && branchEval.hasSight && !branchHasRequiredSight(branchEval)) return;
@@ -775,6 +792,7 @@ export function _calculateWeighted(
         && bestCandidate.score <= 0
         && !(options.requireSuppressor && !hasSuppressorGlobal && bestCandidate.hasSuppressor)
         && !(requireSight && !hasSight && bestCandidate.hasSight)
+        && countMissingTacticalDevicesProvided(bestCandidate) === 0
         && bestCandidate.requiredMatches.size === 0;
       const shouldSkipTargetWorseningBranch = targetMatching && isUnrequiredNonImprovement;
       const shouldSkipLegacyOptionalPart = !targetMatching
@@ -830,9 +848,11 @@ export function _calculateWeighted(
   });
 
   processSlots(weapon.properties.slots);
-  optimizeFinalBarrelBlock();
-  optimizeFinalMuzzleBlock();
-  optimizeBudgetAwareLeafRecoilUpgrades();
+  if (!forcedNestedChoices || Object.keys(forcedNestedChoices).length === 0) {
+    optimizeFinalBarrelBlock();
+    optimizeFinalMuzzleBlock();
+    optimizeBudgetAwareLeafRecoilUpgrades();
+  }
   rebuildBuildState();
 
   const finalRecoilV = baseRecoilV * (1 + (totalRecoilMod / 100));
@@ -841,7 +861,7 @@ export function _calculateWeighted(
   const result = {
     build,
     stats: {
-      ergonomics: Math.min(100, Math.round(totalErgo)),
+      ergonomics: Math.max(0, Math.min(100, Math.round(totalErgo))),
       recoilModifier: totalRecoilMod,
       recoilVertical: Math.round(finalRecoilV),
       recoilHorizontal: Math.round(finalRecoilH),
@@ -854,6 +874,15 @@ export function _calculateWeighted(
   const errors = [];
   if (options.requireSuppressor && !hasSuppressorGlobal) {
     errors.push('No compatible suppressor could be installed with the current constraints.');
+  }
+  if (requireSight && !hasSight) {
+    errors.push('No compatible sight could be installed with the current constraints.');
+  }
+  if (targetMatching && options.includeLaser && !hasLaserDevice(installedIds)) {
+    errors.push('No compatible laser could be installed with the current constraints.');
+  }
+  if (targetMatching && options.includeFlashlight && !hasFlashlightDevice(installedIds)) {
+    errors.push('No compatible flashlight could be installed with the current constraints.');
   }
   const missingRequiredIds = [...requiredItemIds].filter(itemId => !installedIds.has(itemId));
   if (missingRequiredIds.length > 0) {
