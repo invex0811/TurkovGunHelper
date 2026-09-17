@@ -391,6 +391,43 @@ test('Constraints Exact leaves an already exact optional target build unchanged'
   assertNotInstalled(result, worseningPart.id);
 });
 
+test('Constraints Exact uses capped displayed ergonomics before selecting an optional part', () => {
+  const loweringPart = createTestMod({
+    id: 'capped-exact-ergonomics-part',
+    ergonomicsModifier: -10,
+    avg24hPrice: 1_000,
+  });
+  const testWeapon = createTestWeapon({
+    ergonomics: 110,
+    avg24hPrice: 1_000,
+    slots: [createSlot('Optional stock', [loweringPart.id])],
+  });
+  const profile = {
+    ergonomics: 100,
+    verticalRecoil: 100,
+    horizontalRecoil: 100,
+    weight: 0,
+    price: 0,
+  };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(loweringPart),
+    defaultOptions,
+    profile,
+    { ergonomics: true },
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.targetMatching.exactMatches, true);
+  assert.equal(result.stats.ergonomics, 100);
+  assert.equal(result.stats.price, 1_000);
+  assertNotInstalled(result, loweringPart.id);
+});
+
 test('Constraints skips an unrelated worsening root branch when another root provides a required item', () => {
   const requiredPart = createTestMod({
     id: 'separate-required-part',

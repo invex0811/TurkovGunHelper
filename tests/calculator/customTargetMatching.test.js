@@ -17,6 +17,18 @@ test('target matching normalizes calculator display values before comparing axes
   assert.equal(matching.axes.verticalRecoil.actual, 44);
 });
 
+test('target matching caps ergonomics to the displayed range before Exact comparison', () => {
+  const matching = evaluateCustomTargetMatching(
+    { ergonomics: 110, recoilVertical: 100, recoilHorizontal: 100, weight: 1 },
+    { ergonomics: 120, verticalRecoil: 100, horizontalRecoil: 100, weight: 1 },
+    { ergonomics: true },
+  );
+
+  assert.equal(matching.axes.ergonomics.actual, 100);
+  assert.equal(matching.axes.ergonomics.target, 100);
+  assert.equal(matching.axes.ergonomics.exactMatch, true);
+});
+
 test('target matching uses normalized axis errors and disables a zero weight target', () => {
   const matching = evaluateCustomTargetMatching(
     { ergonomics: 75, recoilVertical: 35, recoilHorizontal: 42, weight: 5.5 },

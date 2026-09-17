@@ -23,7 +23,10 @@ export function normalizeCustomTargetAxisValue(key, value) {
   const definition = AXIS_DEFINITIONS[key];
   if (numeric === null || !definition) return null;
 
-  if (definition.precision === 0) return Math.round(numeric);
+  if (definition.precision === 0) {
+    const rounded = Math.round(numeric);
+    return key === 'ergonomics' ? Math.min(100, Math.max(0, rounded)) : rounded;
+  }
   return Number(numeric.toFixed(definition.precision));
 }
 
