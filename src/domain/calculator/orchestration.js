@@ -34,11 +34,6 @@ import {
 const CONSTRAINT_ROUTE_BEAM_WIDTH = 24;
 const CONSTRAINT_ROUTE_OPTIONS_PER_SLOT = 8;
 
-function getRoutePrice(item, getItemPrice) {
-  const price = getItemPrice(item);
-  return Number.isFinite(price) ? price : Number.MAX_SAFE_INTEGER;
-}
-
 function getRouteTieKey(route) {
   return Object.values(route.choices)
     .filter(Boolean)
@@ -112,65 +107,127 @@ function getMinimumRequiredSlotPrice(slot, modMap, getItemPrice) {
   );
 }
 
-function getTargetRankedRouteOptions(items, weapon, targets, exactTargets, getItemPrice) {
-  return [...items].sort((left, right) => {
+function getTargetRankedRouteOptions(entries, weapon, targets, exactTargets) {
+  return [...entries].sort((left, right) => {
     const leftRoute = {
-      choices: { item: left.id },
-      ergonomics: left.ergonomicsModifier || 0,
-      recoilModifier: left.recoilModifier || 0,
-      weight: left.weight || 0,
-      price: getRoutePrice(left, getItemPrice),
+      choices: { item: left.item.id },
+      ergonomics: left.item.ergonomicsModifier || 0,
+      recoilModifier: left.item.recoilModifier || 0,
+      weight: left.item.weight || 0,
+      price: left.capabilities.price,
     };
     const rightRoute = {
-      choices: { item: right.id },
-      ergonomics: right.ergonomicsModifier || 0,
-      recoilModifier: right.recoilModifier || 0,
-      weight: right.weight || 0,
-      price: getRoutePrice(right, getItemPrice),
+      choices: { item: right.item.id },
+      ergonomics: right.item.ergonomicsModifier || 0,
+      recoilModifier: right.item.recoilModifier || 0,
+      weight: right.item.weight || 0,
+      price: right.capabilities.price,
     };
-    return compareRoutes(leftRoute, rightRoute, weapon, targets, exactTargets);
+    const comparison = compareRoutes(leftRoute, rightRoute, weapon, targets, exactTargets);
+    if (comparison !== 0) return comparison;
+    return getCapabilitySignature(left.capabilities).localeCompare(getCapabilitySignature(right.capabilities));
   });
 }
 
-function getRouteCapabilities(item, modMap, options, isSuppressor, route, visitedIds = new Set()) {
-  if (!item || visitedIds.has(item.id)) return { requiredIds: new Set(), suppressorKind: 0 };
-  if (route.installedIds.has(item.id) || route.conflictIds.has(item.id)) {
-    return { requiredIds: new Set(), suppressorKind: 0 };
-  }
-  if ((item.conflictingItems || []).some(conflict => route.installedIds.has(conflict.id))) {
-    return { requiredIds: new Set(), suppressorKind: 0 };
-  }
-  if (options.forbidSuppressor === true && isSuppressor(item)) {
-    return { requiredIds: new Set(), suppressorKind: 0 };
-  }
+function getCapabilitySignature(capabilities) {
+  return [
+    [...capabilities.requiredIds].sort().join('|'),
+    capabilities.suppressorKind,
+    [...capabilities.installedIds].sort().join('|'),
+    [...capabilities.conflictIds].sort().join('|'),
+  ].join(';');
+}
 
+function getCombinedRouteState(route, capabilities) {
+  return {
+    installedIds: new Set([...route.installedIds, ...capabilities.installedIds]),
+    conflictIds: new Set([...route.conflictIds, ...capabilities.conflictIds]),
+  };
+}
+
+function isCompatibleCapabilities(route, capabilities) {
+  for (const itemId of capabilities.installedIds) {
+    if (route.installedIds.has(itemId) || route.conflictIds.has(itemId)) return false;
+  }
+  for (const conflictId of capabilities.conflictIds) {
+    if (route.installedIds.has(conflictId)) return false;
+  }
+  return true;
+}
+
+function dedupeCapabilityVariants(variants) {
+  const bySignature = new Map();
+  variants.forEach(variant => {
+    const signature = getCapabilitySignature(variant);
+    const current = bySignature.get(signature);
+    if (!current || variant.price < current.price) {
+      bySignature.set(signature, variant);
+    }
+  });
+  return [...bySignature.values()].sort((left, right) => {
+    if (left.price !== right.price) return left.price - right.price;
+    return getCapabilitySignature(left).localeCompare(getCapabilitySignature(right));
+  });
+}
+
+function combineCapabilities(left, right, nestedSuppressor = false) {
+  const requiredIds = new Set([...left.requiredIds, ...right.requiredIds]);
+  return {
+    requiredIds,
+    suppressorKind: Math.max(left.suppressorKind, right.suppressorKind > 0 && nestedSuppressor ? 1 : right.suppressorKind),
+    installedIds: new Set([...left.installedIds, ...right.installedIds]),
+    conflictIds: new Set([...left.conflictIds, ...right.conflictIds]),
+    price: left.price + right.price,
+  };
+}
+
+function getRouteCapabilityVariants(item, modMap, options, tools, route, visitedIds = new Set()) {
+  if (!item || visitedIds.has(item.id) || route.installedIds.has(item.id) || route.conflictIds.has(item.id)) return [];
+  if ((item.conflictingItems || []).some(conflict => route.installedIds.has(conflict.id))) return [];
+  if (options.forbidSuppressor === true && tools.isSuppressor(item)) return [];
+
+  const itemPrice = tools.getItemPrice(item);
+  if (!Number.isFinite(itemPrice)) return [];
+  const requiredItemIds = new Set((options.requiredItemIds || []).map(String));
+  const rootCapabilities = {
+    requiredIds: requiredItemIds.has(item.id) ? new Set([item.id]) : new Set(),
+    suppressorKind: tools.isSuppressor(item) ? 2 : 0,
+    installedIds: new Set([item.id]),
+    conflictIds: new Set((item.conflictingItems || []).map(conflict => conflict.id)),
+    price: itemPrice,
+  };
   const nextVisitedIds = new Set(visitedIds);
   nextVisitedIds.add(item.id);
-  const nextRoute = {
-    installedIds: new Set(route.installedIds),
-    conflictIds: new Set(route.conflictIds),
-  };
-  nextRoute.installedIds.add(item.id);
-  (item.conflictingItems || []).forEach(conflict => nextRoute.conflictIds.add(conflict.id));
-
-  const requiredIds = new Set();
-  const configuredRequiredIds = new Set((options.requiredItemIds || []).map(String));
-  if (configuredRequiredIds.has(item.id)) requiredIds.add(item.id);
-  let suppressorKind = isSuppressor(item) ? 2 : 0;
+  let variants = [rootCapabilities];
 
   for (const slot of item.properties?.slots || []) {
-    for (const allowedItem of slot.filters?.allowedItems || []) {
-      const childCapabilities = getRouteCapabilities(
-        modMap[allowedItem.id], modMap, options, isSuppressor, nextRoute, nextVisitedIds,
-      );
-      childCapabilities.requiredIds.forEach(requiredId => requiredIds.add(requiredId));
-      if (childCapabilities.suppressorKind > 0) {
-        suppressorKind = Math.max(suppressorKind, 1);
+    const nextVariants = [];
+    for (const variant of variants) {
+      const activeRoute = getCombinedRouteState(route, variant);
+      const childVariants = (slot.filters?.allowedItems || []).flatMap(allowedItem => (
+        getRouteCapabilityVariants(
+          modMap[allowedItem.id],
+          modMap,
+          options,
+          tools,
+          activeRoute,
+          nextVisitedIds,
+        )
+      )).filter(child => isCompatibleCapabilities(activeRoute, child));
+      if (slot.required === true) {
+        childVariants.forEach(child => nextVariants.push(combineCapabilities(variant, child, true)));
+      } else {
+        nextVariants.push(variant);
+        childVariants
+          .filter(child => child.requiredIds.size > 0 || child.suppressorKind > 0)
+          .forEach(child => nextVariants.push(combineCapabilities(variant, child, true)));
       }
     }
+    variants = dedupeCapabilityVariants(nextVariants);
+    if (variants.length === 0) return [];
   }
 
-  return { requiredIds, suppressorKind };
+  return variants;
 }
 
 function selectConstraintRouteOptions(
@@ -196,31 +253,40 @@ function selectConstraintRouteOptions(
     .slice(currentIndex + 1)
     .reduce((sum, otherSlot) => sum + getMinimumRequiredSlotPrice(otherSlot, modMap, tools.getItemPrice), 0);
   const maxPrice = Number(options.maxPrice) || 0;
-  const hardOptions = candidates.filter(item => {
-    const capabilities = getRouteCapabilities(item, modMap, options, tools.isSuppressor, route);
-    const providesRequiredItem = requiredItemIds.size > 0
-      && capabilities.requiredIds.size > 0;
-    const providesSuppressor = options.requireSuppressor === true
-      && capabilities.suppressorKind > 0;
-    const minimumBranchPrice = getMinimumRequiredBranchPrice(item, modMap, tools.getItemPrice);
+  const optionVariants = candidates.flatMap(item => getRouteCapabilityVariants(
+    item, modMap, options, tools, route,
+  ).map(capabilities => ({ item, capabilities })));
+  const hardOptions = optionVariants.filter(({ capabilities }) => {
+    const providesRequiredItem = requiredItemIds.size > 0 && capabilities.requiredIds.size > 0;
+    const providesSuppressor = options.requireSuppressor === true && capabilities.suppressorKind > 0;
     const isPriceFeasible = maxPrice > 0
       && Number.isFinite(basePrice)
       && Number.isFinite(otherRequiredRootsPrice)
-      && Number.isFinite(minimumBranchPrice)
-      && basePrice + route.price + otherRequiredRootsPrice + minimumBranchPrice <= maxPrice;
+      && Number.isFinite(capabilities.price)
+      && basePrice + route.price + otherRequiredRootsPrice + capabilities.price <= maxPrice;
     return providesRequiredItem || providesSuppressor || isPriceFeasible;
   });
-  const rankedHardOptions = getTargetRankedRouteOptions(
-    hardOptions, weapon, targets, exactTargets, tools.getItemPrice,
-  );
-  const hardIds = new Set(rankedHardOptions.map(item => item.id));
+  const rankedHardOptions = getTargetRankedRouteOptions(hardOptions, weapon, targets, exactTargets);
+  const hardSignatures = new Set(rankedHardOptions.map(option => (
+    `${option.item.id};${getCapabilitySignature(option.capabilities)}`
+  )));
   const rankedRemainingOptions = getTargetRankedRouteOptions(
-    candidates.filter(item => !hardIds.has(item.id)),
+    optionVariants.filter(option => !hardSignatures.has(
+      `${option.item.id};${getCapabilitySignature(option.capabilities)}`,
+    )),
     weapon,
     targets,
     exactTargets,
-    tools.getItemPrice,
   );
+
+  const hasHardConstraints = requiredItemIds.size > 0
+    || options.requireSuppressor === true
+    || maxPrice > 0;
+  if (hasHardConstraints) {
+    // Distinct installed/conflict signatures can determine whether a later root
+    // remains feasible, so they must reach the compatibility-aware frontier.
+    return [...rankedHardOptions, ...rankedRemainingOptions];
+  }
 
   // Mandatory providers take precedence over the optimization cap. The remaining
   // capacity stays bounded and is filled by the deterministic target ranking.
@@ -239,7 +305,9 @@ function getRemainingRequiredRootsPrice(slots, currentIndex, modMap, getItemPric
 function getRouteHardKey(route, options) {
   const coverage = [...route.requiredCoverage].sort().join('|');
   const suppressor = options.requireSuppressor === true ? `;s${route.suppressorKind}` : '';
-  return `${coverage}${suppressor}`;
+  const installed = [...route.installedIds].sort().join('|');
+  const conflicts = [...route.conflictIds].sort().join('|');
+  return `${coverage}${suppressor};i${installed};c${conflicts}`;
 }
 
 function compareHardRoutes(left, right, remainingRequiredRootsPrice, weapon, targets, exactTargets) {
@@ -281,8 +349,9 @@ function pruneConstraintRoutes(
   const protectedRoutes = [...hardFrontier.values()].sort((left, right) => (
     compareHardRoutes(left, right, remainingRequiredRootsPrice, weapon, targets, exactTargets)
   ));
-  const protectedRouteKeys = new Set(protectedRoutes.map(route => getRouteTieKey(route)));
-  const remainingRoutes = rankedRoutes.filter(route => !protectedRouteKeys.has(getRouteTieKey(route)));
+  const getRouteStateKey = route => `${getRouteTieKey(route)};${getRouteHardKey(route, options)}`;
+  const protectedRouteKeys = new Set(protectedRoutes.map(getRouteStateKey));
+  const remainingRoutes = rankedRoutes.filter(route => !protectedRouteKeys.has(getRouteStateKey(route)));
 
   // The hard frontier remains intact even when it exceeds the normal beam width.
   return [
@@ -334,24 +403,20 @@ export function createConstraintSearchRoutes(
         route,
         slots.indexOf(slot),
       );
-      return allowed.map(item => {
-        const capabilities = getRouteCapabilities(item, modMap, options, isSuppressor, route);
+      return allowed.map(({ item, capabilities }) => {
         const requiredCoverage = new Set(route.requiredCoverage);
         capabilities.requiredIds.forEach(requiredId => requiredCoverage.add(requiredId));
-        const installedIds = new Set(route.installedIds);
-        installedIds.add(item.id);
-        const conflictIds = new Set(route.conflictIds);
-        (item.conflictingItems || []).forEach(conflict => conflictIds.add(conflict.id));
+        const combinedRouteState = getCombinedRouteState(route, capabilities);
         return {
           choices: { ...route.choices, [routeKey]: item.id },
           ergonomics: route.ergonomics + (item.ergonomicsModifier || 0),
           recoilModifier: route.recoilModifier + (item.recoilModifier || 0),
           weight: route.weight + (item.weight || 0),
-          price: route.price + getMinimumRequiredBranchPrice(item, modMap, getItemPrice),
+          price: route.price + capabilities.price,
           requiredCoverage,
           suppressorKind: Math.max(route.suppressorKind, capabilities.suppressorKind),
-          installedIds,
-          conflictIds,
+          installedIds: combinedRouteState.installedIds,
+          conflictIds: combinedRouteState.conflictIds,
         };
       });
     });

@@ -1200,6 +1200,159 @@ test('Constraints ignores conflicting nested suppressor paths when retaining rou
   assertNotInstalled(result, blockedSuppressor.id);
 });
 
+test('Constraints keeps a nested plan that covers required items from independent slots', () => {
+  const requiredX = createTestMod({ id: 'frontier-required-x', weight: 0 });
+  const requiredY = createTestMod({ id: 'frontier-required-y', weight: 0 });
+  const falseRoots = Array.from({ length: 24 }, (_, index) => createTestMod({
+    id: `frontier-exclusive-${String(index + 1).padStart(2, '0')}`,
+    slots: [createSlot('Mutually exclusive', [requiredX.id, requiredY.id])],
+    weight: 0,
+  }));
+  const completeRoot = createTestMod({
+    id: 'frontier-complete-required-root',
+    ergonomicsModifier: -10,
+    slots: [
+      createSlot('Required X', [requiredX.id]),
+      createSlot('Required Y', [requiredY.id]),
+    ],
+    weight: 0,
+  });
+  const testWeapon = createTestWeapon({
+    slots: [createSlot(
+      'Required root',
+      [...falseRoots, completeRoot].map(part => part.id),
+      'mod_root',
+      true,
+    )],
+  });
+  const profile = { ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(...falseRoots, completeRoot, requiredX, requiredY),
+    { ...defaultOptions, requiredItemIds: [requiredX.id, requiredY.id] },
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, completeRoot.id);
+  assertInstalled(result, requiredX.id);
+  assertInstalled(result, requiredY.id);
+});
+
+test('Constraints frontier retains a compatible first root for a mandatory later root', () => {
+  const requiredSecondRoot = createTestMod({ id: 'frontier-required-second-root', weight: 0 });
+  const conflictingCheapRoots = Array.from({ length: 24 }, (_, index) => createTestMod({
+    id: `frontier-conflicting-first-${String(index + 1).padStart(2, '0')}`,
+    conflictingItemIds: [requiredSecondRoot.id],
+    weight: 0,
+  }));
+  const compatibleFirstRoot = createTestMod({
+    id: 'frontier-compatible-first-root',
+    ergonomicsModifier: -10,
+    weight: 0,
+  });
+  const testWeapon = createTestWeapon({
+    slots: [
+      createSlot('First required root', [...conflictingCheapRoots, compatibleFirstRoot].map(part => part.id), 'mod_first', true),
+      createSlot('Second required root', [requiredSecondRoot.id], 'mod_second', true),
+    ],
+  });
+  const profile = { ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(...conflictingCheapRoots, compatibleFirstRoot, requiredSecondRoot),
+    { ...defaultOptions, requiredItemIds: [requiredSecondRoot.id] },
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, compatibleFirstRoot.id);
+  assertInstalled(result, requiredSecondRoot.id);
+});
+
+test('Constraints frontier retains a combined required-item, suppressor, and budget route', () => {
+  const requiredItem = createTestMod({
+    id: 'frontier-combined-required-item',
+    avg24hPrice: 50,
+    basePrice: 50,
+    weight: 0,
+  });
+  const suppressor = createTestMod({
+    id: 'frontier-combined-suppressor',
+    avg24hPrice: 50,
+    basePrice: 50,
+    categories: createCategories(['Silencer']),
+    weight: 0,
+  });
+  const feasibleParent = createTestMod({
+    id: 'frontier-combined-parent',
+    avg24hPrice: 50,
+    basePrice: 50,
+    slots: [
+      createSlot('Required item path', [requiredItem.id]),
+      createSlot('Suppressor path', [suppressor.id]),
+    ],
+    weight: 0,
+  });
+  const expensiveParents = Array.from({ length: 8 }, (_, index) => createTestMod({
+    id: `frontier-combined-expensive-${String(index + 1).padStart(2, '0')}`,
+    avg24hPrice: 200,
+    basePrice: 200,
+    weight: 0,
+  }));
+  const requiredSecondRoot = createTestMod({
+    id: 'frontier-combined-second-root',
+    avg24hPrice: 50,
+    basePrice: 50,
+    weight: 0,
+  });
+  const testWeapon = createTestWeapon({
+    avg24hPrice: 100,
+    basePrice: 100,
+    slots: [
+      createSlot('First required root', [...expensiveParents, feasibleParent].map(part => part.id), 'mod_first', true),
+      createSlot('Second required root', [requiredSecondRoot.id], 'mod_second', true),
+    ],
+  });
+  const profile = { ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(
+      ...expensiveParents,
+      feasibleParent,
+      requiredItem,
+      suppressor,
+      requiredSecondRoot,
+    ),
+    {
+      ...defaultOptions,
+      maxPrice: 300,
+      requireSuppressor: true,
+      requiredItemIds: [requiredItem.id],
+    },
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.stats.price, 300);
+  assertInstalled(result, feasibleParent.id);
+  assertInstalled(result, requiredItem.id);
+  assertInstalled(result, suppressor.id);
+  assertInstalled(result, requiredSecondRoot.id);
+});
+
 test('Exact targets reject the nearest build when its displayed target does not match', () => {
   const lowerScorePart = createTestMod({
     id: 'exact-total-error-a',
