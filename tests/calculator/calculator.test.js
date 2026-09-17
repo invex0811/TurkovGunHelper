@@ -987,6 +987,95 @@ test('Constraints final ties choose build key independently of allowed-item orde
   assertNotInstalled(result, laterKey.id);
 });
 
+test('Constraints routes retain a ninth required-item provider', () => {
+  const parts = Array.from({ length: 9 }, (_, index) => createTestMod({
+    id: `route-required-${String(index + 1).padStart(2, '0')}`,
+    weight: 0,
+  }));
+  const requiredPart = parts.at(-1);
+  const testWeapon = createTestWeapon({
+    slots: [createSlot('Required receiver', parts.map(part => part.id), 'mod_receiver', true)],
+  });
+  const profile = { ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(...parts),
+    { ...defaultOptions, requiredItemIds: [requiredPart.id] },
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, requiredPart.id);
+});
+
+test('Constraints routes retain a ninth suppressor provider', () => {
+  const regularParts = Array.from({ length: 8 }, (_, index) => createTestMod({
+    id: `route-regular-${String(index + 1).padStart(2, '0')}`,
+    weight: 0,
+  }));
+  const suppressor = createTestMod({
+    id: 'route-suppressor-09',
+    weight: 0,
+    categories: createCategories(['Silencer']),
+  });
+  const testWeapon = createTestWeapon({
+    slots: [createSlot('Required muzzle', [...regularParts, suppressor].map(part => part.id), 'mod_muzzle', true)],
+  });
+  const profile = { ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(...regularParts, suppressor),
+    { ...defaultOptions, requireSuppressor: true },
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, suppressor.id);
+});
+
+test('Constraints routes retain a ninth maximum-price-feasible required choice', () => {
+  const expensiveParts = Array.from({ length: 8 }, (_, index) => createTestMod({
+    id: `route-expensive-${String(index + 1).padStart(2, '0')}`,
+    avg24hPrice: 1_000,
+    basePrice: 1_000,
+    weight: 0,
+  }));
+  const affordablePart = createTestMod({
+    id: 'route-affordable-09',
+    avg24hPrice: 100,
+    basePrice: 100,
+    weight: 0,
+  });
+  const testWeapon = createTestWeapon({
+    avg24hPrice: 100,
+    basePrice: 100,
+    slots: [createSlot('Required stock', [...expensiveParts, affordablePart].map(part => part.id), 'mod_stock', true)],
+  });
+  const profile = { ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(...expensiveParts, affordablePart),
+    { ...defaultOptions, maxPrice: 200 },
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.stats.price, 200);
+  assertInstalled(result, affordablePart.id);
+});
+
 test('Exact targets reject the nearest build when its displayed target does not match', () => {
   const lowerScorePart = createTestMod({
     id: 'exact-total-error-a',

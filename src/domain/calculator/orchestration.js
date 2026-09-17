@@ -21,6 +21,8 @@ import {
 } from './scoring.js';
 import { evaluateCustomTargetMatching } from '../customTargetMatching.js';
 import { getRootSlotRouteKey } from './constraints.js';
+import { createCompatibilityTools } from './compatibility.js';
+import { createPricingTools } from './pricing.js';
 import {
   normalizeCustomCharacteristicMode,
   normalizePriorityAttributes,
@@ -32,8 +34,8 @@ import {
 const CONSTRAINT_ROUTE_BEAM_WIDTH = 24;
 const CONSTRAINT_ROUTE_OPTIONS_PER_SLOT = 8;
 
-function getRoutePrice(item) {
-  const price = Number(item?.price?.value ?? item?.avg24hPrice ?? item?.basePrice);
+function getRoutePrice(item, getItemPrice) {
+  const price = getItemPrice(item);
   return Number.isFinite(price) ? price : Number.MAX_SAFE_INTEGER;
 }
 
@@ -66,11 +68,141 @@ function compareRoutes(left, right, weapon, targets, exactTargets) {
   return getRouteTieKey(left).localeCompare(getRouteTieKey(right));
 }
 
-export function createConstraintSearchRoutes(weapon, modMap, targets, exactTargets) {
+function itemTreeProvides(item, predicate, modMap, visitedIds = new Set()) {
+  if (!item || visitedIds.has(item.id)) return false;
+  if (predicate(item)) return true;
+
+  const nextVisitedIds = new Set(visitedIds);
+  nextVisitedIds.add(item.id);
+  return (item.properties?.slots || []).some(slot => (slot.filters?.allowedItems || []).some(allowedItem => (
+    itemTreeProvides(modMap[allowedItem.id], predicate, modMap, nextVisitedIds)
+  )));
+}
+
+function hasFillableRequiredSlots(item, modMap, visitedIds = new Set()) {
+  if (!item || visitedIds.has(item.id)) return false;
+
+  const nextVisitedIds = new Set(visitedIds);
+  nextVisitedIds.add(item.id);
+  return (item.properties?.slots || [])
+    .filter(slot => slot.required === true)
+    .every(slot => (slot.filters?.allowedItems || []).some(allowedItem => (
+      hasFillableRequiredSlots(modMap[allowedItem.id], modMap, nextVisitedIds)
+    )));
+}
+
+function getMinimumRequiredBranchPrice(item, modMap, getItemPrice, visitedIds = new Set()) {
+  if (!item || visitedIds.has(item.id)) return Number.POSITIVE_INFINITY;
+  const itemPrice = getItemPrice(item);
+  if (!Number.isFinite(itemPrice)) return Number.POSITIVE_INFINITY;
+
+  const nextVisitedIds = new Set(visitedIds);
+  nextVisitedIds.add(item.id);
+  let requiredChildrenPrice = 0;
+
+  for (const slot of item.properties?.slots || []) {
+    if (slot.required !== true) continue;
+    const minimumChildPrice = Math.min(
+      ...(slot.filters?.allowedItems || []).map(allowedItem => getMinimumRequiredBranchPrice(
+        modMap[allowedItem.id], modMap, getItemPrice, nextVisitedIds,
+      )),
+    );
+    if (!Number.isFinite(minimumChildPrice)) return Number.POSITIVE_INFINITY;
+    requiredChildrenPrice += minimumChildPrice;
+  }
+
+  return itemPrice + requiredChildrenPrice;
+}
+
+function getMinimumRequiredSlotPrice(slot, modMap, getItemPrice) {
+  if (slot.required !== true) return 0;
+  return Math.min(
+    ...(slot.filters?.allowedItems || []).map(allowedItem => getMinimumRequiredBranchPrice(
+      modMap[allowedItem.id], modMap, getItemPrice,
+    )),
+  );
+}
+
+function getTargetRankedRouteOptions(items, weapon, targets, exactTargets, getItemPrice) {
+  return [...items].sort((left, right) => {
+    const leftRoute = {
+      choices: { item: left.id },
+      ergonomics: left.ergonomicsModifier || 0,
+      recoilModifier: left.recoilModifier || 0,
+      weight: left.weight || 0,
+      price: getRoutePrice(left, getItemPrice),
+    };
+    const rightRoute = {
+      choices: { item: right.id },
+      ergonomics: right.ergonomicsModifier || 0,
+      recoilModifier: right.recoilModifier || 0,
+      weight: right.weight || 0,
+      price: getRoutePrice(right, getItemPrice),
+    };
+    return compareRoutes(leftRoute, rightRoute, weapon, targets, exactTargets);
+  });
+}
+
+function selectConstraintRouteOptions(slot, slots, weapon, modMap, targets, exactTargets, options, tools) {
+  const allItems = (slot.filters?.allowedItems || [])
+    .map(allowedItem => modMap[allowedItem.id])
+    .filter(Boolean);
+  const fillableItems = allItems.filter(item => hasFillableRequiredSlots(item, modMap));
+  const candidates = fillableItems.length > 0 ? fillableItems : allItems;
+  const requiredItemIds = new Set((options.requiredItemIds || []).map(String));
+  const basePrice = tools.getWeaponPrice(weapon);
+  const otherRequiredRootsPrice = slots
+    .filter(otherSlot => otherSlot !== slot)
+    .reduce((sum, otherSlot) => sum + getMinimumRequiredSlotPrice(otherSlot, modMap, tools.getItemPrice), 0);
+  const maxPrice = Number(options.maxPrice) || 0;
+  const hardOptions = candidates.filter(item => {
+    const providesRequiredItem = requiredItemIds.size > 0
+      && itemTreeProvides(item, candidate => requiredItemIds.has(candidate.id), modMap);
+    const providesSuppressor = options.requireSuppressor === true
+      && itemTreeProvides(item, tools.isSuppressor, modMap);
+    const minimumBranchPrice = getMinimumRequiredBranchPrice(item, modMap, tools.getItemPrice);
+    const isPriceFeasible = maxPrice > 0
+      && Number.isFinite(basePrice)
+      && Number.isFinite(otherRequiredRootsPrice)
+      && Number.isFinite(minimumBranchPrice)
+      && basePrice + otherRequiredRootsPrice + minimumBranchPrice <= maxPrice;
+    return providesRequiredItem || providesSuppressor || isPriceFeasible;
+  });
+  const rankedHardOptions = getTargetRankedRouteOptions(
+    hardOptions, weapon, targets, exactTargets, tools.getItemPrice,
+  );
+  const hardIds = new Set(rankedHardOptions.map(item => item.id));
+  const rankedRemainingOptions = getTargetRankedRouteOptions(
+    candidates.filter(item => !hardIds.has(item.id)),
+    weapon,
+    targets,
+    exactTargets,
+    tools.getItemPrice,
+  );
+
+  // Mandatory providers take precedence over the optimization cap. The remaining
+  // capacity stays bounded and is filled by the deterministic target ranking.
+  return [
+    ...rankedHardOptions,
+    ...rankedRemainingOptions.slice(0, Math.max(0, CONSTRAINT_ROUTE_OPTIONS_PER_SLOT - rankedHardOptions.length)),
+  ];
+}
+
+export function createConstraintSearchRoutes(
+  weapon,
+  modMap,
+  targets,
+  exactTargets,
+  options = {},
+  calculationCache = createCalculationCache(),
+) {
   let routes = [{
     choices: {}, ergonomics: 0, recoilModifier: 0, weight: 0, price: 0,
   }];
   const slots = weapon.properties?.slots || [];
+  const { isSuppressor } = createCompatibilityTools(calculationCache);
+  const { getItemPrice, getWeaponPrice } = createPricingTools(calculationCache, options);
+  const tools = { getItemPrice, getWeaponPrice, isSuppressor };
 
   for (const slot of slots) {
     // Required roots are where a greedy early choice can prevent a later required
@@ -78,11 +210,16 @@ export function createConstraintSearchRoutes(weapon, modMap, targets, exactTarge
     if (slot.required !== true) continue;
     const routeKey = getRootSlotRouteKey(slot, slots);
     if (!routeKey) continue;
-    const allowed = (slot.filters?.allowedItems || [])
-      .map(allowedItem => modMap[allowedItem.id])
-      .filter(Boolean)
-      .sort((left, right) => String(left.id).localeCompare(String(right.id)))
-      .slice(0, CONSTRAINT_ROUTE_OPTIONS_PER_SLOT);
+    const allowed = selectConstraintRouteOptions(
+      slot,
+      slots,
+      weapon,
+      modMap,
+      targets,
+      exactTargets,
+      options,
+      tools,
+    );
     if (allowed.length === 0) continue;
 
     const choices = slot.required === true ? allowed : [null, ...allowed];
@@ -91,7 +228,7 @@ export function createConstraintSearchRoutes(weapon, modMap, targets, exactTarge
       ergonomics: route.ergonomics + (item?.ergonomicsModifier || 0),
       recoilModifier: route.recoilModifier + (item?.recoilModifier || 0),
       weight: route.weight + (item?.weight || 0),
-      price: route.price + (item ? getRoutePrice(item) : 0),
+      price: route.price + (item ? getRoutePrice(item, getItemPrice) : 0),
     })));
     routes.sort((left, right) => compareRoutes(left, right, weapon, targets, exactTargets));
     routes = routes.slice(0, CONSTRAINT_ROUTE_BEAM_WIDTH);
@@ -293,6 +430,8 @@ export function calculateBestBuild(
       modMap,
       customTargetValues,
       normalizedExactTargets,
+      customOptions,
+      calculationCache,
     );
     const candidates = routes.map(route => _calculateWeighted(
       weapon,
