@@ -739,20 +739,25 @@ export function calculateBestBuild(
       }
       if (Object.keys(route.nestedChoices).length > 0) candidates.push(calculateRoute(route, true));
     });
-    // Empty frontiers still return the builder's normal structured errors and
-    // missing-price warnings, never undefined.
-    if (candidates.length === 0) candidates.push(calculateRoute());
+    // Forced routes expand the search; they must not exclude the normal
+    // target-aware build when their choices fail active builder constraints.
+    // An empty root plan already evaluated that baseline above.
+    if (!ordinaryRootChoices.has(JSON.stringify({}))) candidates.push(calculateRoute());
     let closestCandidate = null;
     let validExactCandidate = null;
+    const successfulBuildKeys = new Set();
 
     candidates.forEach(result => {
       if (result.error) return;
+      const tieKey = getBuildTieKey(result);
+      if (successfulBuildKeys.has(tieKey)) return;
+      successfulBuildKeys.add(tieKey);
       const targetMatching = evaluateCustomTargetMatching(
         result.stats,
         customTargetValues,
         normalizedExactTargets,
       );
-      const candidate = { result, targetMatching, tieKey: getBuildTieKey(result) };
+      const candidate = { result, targetMatching, tieKey };
       const isBetter = current => !current || compareConstraintCandidates(candidate, current) < 0;
       if (isBetter(closestCandidate)) closestCandidate = candidate;
       if (targetMatching.exactMatches && isBetter(validExactCandidate)) {
