@@ -1,6 +1,6 @@
 export const uiMessages = {
   en: {
-    'ui.radar.help': 'Set acceptable limits. Weight and recoil must be no higher than the entered values; ergonomics must be no lower. Weight 0 means no weight limit.',
+    'ui.radar.help': 'Set desired limits: weight and recoil at most, ergonomics at least. If not all values can be met, the closest available build is chosen. Weight 0 means no weight limit.',
     'ui.radar.requirements': 'Custom build constraints',
     'ui.radar.value': '{label} value',
     'ui.radar.valueWithConstraint': '{constraint} {symbol} {value}',
@@ -76,7 +76,7 @@ export const uiMessages = {
     'ui.slot.removedFeedback': 'Module removed. Build stats and price updated.',
   },
   ru: {
-    'ui.radar.help': 'Укажите допустимые границы характеристик. Вес и отдача — не больше заданного значения, эргономика — не меньше. Вес 0 — без ограничения веса.',
+    'ui.radar.help': 'Укажите желаемые пределы характеристик: вес и отдача — не больше, эргономика — не меньше. Если выполнить все значения невозможно, будет выбрана ближайшая доступная сборка. Вес 0 — без ограничения веса.',
     'ui.radar.requirements': 'Ограничения своей сборки',
     'ui.radar.value': 'Значение: {label}',
     'ui.radar.valueWithConstraint': '{constraint} {symbol} {value}',

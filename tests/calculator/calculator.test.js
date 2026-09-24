@@ -226,7 +226,7 @@ for (const targetType of ['meta', 'custom']) {
   });
 }
 
-test('legacy Custom keeps its fixture result when the limits are reachable', () => {
+test('legacy Custom keeps its fixture result and returns a closest build for unreachable limits', () => {
   const result = calculateBestBuild(weapon, 'custom', 50, 50, modMap, {
     forbidSuppressor: false,
     requireSuppressor: false,
@@ -261,8 +261,12 @@ test('legacy Custom keeps its fixture result when the limits are reachable', () 
   });
 
   const unreachable = calculateBestBuild(weapon, 'custom', 70, 50, modMap, defaultOptions);
-  assert.equal(unreachable.errorCode, 'CUSTOM_CONSTRAINTS_UNMET');
-  assert.deepEqual(unreachable.build, []);
+  assert.equal(unreachable.error, undefined);
+  assert.ok(unreachable.build.length > 0);
+  assert.equal(unreachable.constraintEvaluation.satisfied, false);
+  assert.ok(unreachable.warnings.some(warning => warning.code === 'REQUIREMENTS_UNMET_CLOSEST_BUILD'));
+  assertNoDuplicateParts(unreachable);
+  assertNoInstalledConflicts(unreachable);
 });
 
 test('Custom profile enforces vertical and horizontal recoil independently', () => {
@@ -307,7 +311,7 @@ test('Custom profile enforces vertical and horizontal recoil independently', () 
   assertInstalled(horizontalResult, recoilPart.id);
 });
 
-test('Custom profile rejects the nearest build below the ergonomics minimum', () => {
+test('Custom profile returns the closest build below an unreachable ergonomics minimum', () => {
   const ergonomicPart = createTestMod({ id: 'limited-ergo-part', ergonomicsModifier: 10 });
   const testWeapon = createTestWeapon({
     ergonomics: 50,
@@ -323,9 +327,10 @@ test('Custom profile rejects the nearest build below the ergonomics minimum', ()
     { ergonomics: 90, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 },
   );
 
-  assert.equal(result.errorCode, 'CUSTOM_CONSTRAINTS_UNMET');
-  assert.deepEqual(result.build, []);
-  assert.deepEqual(result.constraintEvaluation.failures.map(failure => failure.key), ['ergonomics']);
+  assert.equal(result.error, undefined);
+  assertInstalled(result, ergonomicPart.id);
+  assert.equal(result.stats.ergonomics, 60);
+  assert.equal(result.constraintEvaluation.axes.ergonomics.violation, 30);
 });
 
 test('Constraints leaves an optional branch empty when the base build already matches its targets', () => {
@@ -1282,7 +1287,7 @@ test('Constraints price follows the active trader policy', () => {
   assert.equal(fleaOnly.stats.price, 11_000);
 });
 
-test('impossible limits return structured failures without a violating build', () => {
+test('unreachable limits return the closest build with structured diagnostics', () => {
   const part = createTestMod({ id: 'exact-impossible', ergonomicsModifier: 10 });
   const testWeapon = createTestWeapon({
     ergonomics: 50,
@@ -1305,13 +1310,15 @@ test('impossible limits return structured failures without a violating build', (
     profile,
   );
 
-  assert.deepEqual(result.build, []);
-  assert.equal(result.errorCode, 'CUSTOM_CONSTRAINTS_UNMET');
+  assert.equal(result.error, undefined);
+  assertInstalled(result, part.id);
+  assert.equal(result.constraintEvaluation.satisfied, false);
   assert.deepEqual(result.constraintEvaluation.failures.map(failure => failure.key), ['ergonomics']);
   assert.equal(result.constraintEvaluation.failures[0].actual, 60);
+  assert.equal(result.constraintEvaluation.failures[0].violation, 20);
 });
 
-test('Constraints treat the weight limit as a hard maximum', () => {
+test('Constraints prefer a build within the desired weight limit', () => {
   const heavyRecoilStock = createTestMod({
     id: 'heavy-recoil-stock',
     weight: 3,
@@ -1367,7 +1374,7 @@ test('Constraints treat the weight limit as a hard maximum', () => {
   assert.equal(result.constraintEvaluation.satisfied, true);
 });
 
-test('Constraints report a heavy required stock as a limit failure, not a missing slot', () => {
+test('Constraints return a heavy required stock above the soft weight limit', () => {
   const heavyStock = createTestMod({ id: 'only-heavy-stock', weight: 3 });
   const testWeapon = createTestWeapon({
     weight: 1,
@@ -1379,14 +1386,14 @@ test('Constraints report a heavy required stock as a limit failure, not a missin
     testWeapon, 'custom', 50, 100, createModMap(heavyStock), defaultOptions, profile,
   );
 
-  assert.equal(result.errorCode, 'CUSTOM_CONSTRAINTS_UNMET');
-  assert.doesNotMatch(result.error, /Required weapon slots/);
-  assert.deepEqual(result.build, []);
+  assert.equal(result.error, undefined);
+  assertInstalled(result, heavyStock.id);
+  assert.equal(result.stats.weight, '4.00');
   assert.deepEqual(result.constraintEvaluation.failures.map(failure => failure.key), ['weight']);
-  assert.equal(result.constraintEvaluation.failures[0].actual, 4);
+  assert.equal(result.constraintEvaluation.axes.weight.violation, 0.5);
 });
 
-test('Constraints use the lower of the characteristic and global weight limits', () => {
+test('Constraints keep the profile weight soft and the maxWeight option hard', () => {
   const heavyStock = createTestMod({ id: 'weight-limit-heavy-stock', weight: 2, recoilModifier: -30 });
   const lightStock = createTestMod({ id: 'weight-limit-light-stock', weight: 0.5 });
   const testWeapon = createTestWeapon({
@@ -1406,7 +1413,7 @@ test('Constraints use the lower of the characteristic and global weight limits',
   assertInstalled(calculate(2.5, 5), lightStock.id);
 });
 
-test('Constraints keep a specific builder failure instead of the generic constraint code', () => {
+test('Constraints keep a specific builder failure for an unmet hard requirement', () => {
   const stock = createTestMod({ id: 'no-suppressor-stock' });
   const testWeapon = createTestWeapon({
     slots: [createSlot('Stock', [stock.id], 'mod_stock', true)],
@@ -1418,9 +1425,31 @@ test('Constraints keep a specific builder failure instead of the generic constra
     { ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 },
   );
 
-  assert.notEqual(result.errorCode, 'CUSTOM_CONSTRAINTS_UNMET');
   assert.match(result.error, /No compatible suppressor/);
   assert.deepEqual(result.build, []);
+});
+
+test('M4A1 Constraints 4 / 50 / 50 / 50 returns the nearest build instead of an error', () => {
+  const limits = { weight: 4, verticalRecoil: 50, horizontalRecoil: 50, ergonomics: 50, price: 0 };
+  const result = calculateBestBuild(
+    weapon,
+    'custom',
+    limits.ergonomics,
+    limits.verticalRecoil,
+    modMap,
+    { forbidSuppressor: false, requireSuppressor: false, maxWeight: 0 },
+    limits,
+  );
+
+  assert.equal(result.error, undefined);
+  assert.ok(result.build.length > 0);
+  assertNoDuplicateParts(result);
+  assertNoInstalledConflicts(result);
+  assertStatsMatchParts(result);
+  assert.equal(result.constraintEvaluation.satisfied, false);
+  assert.ok(result.constraintEvaluation.totalViolation > 0);
+  assert.equal(result.constraintEvaluation.axes.horizontalRecoil.satisfied, false);
+  assert.ok(result.warnings.some(warning => warning.code === 'REQUIREMENTS_UNMET_CLOSEST_BUILD'));
 });
 
 test('budget Custom prioritizes required module branches before expensive optional root parts', () => {

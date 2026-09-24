@@ -1,4 +1,8 @@
 import { _calculateWeighted } from './candidateSearch.js';
+import {
+  appendBuildWarning,
+  BUILD_WARNING_CODES,
+} from './buildResultMessages.js';
 import { createCalculationCache } from './calculationCache.js';
 import { PRICE_AWARE_TARGET } from './constants.js';
 import { generatePriorityCandidates } from './priorityCandidates.js';
@@ -27,7 +31,7 @@ import {
 
 const CONSTRAINT_ROUTE_BEAM_WIDTH = 24;
 const CONSTRAINT_ROUTE_OPTIONS_PER_SLOT = 8;
-const CONSTRAINT_FALLBACK_SWEEP_STEPS = 20;
+const CONSTRAINT_FALLBACK_SWEEP_STEPS = 10;
 
 function hasHardRouteConstraints(options) {
   return (options.requiredItemIds || []).length > 0
@@ -512,7 +516,15 @@ export function createConstraintSearchRoutes(
   return routes;
 }
 
+const CONSTRAINT_VIOLATION_TIE_EPSILON = 1e-9;
+
+// Hard-valid candidates rank first by soft directional violation, then by the
+// ordinary Custom quality. Satisfied limits all score 0, so distance to a
+// boundary never wins inside the allowed region.
 export function compareConstraintCandidates(left, right) {
+  const violationDifference = left.result.constraintEvaluation.totalViolation
+    - right.result.constraintEvaluation.totalViolation;
+  if (Math.abs(violationDifference) > CONSTRAINT_VIOLATION_TIE_EPSILON) return violationDifference;
   const quality = result => getCustomScore({
     ergonomics: result.stats.ergonomics,
     verticalRecoil: result.stats.recoilVertical,
@@ -641,17 +653,15 @@ export function calculateBestBuild(
   const normalizedPriorityAttributes = normalizePriorityAttributes(priorityAttributes);
   const normalizedPrioritySelectionMode = normalizePrioritySelectionMode(prioritySelectionMode);
   const normalizedPriorityWeights = normalizePriorityWeights(priorityWeights);
+  // Soft desired limits. customProfile.weight never becomes options.maxWeight:
+  // only the explicit maxWeight option is a hard maximum.
   const customLimits = {
     ergonomics: minErgo,
     verticalRecoil: maxRecoil,
     horizontalRecoil: customProfile?.horizontalRecoil,
     weight: customProfile?.weight,
   };
-  const weightLimits = [Number(customLimits.weight), Number(options.maxWeight)]
-    .filter(value => Number.isFinite(value) && value > 0);
-  const effectiveMaxWeight = weightLimits.length ? Math.min(...weightLimits) : 0;
-  const customOptions = { ...options, maxWeight: isPriorityMode ? 0 : effectiveMaxWeight };
-  customLimits.weight = effectiveMaxWeight;
+  const customOptions = isPriorityMode ? { ...options, maxWeight: 0 } : options;
 
   if (isPriorityMode) {
     const priorityCandidates = generatePriorityCandidates({
@@ -719,12 +729,12 @@ export function calculateBestBuild(
     baselineResult = calculateRoute();
     candidates.push(baselineResult);
   }
-  const isValidCandidate = result => !result.error && result.constraintEvaluation.satisfied;
+  // Only hard-valid builds compete; soft violations only rank them.
   const selectCandidate = results => {
     let selectedCandidate = null;
     const successfulBuildKeys = new Set();
     results.forEach(result => {
-      if (!isValidCandidate(result)) return;
+      if (result.error) return;
       const tieKey = getBuildTieKey(result);
       if (successfulBuildKeys.has(tieKey)) return;
       successfulBuildKeys.add(tieKey);
@@ -735,59 +745,49 @@ export function calculateBestBuild(
     });
     return selectedCandidate?.result ?? null;
   };
-  const selectedResult = selectCandidate(candidates);
-  if (selectedResult) return selectedResult;
+  let selectedResult = selectCandidate(candidates);
 
   // Violation-guided greedy search can settle on one axis at the expense of
-  // another. Before reporting failure, sweep ergonomics/recoil trade-offs plus
-  // the weight-aware Meta balance, keeping only builds that satisfy every limit.
+  // another. Sweep ergonomics/recoil trade-offs for a build with less
+  // violation, or for any hard-valid build at all.
   const unguidedSearch = { characteristicConstraints: customLimits, constraintGuidance: false };
-  const sweepResults = Array.from({ length: CONSTRAINT_FALLBACK_SWEEP_STEPS + 1 }, (_, step) => {
+  const sweep = sweepOptions => Array.from({ length: CONSTRAINT_FALLBACK_SWEEP_STEPS + 1 }, (_, step) => {
     const ergoWeight = step / CONSTRAINT_FALLBACK_SWEEP_STEPS;
     return _calculateWeighted(
-      weapon, ergoWeight, 1 - ergoWeight, 0, modMap, customOptions, 100, 'custom', 0.001, 0, 100,
+      weapon, ergoWeight, 1 - ergoWeight, 0, modMap, sweepOptions, 100, 'custom', 0.001, 0, 100,
       calculationCache, unguidedSearch,
     );
   });
-  sweepResults.push(_calculateWeighted(
-    weapon, 1, 3, 0, modMap, customOptions, 50, 'meta', 15, 0.15, 70, calculationCache, unguidedSearch,
-  ));
-  const sweepResult = selectCandidate(sweepResults);
-  if (sweepResult) return sweepResult;
-  candidates.push(...sweepResults);
-
-  // Weight pruning can make a heavy required slot look uninstallable. Rebuild
-  // without the pruning so the weight limit is judged on the completed build.
-  if (customOptions.maxWeight > 0 && !candidates.some(result => result.builderRequirementsMet)) {
-    const unprunedResult = calculateRoute({}, false, { ...customOptions, maxWeight: 0 });
-    if (isValidCandidate(unprunedResult)) return unprunedResult;
-    candidates.push(unprunedResult);
+  const desiredWeight = Number(customLimits.weight) || 0;
+  const hardWeight = Number(customOptions.maxWeight) || 0;
+  if (!selectedResult?.constraintEvaluation.satisfied
+    && desiredWeight > 0
+    && (hardWeight <= 0 || desiredWeight < hardWeight)) {
+    // Extra candidates pruned at the desired weight explore the region inside
+    // it. The soft limit only narrows these extra searches; every candidate
+    // still competes on the unchanged hard requirements.
+    const withinDesiredWeight = { ...customOptions, maxWeight: desiredWeight };
+    candidates.push(calculateRoute({}, false, withinDesiredWeight), ...sweep(withinDesiredWeight));
+    selectedResult = selectCandidate(candidates);
+  }
+  if (!selectedResult?.constraintEvaluation.satisfied) {
+    // The weight-aware Meta balance is costly (its final optimizers), so it
+    // runs once, only when the cheaper searches left a violation.
+    candidates.push(...sweep(customOptions), _calculateWeighted(
+      weapon, 1, 3, 0, modMap, customOptions, 50, 'meta', 15, 0.15, 70, calculationCache, unguidedSearch,
+    ));
+    selectedResult = selectCandidate(candidates);
   }
 
-  const constraintFailures = candidates.filter(result => result.builderRequirementsMet);
-  if (constraintFailures.length === 0) {
-    // Every route failed a builder requirement (budget, required parts or
-    // devices); keep the ordinary calculation's specific reason and code.
-    return baselineResult;
+  // No hard-valid build: keep the ordinary calculation's specific reason and
+  // code (budget, required parts or devices, hard maximum weight).
+  if (!selectedResult) return baselineResult;
+  if (!selectedResult.constraintEvaluation.satisfied) {
+    appendBuildWarning(selectedResult, {
+      code: BUILD_WARNING_CODES.REQUIREMENTS_UNMET_CLOSEST_BUILD,
+      params: {},
+      fallback: 'Not all selected values are reachable. Showing the closest build found.',
+    });
   }
-  const closestFailure = constraintFailures.reduce((closest, result) => (
-    result.constraintEvaluation.totalViolation < closest.constraintEvaluation.totalViolation
-      ? result
-      : closest
-  ));
-  return {
-    build: [],
-    stats: {
-      ergonomics: weapon.properties?.ergonomics ?? 0,
-      recoilModifier: 0,
-      recoilVertical: weapon.properties?.recoilVertical ?? 0,
-      recoilHorizontal: weapon.properties?.recoilHorizontal ?? 0,
-      weight: Number(weapon.weight || 0).toFixed(2),
-      price: null,
-    },
-    builderRequirementsMet: true,
-    constraintEvaluation: closestFailure.constraintEvaluation,
-    errorCode: 'CUSTOM_CONSTRAINTS_UNMET',
-    error: 'The bounded search did not find a build satisfying all characteristic constraints.',
-  };
+  return selectedResult;
 }

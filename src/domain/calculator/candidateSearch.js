@@ -942,19 +942,13 @@ export function _calculateWeighted(
     });
   }
   if (characteristicConstraints) {
-    // Builder requirements (budget, required slots/items/devices) are tracked
-    // separately so orchestration can report the most specific failure.
-    result.builderRequirementsMet = errors.length === 0;
-    // Ergonomics and recoil limits are entered against the displayed integers;
-    // weight stays a strict raw maximum.
+    // Characteristic limits are soft: they rank builds but never invalidate
+    // one. Ergonomics and recoil are judged on the displayed integers.
     result.constraintEvaluation = evaluateCustomConstraints({
       ...result.stats,
       weight: totalWeight,
     }, characteristicConstraints);
-    if (!result.constraintEvaluation.satisfied) {
-      result.errorCode ??= 'CUSTOM_CONSTRAINTS_UNMET';
-      errors.push('The build does not satisfy all characteristic constraints.');
-    }
+    // options.maxWeight is the separate hard technical maximum.
     if (maxWeight > 0 && totalWeight > maxWeight) {
       errors.push('The build exceeds the maximum weight.');
     }

@@ -20,16 +20,16 @@ test('provides localized Priority weighted-selection labels', () => {
   assert.equal(configMessages.ru['config.priorityWeightInvalid'], 'Сумма приоритетов должна быть 100%.');
 });
 
-test('describes constraint failures as a bounded-search result', () => {
-  assert.match(configMessages.en['config.constraintsUnmet'], /bounded search/i);
-  assert.match(configMessages.ru['config.constraintsUnmet'], /Ограниченный поиск/i);
-  assert.match(configMessages.en['config.constraintsUnmet'], /all selected limits/i);
-  assert.match(configMessages.ru['config.constraintsUnmet'], /все заданные ограничения/i);
+test('characteristic limits have no failure message of their own', () => {
+  assert.equal(Object.hasOwn(configMessages.en, 'config.constraintsUnmet'), false);
+  assert.equal(Object.hasOwn(configMessages.ru, 'config.constraintsUnmet'), false);
+  assert.match(configMessages.ru['config.warning.requirementsUnmet'], /ближайшая найденная сборка/);
+  assert.match(configMessages.en['config.warning.requirementsUnmet'], /closest build found/);
 });
 
-test('explains the direction of hard characteristic limits in both languages', () => {
-  assert.match(uiMessages.en['ui.radar.help'], /Weight and recoil must be no higher/);
-  assert.match(uiMessages.en['ui.radar.help'], /ergonomics must be no lower/);
-  assert.match(uiMessages.ru['ui.radar.help'], /Вес и отдача — не больше/);
-  assert.match(uiMessages.ru['ui.radar.help'], /эргономика — не меньше/);
+test('explains soft directional characteristic limits in both languages', () => {
+  assert.match(uiMessages.en['ui.radar.help'], /weight and recoil at most, ergonomics at least/);
+  assert.match(uiMessages.en['ui.radar.help'], /closest available build is chosen/);
+  assert.match(uiMessages.ru['ui.radar.help'], /вес и отдача — не больше, эргономика — не меньше/);
+  assert.match(uiMessages.ru['ui.radar.help'], /будет выбрана ближайшая доступная сборка/);
 });

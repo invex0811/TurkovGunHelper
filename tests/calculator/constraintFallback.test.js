@@ -161,16 +161,19 @@ test('Constraints fallback keeps an impossible hard maximum weight as an error',
   assert.deepEqual(result.build, []);
 });
 
-test('Constraints rejects the unforced fallback when its ergonomics is below the minimum', () => {
+test('Constraints returns a hard-valid unforced fallback that misses the ergonomics minimum', () => {
   const fixture = createFixture();
   // The sight is optional and the magazine-30 is mandatory, so every build
   // stays at or below 43 ergonomics against the 44 minimum.
   fixture.weapon.properties.ergonomics = 53;
+  assert.ok(calculateForcedCandidates(fixture).every(result => result.error));
   const baseline = calculateUnforced(fixture);
-  assert.equal(baseline.builderRequirementsMet, true);
+  assert.equal(baseline.error, undefined);
   assert.equal(baseline.constraintEvaluation.satisfied, false);
   const result = calculate(fixture);
-  assert.equal(result.errorCode, 'CUSTOM_CONSTRAINTS_UNMET');
-  assert.deepEqual(result.build, []);
+  assert.equal(result.error, undefined);
+  assert.deepEqual(result.build, baseline.build);
+  assert.equal(result.stats.ergonomics, 43);
   assert.equal(result.constraintEvaluation.satisfied, false);
+  assert.equal(result.constraintEvaluation.axes.ergonomics.violation, 1);
 });

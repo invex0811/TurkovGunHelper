@@ -991,10 +991,6 @@ const GROUP_ORDER = [
 ];
 
 function getBuildResultErrorMessage(buildResult, language, t) {
-  if (buildResult.errorCode === 'CUSTOM_CONSTRAINTS_UNMET') {
-    return t('config.constraintsUnmet');
-  }
-
   return language === 'ru' ? t('config.constraintMessage') : buildResult.error;
 }
 
@@ -1091,7 +1087,9 @@ function Configurator() {
   const [priceModeNotice, setPriceModeNotice] = useState(null);
   const [maxPriceDraft, setMaxPriceDraft] = useState(null);
   const maxWeight = customProfile.weight > 0 ? String(customProfile.weight) : '';
-  const effectiveHardMaxWeight = characteristicMode === 'priorities' ? 0 : maxWeight;
+  // Only Meta turns its weight field into a hard maximum; in Constraints the
+  // same profile value is a soft desired limit.
+  const effectiveHardMaxWeight = targetType === 'meta' ? maxWeight : 0;
   const {
     cancelPendingCalculations,
     latestCalculationRequestIdRef,

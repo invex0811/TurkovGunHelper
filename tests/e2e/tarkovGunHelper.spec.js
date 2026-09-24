@@ -380,7 +380,7 @@ test('build goal modes preserve their state and calculator settings', async ({ p
   await expect(page.locator('.required-module').filter({ hasText: 'Alternative Grip' })).toBeVisible();
 });
 
-test('constraint inputs enforce all limits and show an error instead of an invalid build', async ({ page }) => {
+test('constraint inputs rank builds by desired limits and warn when a value is unreachable', async ({ page }) => {
   await createBuild(page);
   await page.getByRole('group', { name: 'Build Goal' })
     .getByRole('button', { name: 'By constraints', exact: true }).click();
@@ -418,16 +418,17 @@ test('constraint inputs enforce all limits and show an error instead of an inval
   expect(saved.settings).not.toHaveProperty('customExactTargets');
   expect(saved.settings.buildGoalMode).toBe('constraints');
 
+  // An unreachable desired weight returns the closest build with a warning.
   const weight = constraints.getByRole('spinbutton', { name: 'Weight value', exact: true });
-  await weight.fill('3.1');
+  await weight.fill('0.05');
   await weight.press('Enter');
   await page.getByRole('button', { name: 'Generate Build', exact: true }).click();
   await expect(page.getByText(
-    'The bounded search did not find a build that satisfies all selected limits. Adjust the limits and try again.',
+    'Not all selected values are reachable. Showing the closest build found.',
     { exact: true },
   )).toBeVisible();
-  await expect(page.locator('.part-card')).toHaveCount(0);
-  await expect(page.getByLabel('Build name')).toHaveCount(0);
+  await expect(page.getByLabel('Build name')).toBeVisible();
+  await expect(page.locator('.part-card').first()).toBeVisible();
 
   await weight.fill('0');
   await weight.press('Enter');

@@ -110,8 +110,12 @@ test('calculator worker forwards characteristic mode and the shared maxPrice opt
     });
 
     assert.equal(messages[0].requestId, 1);
-    assert.equal(messages[0].result.errorCode, 'CUSTOM_CONSTRAINTS_UNMET');
-    assert.deepEqual(messages[0].result.build, []);
+    // Ergonomics 80 is unreachable (max 60): the worker still returns the
+    // closest build with a soft-limit warning instead of an error.
+    assert.equal(messages[0].result.error, undefined);
+    assert.deepEqual(messages[0].result.build.map(entry => entry.item.id), [part.id]);
+    assert.equal(messages[0].result.constraintEvaluation.satisfied, false);
+    assert.equal(messages[0].result.warningCode, 'REQUIREMENTS_UNMET_CLOSEST_BUILD');
     assert.equal(messages[1].requestId, 3);
     assert.equal(messages[1].result.error, undefined);
     assert.equal(messages[1].result.stats.recoilModifier, -12.5);
