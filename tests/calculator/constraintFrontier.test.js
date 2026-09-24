@@ -5,7 +5,7 @@ import { calculateBestBuild, createConstraintSearchRoutes } from '../../src/doma
 import { _calculateWeighted } from '../../src/domain/calculator/candidateSearch.js';
 import { getNestedSlotRouteKey, getRootSlotRouteKey } from '../../src/domain/calculator/constraints.js';
 
-const targets = { ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: 0 };
+const targets = { ergonomics: 45, verticalRecoil: 100, horizontalRecoil: 100, weight: 0 };
 const slot = (name, ids, required = false) => ({
   name, nameId: name, required, filters: { allowedItems: ids.map(id => ({ id })) },
 });
@@ -33,7 +33,7 @@ test('budget-only frontier stays within 24 routes for five roots with eight inde
     parts.push(...choices);
     return slot(`root-${root}`, choices.map(item => item.id), true);
   });
-  const routes = createConstraintSearchRoutes(weapon(slots), mapParts(parts), targets, {}, { maxPrice: 100_000 });
+  const routes = createConstraintSearchRoutes(weapon(slots), mapParts(parts), targets, { maxPrice: 100_000 });
   assert.equal(routes.length, 24);
   assert.equal(Math.min(...routes.map(route => route.price)), 500);
   assert.ok(routes.every(route => Object.keys(route.choices).length === 5));
@@ -50,7 +50,7 @@ test('nested optional suppressor combinations are pruned during capability expan
   parts.push(root);
   const base = weapon([slot('root', [root.id], true)]);
   for (const requireSuppressor of [false, true]) {
-    const routes = createConstraintSearchRoutes(base, mapParts(parts), targets, {}, { maxPrice: 100_000, requireSuppressor });
+    const routes = createConstraintSearchRoutes(base, mapParts(parts), targets, { maxPrice: 100_000, requireSuppressor });
     assert.ok(routes.length <= 24, `expected bounded routes, got ${routes.length}`);
     if (requireSuppressor) assert.ok(routes.some(route => route.suppressorKind > 0));
   }
@@ -152,7 +152,7 @@ test('forced optional nested choices must exist and pass active filters', () => 
     const path = getNestedSlotRouteKey(rootPath, root, nested, root.properties.slots);
     const result = _calculateWeighted(base, 1, 1, 0, mapParts([root, reflex, magazine, correctMagazine, laser, suppressor]),
       fixture.options, 100, 'custom', 0, 0, 100, undefined, {
-        targetMatching: { targets, exactTargets: {} },
+        characteristicConstraints: targets,
         forcedRootChoices: { [rootPath]: root.id }, forcedNestedChoices: { [path]: fixture.choice },
       });
     assert.ok(result.error, `${fixture.name} should invalidate the forced branch`);
@@ -170,7 +170,7 @@ test('an explicit null nested choice skips an otherwise improving optional branc
   const path = getNestedSlotRouteKey(rootPath, root, nested, root.properties.slots);
   const result = _calculateWeighted(base, 1, 1, 0, mapParts([root, improvement]),
     {}, 100, 'custom', 0, 0, 100, undefined, {
-      targetMatching: { targets: { ...targets, ergonomics: 60 }, exactTargets: {} },
+      characteristicConstraints: { ...targets, ergonomics: 50 },
       forcedRootChoices: { [rootPath]: root.id }, forcedNestedChoices: { [path]: null },
     });
   assert.equal(result.error, undefined);
@@ -178,7 +178,7 @@ test('an explicit null nested choice skips an otherwise improving optional branc
   assert.equal(result.stats.ergonomics, 50);
 });
 
-test('required sight is retained when exact nested plans could otherwise skip it', () => {
+test('required sight is retained when forced nested plans could otherwise skip it', () => {
   const sight = part('required-reflex', { ergonomicsModifier: -5, categories: [{ name: 'Sights' }, { name: 'Reflex sight' }] });
   const root = part('sight-parent', { properties: { slots: [slot('scope', [sight.id])] } });
   const result = calculate(weapon([slot('root', [root.id], true)]), [root, sight], { requireSight: true, sightMode: 'reflex' });
@@ -188,7 +188,7 @@ test('required sight is retained when exact nested plans could otherwise skip it
 
 for (const category of ['Comb. tact. device', 'Flashlight']) {
   for (const nested of [false, true]) {
-    test(`Constraints installs requested ${category} despite worsening targets (${nested ? 'nested' : 'root'})`, () => {
+    test(`Constraints installs requested ${category} while meeting characteristic limits (${nested ? 'nested' : 'root'})`, () => {
       const device = part('requested-device', { ergonomicsModifier: -1, categories: [{ name: category }] });
       const tactical = slot('mod_tactical', [device.id]);
       const root = part('device-parent', { properties: { slots: [tactical] } });
@@ -211,13 +211,13 @@ test('unavailable requested tactical devices return structured errors in Constra
   }
 });
 
-test('Exact zero ergonomics agrees with the displayed and recalculated lower clamp', () => {
+test('Minimum zero ergonomics agrees with the displayed and recalculated lower clamp', () => {
   const negative = part('negative-ergonomics', { ergonomicsModifier: -60 });
   const profile = { ...targets, ergonomics: 0 };
   const result = calculateBestBuild(weapon([slot('root', [negative.id], true)]),
-    'custom', 0, 100, mapParts([negative]), {}, profile, { ergonomics: true });
+    'custom', 0, 100, mapParts([negative]), {}, profile);
   assert.equal(result.error, undefined);
   assert.equal(result.stats.ergonomics, 0);
-  assert.equal(result.targetMatching.axes.ergonomics.actual, result.stats.ergonomics);
-  assert.equal(result.targetMatching.exactMatches, true);
+  assert.equal(result.constraintEvaluation.axes.ergonomics.actual, result.stats.ergonomics);
+  assert.equal(result.constraintEvaluation.satisfied, true);
 });

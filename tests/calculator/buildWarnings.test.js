@@ -103,7 +103,7 @@ test('calculator keeps multiple structured warnings in their original order', ()
   assert.equal(result.warningCode, BUILD_WARNING_CODES.BASE_WEAPON_MAX_WEIGHT);
 });
 
-test('closest balanced build uses a stable warning code', () => {
+test('unmet custom limits return a constraint error without a closest build', () => {
   const result = calculateBestBuild(
     createWeapon(),
     'custom',
@@ -112,8 +112,6 @@ test('closest balanced build uses a stable warning code', () => {
     {},
   );
 
-  assert.equal(
-    result.warnings.at(-1).code,
-    BUILD_WARNING_CODES.REQUIREMENTS_UNMET_CLOSEST_BUILD,
-  );
+  assert.equal(result.errorCode, 'CUSTOM_CONSTRAINTS_UNMET');
+  assert.deepEqual(result.build, []);
 });

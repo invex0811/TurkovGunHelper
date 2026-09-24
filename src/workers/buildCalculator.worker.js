@@ -49,7 +49,6 @@ self.onmessage = ({ data }) => {
       modMap,
       data.options,
       customProfile,
-      data.customExactTargets,
       data.priorityAttributes,
       data.characteristicMode,
       data.prioritySelectionMode,

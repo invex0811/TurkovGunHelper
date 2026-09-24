@@ -1,12 +1,4 @@
-import {
-  hasEnabledCustomExactTargets,
-  normalizeCustomExactTargets,
-} from '../customExactTargets.js';
 import { _calculateWeighted } from './candidateSearch.js';
-import {
-  appendBuildWarning,
-  BUILD_WARNING_CODES,
-} from './buildResultMessages.js';
 import { createCalculationCache } from './calculationCache.js';
 import { PRICE_AWARE_TARGET } from './constants.js';
 import { generatePriorityCandidates } from './priorityCandidates.js';
@@ -16,10 +8,11 @@ import {
 } from './prioritySelection.js';
 import {
   getBuildTieKey,
+  getCustomScore,
   getMetaResultScore,
   getPriceAwareResultScore,
 } from './scoring.js';
-import { evaluateCustomTargetMatching } from '../customTargetMatching.js';
+import { evaluateCustomConstraints } from '../customConstraints.js';
 import { getNestedSlotRouteKey, getRootSlotRouteKey } from './constraints.js';
 import { createCompatibilityTools } from './compatibility.js';
 import { createPricingTools } from './pricing.js';
@@ -34,6 +27,7 @@ import {
 
 const CONSTRAINT_ROUTE_BEAM_WIDTH = 24;
 const CONSTRAINT_ROUTE_OPTIONS_PER_SLOT = 8;
+const CONSTRAINT_FALLBACK_SWEEP_STEPS = 20;
 
 function hasHardRouteConstraints(options) {
   return (options.requiredItemIds || []).length > 0
@@ -51,24 +45,33 @@ function getRouteTieKey(route) {
     .join('|');
 }
 
-function getRouteMatching(weapon, route, targets, exactTargets) {
+function getRouteEvaluation(weapon, route, targets) {
   const recoilModifier = route.recoilModifier;
-  return evaluateCustomTargetMatching(
+  return evaluateCustomConstraints(
     {
-      ergonomics: (weapon.properties?.ergonomics || 0) + route.ergonomics,
+      ergonomics: Math.max(0, Math.min(100, (weapon.properties?.ergonomics || 0) + route.ergonomics)),
       verticalRecoil: (weapon.properties?.recoilVertical || 0) * (1 + (recoilModifier / 100)),
       horizontalRecoil: (weapon.properties?.recoilHorizontal || 0) * (1 + (recoilModifier / 100)),
       weight: (weapon.weight || 0) + route.weight,
     },
     targets,
-    exactTargets,
   );
 }
 
-function compareRoutes(left, right, weapon, targets, exactTargets) {
-  const distance = getRouteMatching(weapon, left, targets, exactTargets).totalDistance
-    - getRouteMatching(weapon, right, targets, exactTargets).totalDistance;
+function compareRoutes(left, right, weapon, targets) {
+  const distance = getRouteEvaluation(weapon, left, targets).totalViolation
+    - getRouteEvaluation(weapon, right, targets).totalViolation;
   if (distance !== 0) return distance;
+  const quality = getCustomScore({
+    ergonomics: Math.max(0, Math.min(100, (weapon.properties?.ergonomics || 0) + right.ergonomics)),
+    verticalRecoil: (weapon.properties?.recoilVertical || 0) * (1 + right.recoilModifier / 100),
+    horizontalRecoil: (weapon.properties?.recoilHorizontal || 0) * (1 + right.recoilModifier / 100),
+  }) - getCustomScore({
+    ergonomics: Math.max(0, Math.min(100, (weapon.properties?.ergonomics || 0) + left.ergonomics)),
+    verticalRecoil: (weapon.properties?.recoilVertical || 0) * (1 + left.recoilModifier / 100),
+    horizontalRecoil: (weapon.properties?.recoilHorizontal || 0) * (1 + left.recoilModifier / 100),
+  });
+  if (quality !== 0) return quality;
   if (left.price !== right.price) return left.price - right.price;
   return getRouteTieKey(left).localeCompare(getRouteTieKey(right));
 }
@@ -117,7 +120,7 @@ function getMinimumRequiredSlotPrice(slot, modMap, getItemPrice) {
   );
 }
 
-function getTargetRankedRouteOptions(entries, weapon, targets, exactTargets) {
+function getConstraintRankedRouteOptions(entries, weapon, targets) {
   return [...entries].sort((left, right) => {
     const leftRoute = {
       choices: { item: left.item.id },
@@ -135,7 +138,7 @@ function getTargetRankedRouteOptions(entries, weapon, targets, exactTargets) {
       weight: right.capabilities.weight,
       price: right.capabilities.price,
     };
-    return compareRoutes(leftRoute, rightRoute, weapon, targets, exactTargets);
+    return compareRoutes(leftRoute, rightRoute, weapon, targets);
   });
 }
 
@@ -209,7 +212,7 @@ function dedupeCapabilityVariants(variants, future, options, tools, route) {
     weight: route.weight + variant.weight,
   });
   const compare = (left, right) => compareRoutes(
-    asRoute(left), asRoute(right), tools.weapon, tools.targets, tools.exactTargets,
+    asRoute(left), asRoute(right), tools.weapon, tools.targets,
   );
   const ranked = variants.sort(compare);
   if (!hasHardRouteConstraints(options)) return ranked.slice(0, CONSTRAINT_ROUTE_BEAM_WIDTH);
@@ -324,7 +327,6 @@ function selectConstraintRouteOptions(
   weapon,
   modMap,
   targets,
-  exactTargets,
   options,
   tools,
   route,
@@ -338,7 +340,7 @@ function selectConstraintRouteOptions(
   const optionVariants = candidates.flatMap(item => getRouteCapabilityVariants(
     item, modMap, options, tools, route, getRootSlotRouteKey(slot, slots), future,
   ).map(capabilities => ({ item, capabilities })));
-  const rankedOptions = getTargetRankedRouteOptions(optionVariants, weapon, targets, exactTargets);
+  const rankedOptions = getConstraintRankedRouteOptions(optionVariants, weapon, targets);
   return hasHardRouteConstraints(options) ? rankedOptions : rankedOptions.slice(0, CONSTRAINT_ROUTE_OPTIONS_PER_SLOT);
 }
 
@@ -352,11 +354,11 @@ function getRouteHardKey(route, options, future) {
   return getCapabilitySignature({ ...route, requiredIds: route.requiredCoverage }, future, options);
 }
 
-function compareHardRoutes(left, right, remainingRequiredRootsPrice, weapon, targets, exactTargets) {
+function compareHardRoutes(left, right, remainingRequiredRootsPrice, weapon, targets) {
   const leftPrice = left.price + remainingRequiredRootsPrice;
   const rightPrice = right.price + remainingRequiredRootsPrice;
   if (leftPrice !== rightPrice) return leftPrice - rightPrice;
-  return compareRoutes(left, right, weapon, targets, exactTargets);
+  return compareRoutes(left, right, weapon, targets);
 }
 
 function pruneConstraintRoutes(
@@ -364,7 +366,6 @@ function pruneConstraintRoutes(
   remainingRequiredRootsPrice,
   weapon,
   targets,
-  exactTargets,
   options,
   basePrice,
   future,
@@ -374,7 +375,7 @@ function pruneConstraintRoutes(
     Number.isFinite(basePrice + route.price + remainingRequiredRootsPrice)
     && basePrice + route.price + remainingRequiredRootsPrice <= maxPrice
   )).sort((left, right) => (
-    compareRoutes(left, right, weapon, targets, exactTargets)
+    compareRoutes(left, right, weapon, targets)
   ));
   if (!hasHardRouteConstraints(options)) return rankedRoutes.slice(0, CONSTRAINT_ROUTE_BEAM_WIDTH);
 
@@ -382,13 +383,13 @@ function pruneConstraintRoutes(
   rankedRoutes.forEach(route => {
     const hardKey = getRouteHardKey(route, options, future);
     const current = hardFrontier.get(hardKey);
-    if (!current || compareHardRoutes(route, current, remainingRequiredRootsPrice, weapon, targets, exactTargets) < 0) {
+    if (!current || compareHardRoutes(route, current, remainingRequiredRootsPrice, weapon, targets) < 0) {
       hardFrontier.set(hardKey, route);
     }
   });
 
   const protectedRoutes = [...hardFrontier.values()].sort((left, right) => (
-    compareHardRoutes(left, right, remainingRequiredRootsPrice, weapon, targets, exactTargets)
+    compareHardRoutes(left, right, remainingRequiredRootsPrice, weapon, targets)
   ));
   const getRouteStateKey = route => getRouteTieKey(route);
   const protectedRouteKeys = new Set(protectedRoutes.map(getRouteStateKey));
@@ -405,7 +406,6 @@ export function createConstraintSearchRoutes(
   weapon,
   modMap,
   targets,
-  exactTargets,
   options = {},
   calculationCache = createCalculationCache(),
 ) {
@@ -449,7 +449,7 @@ export function createConstraintSearchRoutes(
   ));
   const tools = {
     getItemPrice, isSuppressor, getFutureDependencies, getRequiredDeviceMask, slotProvidesRequirement, isAllowedSight,
-    weapon, targets, exactTargets,
+    weapon, targets,
   };
 
   for (const [slotIndex, slot] of slots.entries()) {
@@ -468,7 +468,6 @@ export function createConstraintSearchRoutes(
         weapon,
         modMap,
         targets,
-        exactTargets,
         options,
         tools,
         route,
@@ -504,7 +503,6 @@ export function createConstraintSearchRoutes(
       remainingRequiredRootsPrice,
       weapon,
       targets,
-      exactTargets,
       options,
       getWeaponPrice(weapon),
       future,
@@ -515,8 +513,13 @@ export function createConstraintSearchRoutes(
 }
 
 export function compareConstraintCandidates(left, right) {
-  const distance = left.targetMatching.totalDistance - right.targetMatching.totalDistance;
-  if (distance !== 0) return distance;
+  const quality = result => getCustomScore({
+    ergonomics: result.stats.ergonomics,
+    verticalRecoil: result.stats.recoilVertical,
+    horizontalRecoil: result.stats.recoilHorizontal,
+  });
+  const qualityDifference = quality(right.result) - quality(left.result);
+  if (qualityDifference !== 0) return qualityDifference;
   const leftPrice = left.result.stats.price ?? Number.POSITIVE_INFINITY;
   const rightPrice = right.result.stats.price ?? Number.POSITIVE_INFINITY;
   if (leftPrice !== rightPrice) return leftPrice - rightPrice;
@@ -531,7 +534,6 @@ export function calculateBestBuild(
   modMap = {},
   options = {},
   customProfile = null,
-  customExactTargets = null,
   priorityAttributes = [],
   characteristicMode = 'constraints',
   prioritySelectionMode = 'ordered',
@@ -639,23 +641,17 @@ export function calculateBestBuild(
   const normalizedPriorityAttributes = normalizePriorityAttributes(priorityAttributes);
   const normalizedPrioritySelectionMode = normalizePrioritySelectionMode(prioritySelectionMode);
   const normalizedPriorityWeights = normalizePriorityWeights(priorityWeights);
-  const hasCustomProfile = Boolean(customProfile && typeof customProfile === 'object');
-  const customTargetValues = {
-    ergonomics: Number(minErgo),
-    verticalRecoil: Number(maxRecoil),
-    horizontalRecoil: Number(customProfile?.horizontalRecoil),
-    weight: Number(customProfile?.weight),
+  const customLimits = {
+    ergonomics: minErgo,
+    verticalRecoil: maxRecoil,
+    horizontalRecoil: customProfile?.horizontalRecoil,
+    weight: customProfile?.weight,
   };
-  const normalizedExactTargets = normalizeCustomExactTargets(customExactTargets, customTargetValues);
-  const hasExactTargets = !isPriorityMode
-    && hasCustomProfile
-    && hasEnabledCustomExactTargets(normalizedExactTargets);
-  const customOptions = isPriorityMode
-    ? {
-        ...options,
-        maxWeight: 0,
-      }
-    : options;
+  const weightLimits = [Number(customLimits.weight), Number(options.maxWeight)]
+    .filter(value => Number.isFinite(value) && value > 0);
+  const effectiveMaxWeight = weightLimits.length ? Math.min(...weightLimits) : 0;
+  const customOptions = { ...options, maxWeight: isPriorityMode ? 0 : effectiveMaxWeight };
+  customLimits.weight = effectiveMaxWeight;
 
   if (isPriorityMode) {
     const priorityCandidates = generatePriorityCandidates({
@@ -693,151 +689,105 @@ export function calculateBestBuild(
     };
   }
 
-  if (hasCustomProfile) {
-    const targetSearchCapabilities = {
-      targetMatching: {
-        targets: customTargetValues,
-        exactTargets: normalizedExactTargets,
-      },
-    };
-    // Bounded deterministic beam over root slots. Each route still relies on the
-    // compatibility-aware recursive builder for nested chains and hard constraints.
-    const routes = createConstraintSearchRoutes(
-      weapon,
-      modMap,
-      customTargetValues,
-      normalizedExactTargets,
-      customOptions,
-      calculationCache,
-    );
-    const calculateRoute = (route = {}, forceNested = false) => _calculateWeighted(
-      weapon,
-      1,
-      1,
-      0,
-      modMap,
-      customOptions,
-      100,
-      'custom',
-      0,
-      0,
-      100,
-      calculationCache,
-      {
-        ...targetSearchCapabilities,
-        forcedRootChoices: route.choices,
-        forcedNestedChoices: forceNested ? route.nestedChoices : undefined,
-      },
-    );
-    const candidates = [];
-    const ordinaryRootChoices = new Set();
-    routes.forEach(route => {
-      const rootKey = JSON.stringify(route.choices);
-      if (!ordinaryRootChoices.has(rootKey)) {
-        candidates.push(calculateRoute(route));
-        ordinaryRootChoices.add(rootKey);
-      }
-      if (Object.keys(route.nestedChoices).length > 0) candidates.push(calculateRoute(route, true));
-    });
-    // Forced routes expand the search; they must not exclude the normal
-    // target-aware build when their choices fail active builder constraints.
-    // An empty root plan already evaluated that baseline above.
-    if (!ordinaryRootChoices.has(JSON.stringify({}))) candidates.push(calculateRoute());
-    let closestCandidate = null;
-    let validExactCandidate = null;
+  // Bounded root/nested routes supplement the ordinary recursive calculation.
+  const routes = createConstraintSearchRoutes(
+    weapon, modMap, customLimits, customOptions, calculationCache,
+  );
+  const calculateRoute = (route = {}, forceNested = false, routeOptions = customOptions) => _calculateWeighted(
+    weapon, 1, 1, 0, modMap, routeOptions, 100, 'custom', 0, 0, 100,
+    calculationCache, {
+      characteristicConstraints: customLimits,
+      forcedRootChoices: route.choices,
+      forcedNestedChoices: forceNested ? route.nestedChoices : undefined,
+    },
+  );
+  const candidates = [];
+  const ordinaryRootChoices = new Set();
+  let baselineResult = null;
+  routes.forEach(route => {
+    const rootKey = JSON.stringify(route.choices);
+    if (!ordinaryRootChoices.has(rootKey)) {
+      const result = calculateRoute(route);
+      if (Object.keys(route.choices).length === 0) baselineResult = result;
+      candidates.push(result);
+      ordinaryRootChoices.add(rootKey);
+    }
+    if (Object.keys(route.nestedChoices).length > 0) candidates.push(calculateRoute(route, true));
+  });
+  // Always retain the unforced calculation, even when every forced route fails.
+  if (!baselineResult) {
+    baselineResult = calculateRoute();
+    candidates.push(baselineResult);
+  }
+  const isValidCandidate = result => !result.error && result.constraintEvaluation.satisfied;
+  const selectCandidate = results => {
+    let selectedCandidate = null;
     const successfulBuildKeys = new Set();
-
-    candidates.forEach(result => {
-      if (result.error) return;
+    results.forEach(result => {
+      if (!isValidCandidate(result)) return;
       const tieKey = getBuildTieKey(result);
       if (successfulBuildKeys.has(tieKey)) return;
       successfulBuildKeys.add(tieKey);
-      const targetMatching = evaluateCustomTargetMatching(
-        result.stats,
-        customTargetValues,
-        normalizedExactTargets,
-      );
-      const candidate = { result, targetMatching, tieKey };
-      const isBetter = current => !current || compareConstraintCandidates(candidate, current) < 0;
-      if (isBetter(closestCandidate)) closestCandidate = candidate;
-      if (targetMatching.exactMatches && isBetter(validExactCandidate)) {
-        validExactCandidate = candidate;
+      const candidate = { result, tieKey };
+      if (!selectedCandidate || compareConstraintCandidates(candidate, selectedCandidate) < 0) {
+        selectedCandidate = candidate;
       }
     });
+    return selectedCandidate?.result ?? null;
+  };
+  const selectedResult = selectCandidate(candidates);
+  if (selectedResult) return selectedResult;
 
-    if (!closestCandidate) return candidates[0];
-    if (hasExactTargets && !validExactCandidate) {
-      return {
-        build: [],
-        stats: {
-          ergonomics: weapon.properties?.ergonomics ?? 0,
-          recoilModifier: 0,
-          recoilVertical: weapon.properties?.recoilVertical ?? 0,
-          recoilHorizontal: weapon.properties?.recoilHorizontal ?? 0,
-          weight: Number(weapon.weight || 0).toFixed(2),
-          price: null,
-        },
-        errorCode: 'CUSTOM_EXACT_TARGETS_UNMET',
-        exactTargetFailures: closestCandidate.targetMatching.exactFailures,
-        targetMatching: closestCandidate.targetMatching,
-        closestTargetMatching: closestCandidate.targetMatching,
-        error: 'The builder\'s bounded search did not find a strict match for all enabled Exact targets. Disable Exact for one or more axes to use the best match it found.',
-      };
-    }
+  // Violation-guided greedy search can settle on one axis at the expense of
+  // another. Before reporting failure, sweep ergonomics/recoil trade-offs plus
+  // the weight-aware Meta balance, keeping only builds that satisfy every limit.
+  const unguidedSearch = { characteristicConstraints: customLimits, constraintGuidance: false };
+  const sweepResults = Array.from({ length: CONSTRAINT_FALLBACK_SWEEP_STEPS + 1 }, (_, step) => {
+    const ergoWeight = step / CONSTRAINT_FALLBACK_SWEEP_STEPS;
+    return _calculateWeighted(
+      weapon, ergoWeight, 1 - ergoWeight, 0, modMap, customOptions, 100, 'custom', 0.001, 0, 100,
+      calculationCache, unguidedSearch,
+    );
+  });
+  sweepResults.push(_calculateWeighted(
+    weapon, 1, 3, 0, modMap, customOptions, 50, 'meta', 15, 0.15, 70, calculationCache, unguidedSearch,
+  ));
+  const sweepResult = selectCandidate(sweepResults);
+  if (sweepResult) return sweepResult;
+  candidates.push(...sweepResults);
 
-    const selectedCandidate = hasExactTargets ? validExactCandidate : closestCandidate;
-    return {
-      ...selectedCandidate.result,
-      targetMatching: selectedCandidate.targetMatching,
-    };
+  // Weight pruning can make a heavy required slot look uninstallable. Rebuild
+  // without the pruning so the weight limit is judged on the completed build.
+  if (customOptions.maxWeight > 0 && !candidates.some(result => result.builderRequirementsMet)) {
+    const unprunedResult = calculateRoute({}, false, { ...customOptions, maxWeight: 0 });
+    if (isValidCandidate(unprunedResult)) return unprunedResult;
+    candidates.push(unprunedResult);
   }
 
-  let bestBuild = null;
-  let bestBuildScore = -Infinity;
-  let firstCalculationError = null;
-  let successfulCalculationCount = 0;
-  for (let i = 0; i <= 20; i++) {
-    const ergoWeight = i / 20;
-    const recoilWeight = 1 - ergoWeight;
-    const priceWeight = 0;
-    const result = _calculateWeighted(weapon, ergoWeight, recoilWeight, priceWeight, modMap, customOptions, 100, 'custom', 0.001, 0, 100, calculationCache);
-    if (result.error) {
-      firstCalculationError ||= result;
-      continue;
-    }
-    successfulCalculationCount += 1;
-
-    const e = result.stats.ergonomics;
-    const r = result.stats.recoilVertical;
-    let score;
-
-    if (e >= minErgo && r <= maxRecoil) {
-      score = 10000 + e - r;
-    } else if (e >= minErgo) {
-      score = 5000 - r;
-    } else if (r <= maxRecoil) {
-      score = 5000 + e;
-    } else {
-      score = -Math.abs(minErgo - e) - Math.abs(r - maxRecoil);
-    }
-
-    if (score > bestBuildScore) {
-      bestBuildScore = score;
-      bestBuild = result;
-    }
+  const constraintFailures = candidates.filter(result => result.builderRequirementsMet);
+  if (constraintFailures.length === 0) {
+    // Every route failed a builder requirement (budget, required parts or
+    // devices); keep the ordinary calculation's specific reason and code.
+    return baselineResult;
   }
-
-  if (!bestBuild && successfulCalculationCount === 0 && firstCalculationError) {
-    return firstCalculationError;
-  }
-
-  if (bestBuild.stats.ergonomics < minErgo || bestBuild.stats.recoilVertical > maxRecoil) {
-    appendBuildWarning(bestBuild, {
-      code: BUILD_WARNING_CODES.REQUIREMENTS_UNMET_CLOSEST_BUILD,
-      params: {},
-      fallback: "It's physically impossible to meet your exact requirements with the current available parts. Showing the closest balanced build possible.",
-    });
-  }
-
-  return bestBuild;
+  const closestFailure = constraintFailures.reduce((closest, result) => (
+    result.constraintEvaluation.totalViolation < closest.constraintEvaluation.totalViolation
+      ? result
+      : closest
+  ));
+  return {
+    build: [],
+    stats: {
+      ergonomics: weapon.properties?.ergonomics ?? 0,
+      recoilModifier: 0,
+      recoilVertical: weapon.properties?.recoilVertical ?? 0,
+      recoilHorizontal: weapon.properties?.recoilHorizontal ?? 0,
+      weight: Number(weapon.weight || 0).toFixed(2),
+      price: null,
+    },
+    builderRequirementsMet: true,
+    constraintEvaluation: closestFailure.constraintEvaluation,
+    errorCode: 'CUSTOM_CONSTRAINTS_UNMET',
+    error: 'The bounded search did not find a build satisfying all characteristic constraints.',
+  };
 }

@@ -8,7 +8,8 @@ import { createCalculationCache } from './calculationCache.js';
 import { createCompatibilityTools } from './compatibility.js';
 import { createPricingTools } from './pricing.js';
 import { scopeSupportsZoom } from '../scopeZoom.js';
-import { evaluateCustomTargetMatching } from '../customTargetMatching.js';
+import { evaluateCustomConstraints } from '../customConstraints.js';
+import { getCustomScore } from './scoring.js';
 import { getRootSlotRouteKey } from './constraints.js';
 
 export function _calculateWeighted(
@@ -45,7 +46,11 @@ export function _calculateWeighted(
 
   const build = [];
   const budgetAwareSearch = searchCapabilities?.budgetAwareSearch === true;
-  const targetMatching = searchCapabilities?.targetMatching ?? null;
+  const characteristicConstraints = searchCapabilities?.characteristicConstraints ?? null;
+  // Guidance steers branches by constraint violation. Weighted sweeps disable it
+  // and still validate the completed build against every active limit.
+  const constraintGuidance = Boolean(characteristicConstraints)
+    && searchCapabilities?.constraintGuidance !== false;
   const forcedRootChoices = searchCapabilities?.forcedRootChoices ?? null;
   const forcedNestedChoices = searchCapabilities?.forcedNestedChoices ?? null;
   let branchEvaluatorOptions = options;
@@ -80,7 +85,7 @@ export function _calculateWeighted(
   const requireSight = options.requireSight === true;
   const maxWeight = Number(options.maxWeight) || 0;
   const maxPrice = Number(options.maxPrice) || 0;
-  const weightEpsilon = 0.0001;
+  const weightEpsilon = characteristicConstraints ? 0 : 0.0001;
   const requiredItemIds = new Set(
     (options.requiredItemIds || [])
       .map(String)
@@ -478,7 +483,7 @@ export function _calculateWeighted(
   }
 
   function countMissingTacticalDevicesProvided(branchEval) {
-    if (!targetMatching) return 0;
+    if (!characteristicConstraints) return 0;
     const items = (branchEval.branchEval ?? branchEval).items;
     return Number(options.includeLaser === true && !hasLaserDevice(installedIds)
       && items.some(part => hasCategory(part.item, 'Comb. tact. device')))
@@ -542,7 +547,7 @@ export function _calculateWeighted(
       || slotNameId.includes('equipment');
   }
 
-  function getTargetBranchImprovement(
+  function getConstraintBranchImprovement(
     branchEval,
     {
       ergonomics = totalErgo,
@@ -550,31 +555,40 @@ export function _calculateWeighted(
       weight = totalWeight,
     } = {},
   ) {
-    if (!targetMatching) return null;
+    if (!constraintGuidance) return null;
 
-    const baseMatching = evaluateCustomTargetMatching(
+    const baseMatching = evaluateCustomConstraints(
       {
-        ergonomics,
+        ergonomics: Math.max(0, Math.min(100, ergonomics)),
         verticalRecoil: baseRecoilV * (1 + (recoilModifier / 100)),
         horizontalRecoil: baseRecoilH * (1 + (recoilModifier / 100)),
         weight,
       },
-      targetMatching.targets,
-      targetMatching.exactTargets,
+      characteristicConstraints,
     );
     const projectedRecoilModifier = recoilModifier + branchEval.statsDelta.recoil;
-    const projectedMatching = evaluateCustomTargetMatching(
+    const projectedMatching = evaluateCustomConstraints(
       {
-        ergonomics: ergonomics + branchEval.statsDelta.ergonomics,
+        ergonomics: Math.max(0, Math.min(100, ergonomics + branchEval.statsDelta.ergonomics)),
         verticalRecoil: baseRecoilV * (1 + (projectedRecoilModifier / 100)),
         horizontalRecoil: baseRecoilH * (1 + (projectedRecoilModifier / 100)),
         weight: weight + branchEval.statsDelta.weight,
       },
-      targetMatching.targets,
-      targetMatching.exactTargets,
+      characteristicConstraints,
     );
 
-    return baseMatching.totalDistance - projectedMatching.totalDistance;
+    return {
+      violationImprovement: baseMatching.totalViolation - projectedMatching.totalViolation,
+      qualityImprovement: getCustomScore({
+        ergonomics: Math.max(0, Math.min(100, ergonomics + branchEval.statsDelta.ergonomics)),
+        verticalRecoil: baseRecoilV * (1 + projectedRecoilModifier / 100),
+        horizontalRecoil: baseRecoilH * (1 + projectedRecoilModifier / 100),
+      }) - getCustomScore({
+        ergonomics: Math.max(0, Math.min(100, ergonomics)),
+        verticalRecoil: baseRecoilV * (1 + recoilModifier / 100),
+        horizontalRecoil: baseRecoilH * (1 + recoilModifier / 100),
+      }),
+    };
   }
 
   const {
@@ -595,7 +609,7 @@ export function _calculateWeighted(
     get getRemainingRequiredSlotPrice() { return getRemainingRequiredSlotPrice; },
     get getRemainingRequiredSlotWeight() { return getRemainingRequiredSlotWeight; },
     get getSortedSlots() { return getSortedSlots; },
-    get getTargetBranchImprovement() { return getTargetBranchImprovement; },
+    get getConstraintBranchImprovement() { return getConstraintBranchImprovement; },
     get getForcedNestedChoice() {
       return slotPath => (forcedNestedChoices && Object.hasOwn(forcedNestedChoices, slotPath)
         ? forcedNestedChoices[slotPath]
@@ -628,7 +642,8 @@ export function _calculateWeighted(
     get requireSight() { return requireSight; },
     get requiredItemIds() { return requiredItemIds; },
     get targetCapacity() { return targetCapacity; },
-    get targetMatching() { return targetMatching; },
+    get characteristicConstraints() { return characteristicConstraints; },
+    get constraintGuidance() { return constraintGuidance; },
     get targetType() { return targetType; },
     get totalPrice() { return totalPrice; },
     get totalRecoilModifier() { return totalRecoilMod; },
@@ -789,16 +804,19 @@ export function _calculateWeighted(
         && (rootItem.recoilModifier || 0) >= 0
         && !hasCategory(rootItem, 'Magazine');
       const isUnrequiredNonImprovement = slot.required !== true
-        && bestCandidate.score <= 0
+        && (constraintGuidance
+          ? (bestCandidate.branchEval.violationImprovement < 0
+            || (bestCandidate.branchEval.violationImprovement === 0 && bestCandidate.score <= 0))
+          : bestCandidate.score <= 0)
         && !(options.requireSuppressor && !hasSuppressorGlobal && bestCandidate.hasSuppressor)
         && !(requireSight && !hasSight && bestCandidate.hasSight)
         && countMissingTacticalDevicesProvided(bestCandidate) === 0
         && bestCandidate.requiredMatches.size === 0;
-      const shouldSkipTargetWorseningBranch = targetMatching && isUnrequiredNonImprovement;
-      const shouldSkipLegacyOptionalPart = !targetMatching
+      const shouldSkipConstraintWorseningBranch = constraintGuidance && isUnrequiredNonImprovement;
+      const shouldSkipLegacyOptionalPart = !constraintGuidance
         && (isMount || isOptionalErgoOnlyBudgetAwarePart)
         && isUnrequiredNonImprovement;
-      if (shouldSkipTargetWorseningBranch || shouldSkipLegacyOptionalPart) {
+      if (shouldSkipConstraintWorseningBranch || shouldSkipLegacyOptionalPart) {
         continue;
       }
 
@@ -878,10 +896,10 @@ export function _calculateWeighted(
   if (requireSight && !hasSight) {
     errors.push('No compatible sight could be installed with the current constraints.');
   }
-  if (targetMatching && options.includeLaser && !hasLaserDevice(installedIds)) {
+  if (characteristicConstraints && options.includeLaser && !hasLaserDevice(installedIds)) {
     errors.push('No compatible laser could be installed with the current constraints.');
   }
-  if (targetMatching && options.includeFlashlight && !hasFlashlightDevice(installedIds)) {
+  if (characteristicConstraints && options.includeFlashlight && !hasFlashlightDevice(installedIds)) {
     errors.push('No compatible flashlight could be installed with the current constraints.');
   }
   const missingRequiredIds = [...requiredItemIds].filter(itemId => !installedIds.has(itemId));
@@ -922,6 +940,25 @@ export function _calculateWeighted(
       params: { count: Math.max(1, missingItemCount) },
       fallback: 'One or more selected items have no available price under the active price policy.',
     });
+  }
+  if (characteristicConstraints) {
+    // Builder requirements (budget, required slots/items/devices) are tracked
+    // separately so orchestration can report the most specific failure.
+    result.builderRequirementsMet = errors.length === 0;
+    // Ergonomics and recoil limits are entered against the displayed integers;
+    // weight stays a strict raw maximum.
+    result.constraintEvaluation = evaluateCustomConstraints({
+      ...result.stats,
+      weight: totalWeight,
+    }, characteristicConstraints);
+    if (!result.constraintEvaluation.satisfied) {
+      result.errorCode ??= 'CUSTOM_CONSTRAINTS_UNMET';
+      errors.push('The build does not satisfy all characteristic constraints.');
+    }
+    if (maxWeight > 0 && totalWeight > maxWeight) {
+      errors.push('The build exceeds the maximum weight.');
+    }
+    if (errors.length > 0) result.build = [];
   }
   setBuildWarnings(result, warnings);
   if (errors.length > 0) {

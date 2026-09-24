@@ -88,15 +88,21 @@ export function createBranchEvaluator(context) {
       return candidate.hasSight;
     }
 
-    if (context.targetMatching) {
+    if (context.characteristicConstraints) {
       const candidateTacticalCount = context.countMissingTacticalDevicesProvided(candidate);
       const bestTacticalCount = context.countMissingTacticalDevicesProvided(bestCandidate);
       if (candidateTacticalCount !== bestTacticalCount) return candidateTacticalCount > bestTacticalCount;
     }
 
+    if (context.constraintGuidance) {
+      const candidateImprovement = (candidate.branchEval ?? candidate).violationImprovement;
+      const bestImprovement = (bestCandidate.branchEval ?? bestCandidate).violationImprovement;
+      if (candidateImprovement !== bestImprovement) return candidateImprovement > bestImprovement;
+    }
+
     if (candidate.score !== bestCandidate.score) return candidate.score > bestCandidate.score;
 
-    if (context.targetMatching) {
+    if (context.constraintGuidance) {
       const candidateBranch = candidate.branchEval ?? candidate;
       const bestBranch = bestCandidate.branchEval ?? bestCandidate;
       const candidatePrice = candidateBranch.statsDelta.price;
@@ -136,8 +142,11 @@ export function createBranchEvaluator(context) {
       return childEval.hasSight;
     }
 
-    if (context.targetMatching && context.countMissingTacticalDevicesProvided(childEval) > 0) return true;
+    if (context.characteristicConstraints && context.countMissingTacticalDevicesProvided(childEval) > 0) return true;
 
+    if (context.constraintGuidance && childEval.violationImprovement !== 0) {
+      return childEval.violationImprovement > 0;
+    }
     return childEval.score > 0;
   }
 
@@ -427,13 +436,16 @@ export function createBranchEvaluator(context) {
       }
     }
 
-    if (typeof context.getTargetBranchImprovement === 'function') {
-      const targetImprovement = context.getTargetBranchImprovement(branchEval, {
+    if (typeof context.getConstraintBranchImprovement === 'function') {
+      const improvement = context.getConstraintBranchImprovement(branchEval, {
         ergonomics: currentErgo,
         recoilModifier: currentRecoilModifier,
         weight: currentWeight,
       });
-      if (Number.isFinite(targetImprovement)) branchEval.score = targetImprovement;
+      if (improvement) {
+        branchEval.violationImprovement = improvement.violationImprovement;
+        branchEval.score = improvement.qualityImprovement;
+      }
     }
 
     return branchEval;

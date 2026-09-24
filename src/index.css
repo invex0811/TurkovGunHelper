@@ -1046,7 +1046,7 @@ a {
 
 .custom-constraints__field {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   min-width: 0;
   color: var(--text-muted);
@@ -1066,55 +1066,17 @@ a {
   display: block;
 }
 
-.custom-constraints__exact-toggle {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  min-width: 36px;
-  padding: 0;
-  border: 1px solid var(--panel-border);
-  border-radius: 3px;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: border-color 150ms ease, color 150ms ease, background-color 150ms ease;
-}
-
-.custom-constraints__exact-toggle input {
+.custom-constraints__symbol {
   position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-.custom-constraints__exact-toggle:has(input:focus-visible) {
-  outline: 2px solid var(--color-gold);
-  outline-offset: 2px;
-}
-
-.custom-constraints__exact-icon {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.8;
-}
-
-.custom-constraints__field.is-exact .custom-constraints__exact-toggle {
-  border-color: var(--color-gold);
-  background: rgba(216, 205, 143, .1);
-  color: var(--color-gold);
+  top: 50%;
+  inset-inline-start: 10px;
+  pointer-events: none;
+  transform: translateY(-50%);
 }
 
 .config .custom-constraints__control input {
-  padding-right: 38px;
+  padding-inline-start: 28px;
+  padding-inline-end: 38px;
   font-family: var(--font-mono);
   font-size: .875rem;
   font-weight: 700;
@@ -1122,13 +1084,13 @@ a {
 }
 
 .config .custom-constraints__control.has-unit input {
-  padding-right: 56px;
+  padding-inline-end: 56px;
 }
 
 .custom-constraints__unit {
   position: absolute;
   top: 50%;
-  right: 24px;
+  inset-inline-end: 24px;
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: .7rem;

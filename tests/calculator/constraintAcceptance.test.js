@@ -1,169 +1,70 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-
 import { calculateBestBuild } from '../../src/domain/calculator.js';
 
-function createPart(id, overrides = {}) {
-  return {
-    id,
-    name: id,
-    shortName: id,
-    weight: 0.1,
-    basePrice: 1000,
-    avg24hPrice: 1000,
-    categories: [],
-    conflictingItems: [],
-    ergonomicsModifier: 0,
-    recoilModifier: 0,
-    accuracyModifier: 0,
-    properties: { slots: [] },
-    ...overrides,
-  };
-}
-
-function calculate(parts, targets, exactTargets = {}) {
+const part = (id, overrides = {}) => ({
+  id, name: id, weight: 0, avg24hPrice: 100, categories: [],
+  ergonomicsModifier: 0, recoilModifier: 0, properties: { slots: [] }, ...overrides,
+});
+function calculate(parts, limits, options = {}) {
   const weapon = {
-    id: 'acceptance-weapon',
-    name: 'Acceptance weapon',
-    shortName: 'AW',
-    weight: 1,
-    basePrice: 1000,
-    avg24hPrice: 1000,
-    categories: [{ name: 'Weapon' }],
-    conflictingItems: [],
-    properties: {
-      ergonomics: 50,
-      recoilVertical: 100,
-      recoilHorizontal: 100,
-      slots: [{
-        name: 'Stock',
-        nameId: 'mod_stock',
-        required: true,
-        filters: { allowedItems: parts.map(({ id }) => ({ id })) },
-      }],
+    id: 'constraint-acceptance', weight: 1, avg24hPrice: 100,
+    properties: { ergonomics: 50, recoilVertical: 100, recoilHorizontal: 300,
+      slots: [{ name: 'stock', nameId: 'stock', required: true,
+        filters: { allowedItems: parts.map(({ id }) => ({ id })) } }],
     },
   };
-  const profile = {
-    ergonomics: undefined,
-    verticalRecoil: undefined,
-    horizontalRecoil: undefined,
-    weight: undefined,
-    ...targets,
-  };
-
-  return calculateBestBuild(
-    weapon,
-    'custom',
-    profile.ergonomics,
-    profile.verticalRecoil,
-    Object.fromEntries(parts.map(part => [part.id, part])),
-    { forbidSuppressor: false, requireSuppressor: false, maxWeight: 0 },
-    profile,
-    exactTargets,
-  );
+  return calculateBestBuild(weapon, 'custom', limits.ergonomics, limits.verticalRecoil,
+    Object.fromEntries(parts.map(item => [item.id, item])), options, limits);
 }
-
-function assertSelected(result, id) {
+const selected = (result, id) => {
   assert.equal(result.error, undefined);
-  assert.deepEqual(result.build.map(part => part.item.id), [id]);
-}
-
-test('Constraints ergonomics target 60 prefers 61 over 75', () => {
-  const result = calculate([
-    createPart('ergonomics-61', { ergonomicsModifier: 11 }),
-    createPart('ergonomics-75', { ergonomicsModifier: 25 }),
-  ], { ergonomics: 60 });
-
-  assertSelected(result, 'ergonomics-61');
-  assert.equal(result.stats.ergonomics, 61);
+  assert.deepEqual(result.build.map(entry => entry.item.id), [id]);
+  assert.equal(result.constraintEvaluation.satisfied, true);
+};
+const limits = { weight: 4, verticalRecoil: 50, horizontalRecoil: 150, ergonomics: 50 };
+test('weight maximum 4 rejects 4.01 and accepts 3.70', () => {
+  selected(calculate([part('heavy', { weight: 3.01 }), part('light', { weight: 2.7 })], { weight: 4 }), 'light');
 });
-
-for (const [axis, stat] of [
-  ['verticalRecoil', 'recoilVertical'],
-  ['horizontalRecoil', 'recoilHorizontal'],
+test('valid builds are ranked by better characteristics, not boundary proximity', () => {
+  selected(calculate([
+    part('boundary', { recoilModifier: -50, ergonomicsModifier: 1 }),
+    part('better', { recoilModifier: -65, ergonomicsModifier: 20 }),
+  ], limits), 'better');
+});
+test('all four limits and budget must hold simultaneously', () => {
+  selected(calculate([
+    part('heavy', { weight: 3.01, recoilModifier: -90 }),
+    part('horizontal-overflow', { recoilModifier: -49, ergonomicsModifier: 50 }),
+    part('expensive', { recoilModifier: -80, avg24hPrice: 1000 }),
+    part('valid', { recoilModifier: -60, weight: 2.7 }),
+  ], limits, { maxPrice: 300 }), 'valid');
+});
+test('impossible characteristic limits return an error and empty build', () => {
+  const result = calculate([part('invalid')], limits);
+  assert.equal(result.errorCode, 'CUSTOM_CONSTRAINTS_UNMET');
+  assert.deepEqual(result.build, []);
+});
+test('zero weight disables its limit', () => {
+  selected(calculate([part('heavy', { weight: 20 })], { weight: 0 }), 'heavy');
+});
+test('technical maximum weight remains the stricter raw limit', () => {
+  selected(calculate([part('heavy', { weight: 2.6 }), part('light', { weight: 2.4 })],
+    { weight: 4 }, { maxWeight: 3.5 }), 'light');
+  const result = calculate([part('rounding-overflow', { weight: 2.5001 })], { weight: 4 }, { maxWeight: 3.5 });
+  assert.ok(result.error);
+  assert.deepEqual(result.build, []);
+});
+for (const [category, options] of [
+  ['Silencer', { requireSuppressor: true }],
+  ['Sights', { requireSight: true }],
+  ['Comb. tact. device', { includeLaser: true }],
 ]) {
-  test(`Constraints ${axis} target 45 prefers 44 over 35 with other axes inactive`, () => {
-    const result = calculate([
-      createPart('recoil-44', { recoilModifier: -56 }),
-      createPart('recoil-35', { recoilModifier: -65 }),
-    ], { [axis]: 45 });
-
-    assertSelected(result, 'recoil-44');
-    assert.equal(result.stats[stat], 44);
-  });
-}
-
-test('Constraints weight target 4 prefers 4.01 over 3.70 without imposing a weight ceiling', () => {
-  const result = calculate([
-    createPart('weight-4.01', { weight: 3.01 }),
-    createPart('weight-3.70', { weight: 2.7 }),
-  ], { weight: 4 });
-
-  assertSelected(result, 'weight-4.01');
-  assert.equal(result.stats.weight, '4.01');
-  assert.ok(Number(result.stats.weight) > 4);
-});
-
-for (const ergonomics of [59, 61]) {
-  test(`Exact ergonomics target 60 rejects the only available value ${ergonomics}`, () => {
-    const result = calculate([
-      createPart(`ergonomics-${ergonomics}`, { ergonomicsModifier: ergonomics - 50 }),
-    ], { ergonomics: 60 }, { ergonomics: true });
-
-    assert.equal(result.errorCode, 'CUSTOM_EXACT_TARGETS_UNMET');
+  test(`required ${category} and characteristic limits must both hold`, () => {
+    const device = part('device', { recoilModifier: -50, categories: [{ name: category }] });
+    selected(calculate([device], limits, options), 'device');
+    const result = calculate([{ ...device, weight: 4 }], limits, options);
+    assert.ok(result.error);
     assert.deepEqual(result.build, []);
-    assert.deepEqual(result.exactTargetFailures.map(({ key, actual }) => ({ key, actual })), [
-      { key: 'ergonomics', actual: ergonomics },
-    ]);
   });
 }
-
-for (const weight of [3.99, 4.01]) {
-  test(`Exact weight target 4 rejects the only available value ${weight}`, () => {
-    const result = calculate([
-      createPart(`weight-${weight}`, { weight: weight - 1 }),
-    ], { weight: 4 }, { weight: true });
-
-    assert.equal(result.errorCode, 'CUSTOM_EXACT_TARGETS_UNMET');
-    assert.deepEqual(result.build, []);
-    assert.deepEqual(result.exactTargetFailures.map(({ key, actual }) => ({ key, actual })), [
-      { key: 'weight', actual: weight },
-    ]);
-  });
-}
-
-test('Exact weight target 4 accepts 4.00', () => {
-  const result = calculate([
-    createPart('weight-4.00', { weight: 3 }),
-  ], { weight: 4 }, { weight: true });
-
-  assertSelected(result, 'weight-4.00');
-  assert.equal(result.stats.weight, '4.00');
-  assert.equal(result.targetMatching.exactMatches, true);
-});
-
-test('Exact ergonomics is mandatory before comparing nonexact recoil proximity', () => {
-  const result = calculate([
-    createPart('matching-far', { ergonomicsModifier: 10, recoilModifier: -20 }),
-    createPart('matching-close', { ergonomicsModifier: 10, recoilModifier: -50 }),
-    createPart('nonmatching-closest', { ergonomicsModifier: 11, recoilModifier: -55 }),
-  ], { ergonomics: 60, verticalRecoil: 45 }, { ergonomics: true });
-
-  assertSelected(result, 'matching-close');
-  assert.equal(result.stats.ergonomics, 60);
-  assert.equal(result.stats.recoilVertical, 50);
-  assert.equal(result.targetMatching.exactMatches, true);
-});
-
-test('Weight target zero ignores Exact and does not affect active ergonomics ranking', () => {
-  const parts = [
-    createPart('closer-heavy', { ergonomicsModifier: 11, weight: 3 }),
-    createPart('farther-light', { ergonomicsModifier: 25, weight: 0.1 }),
-  ];
-  const normal = calculate(parts, { ergonomics: 60, weight: 0 });
-  const exactZero = calculate(parts, { ergonomics: 60, weight: 0 }, { weight: true });
-
-  assertSelected(exactZero, 'closer-heavy');
-  assert.equal(exactZero.stats.weight, '4.00');
-  assert.deepEqual(exactZero, normal);
-});

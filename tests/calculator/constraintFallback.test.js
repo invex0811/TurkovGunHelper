@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { _calculateWeighted } from '../../src/domain/calculator/candidateSearch.js';
 import { calculateBestBuild, createConstraintSearchRoutes } from '../../src/domain/calculator/orchestration.js';
 
-const targets = { ergonomics: 50, verticalRecoil: 50, horizontalRecoil: 150, weight: 4 };
+const targets = { ergonomics: 44, verticalRecoil: 50, horizontalRecoil: 150, weight: 4 };
 const slot = (name, ids, required = false) => ({
   name, nameId: name, required, filters: { allowedItems: ids.map(id => ({ id })) },
 });
@@ -55,12 +55,12 @@ function calculateUnforced(fixture, searchCapabilities = {}) {
   return _calculateWeighted(
     fixture.weapon, 1, 1, 0, fixture.modMap, fixture.options,
     100, 'custom', 0, 0, 100, undefined,
-    { targetMatching: { targets, exactTargets: {} }, ...searchCapabilities },
+    { characteristicConstraints: targets, ...searchCapabilities },
   );
 }
 
 function calculateForcedCandidates(fixture) {
-  const routes = createConstraintSearchRoutes(fixture.weapon, fixture.modMap, targets, {}, fixture.options);
+  const routes = createConstraintSearchRoutes(fixture.weapon, fixture.modMap, targets, fixture.options);
   assert.ok(routes.length > 0, 'the regression requires a nonempty route frontier');
   assert.ok(routes.some(route => Object.keys(route.nestedChoices).length > 0));
   return routes.flatMap(route => [
@@ -71,9 +71,9 @@ function calculateForcedCandidates(fixture) {
   ]);
 }
 
-const calculate = (fixture, exactTargets = {}) => calculateBestBuild(
+const calculate = (fixture) => calculateBestBuild(
   fixture.weapon, 'custom', targets.ergonomics, targets.verticalRecoil,
-  fixture.modMap, fixture.options, targets, exactTargets,
+  fixture.modMap, fixture.options, targets,
 );
 const installed = result => result.build.map(entry => entry.item.id);
 
@@ -129,7 +129,7 @@ test('Constraints retains a compatible nested route when the unforced baseline f
   assert.deepEqual(new Set(installed(result)), new Set([first.id, later.id, good.id]));
 });
 
-test('Constraints keeps a frontier candidate that is closer than the valid baseline', () => {
+test('Constraints prefers the better valid baseline over a boundary frontier candidate', () => {
   const greedy = part('greedy-root', { weight: 0, ergonomicsModifier: -10 });
   const optimal = part('optimal-root', { weight: 0, ergonomicsModifier: -20 });
   const later = part('later-root', { weight: 0, ergonomicsModifier: 20 });
@@ -146,9 +146,9 @@ test('Constraints keeps a frontier candidate that is closer than the valid basel
   assert.equal(baseline.stats.ergonomics, 60);
   const result = calculate(fixture);
   assert.equal(result.error, undefined);
-  assert.equal(result.stats.ergonomics, 50);
-  assert.equal(result.targetMatching.totalDistance, 0);
-  assert.ok(installed(result).includes(optimal.id));
+  assert.equal(result.stats.ergonomics, 60);
+  assert.equal(result.constraintEvaluation.totalViolation, 0);
+  assert.ok(installed(result).includes(greedy.id));
 });
 
 test('Constraints fallback keeps an impossible hard maximum weight as an error', () => {
@@ -161,21 +161,16 @@ test('Constraints fallback keeps an impossible hard maximum weight as an error',
   assert.deepEqual(result.build, []);
 });
 
-test('Constraints fallback cannot satisfy a missing Exact target with a nearest build', () => {
+test('Constraints rejects the unforced fallback when its ergonomics is below the minimum', () => {
   const fixture = createFixture();
-  assert.equal(calculateUnforced(fixture).stats.ergonomics, 44);
-  const result = calculate(fixture, { ergonomics: true });
-  assert.equal(result.errorCode, 'CUSTOM_EXACT_TARGETS_UNMET');
-  assert.ok(result.error);
+  // The sight is optional and the magazine-30 is mandatory, so every build
+  // stays at or below 43 ergonomics against the 44 minimum.
+  fixture.weapon.properties.ergonomics = 53;
+  const baseline = calculateUnforced(fixture);
+  assert.equal(baseline.builderRequirementsMet, true);
+  assert.equal(baseline.constraintEvaluation.satisfied, false);
+  const result = calculate(fixture);
+  assert.equal(result.errorCode, 'CUSTOM_CONSTRAINTS_UNMET');
   assert.deepEqual(result.build, []);
-  assert.equal(result.closestTargetMatching.exactMatches, false);
-});
-
-test('Constraints fallback treats unreachable targets with open Exact locks as distances', () => {
-  const result = calculate(createFixture());
-  assert.equal(result.error, undefined);
-  assert.equal(result.stats.ergonomics, 44);
-  assert.equal(Number(result.stats.weight), 3.6);
-  assert.ok(result.targetMatching.totalDistance > 0);
-  assert.equal(result.targetMatching.exactMatches, true);
+  assert.equal(result.constraintEvaluation.satisfied, false);
 });

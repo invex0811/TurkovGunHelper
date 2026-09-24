@@ -18,7 +18,6 @@ import {
 const EXPORTED_SETTING_KEYS = [
   'targetType',
   'customProfile',
-  'customExactTargets',
   'characteristicMode',
   'priorityAttributes',
   'prioritySelectionMode',
