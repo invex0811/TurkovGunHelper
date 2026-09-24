@@ -821,6 +821,12 @@ a {
   text-transform: none;
 }
 
+/* Centers the trigger on the heading instead of the wrapper's text baseline. */
+.info-tooltip {
+  display: inline-flex;
+  align-items: center;
+}
+
 .info-tooltip__trigger {
   display: inline-grid;
   place-items: center;
@@ -835,8 +841,10 @@ a {
   cursor: help;
 }
 
+/* Heading text sits below its line-box center, so the glyph follows it optically. */
 .info-tooltip__trigger .material-symbol {
   font-size: 20px;
+  transform: translateY(2px);
 }
 
 .info-tooltip[data-pinned] .info-tooltip__trigger {
