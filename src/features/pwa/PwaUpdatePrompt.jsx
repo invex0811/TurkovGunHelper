@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { registerSW } from 'virtual:pwa-register';
 import { useI18n } from '../../i18n/useI18n.js';
+import { MaterialSymbol } from '../../ui/MaterialSymbol.js';
 
 export default function PwaUpdatePrompt() {
   const { t } = useI18n();
@@ -15,10 +16,7 @@ export default function PwaUpdatePrompt() {
   if (!needsRefresh) return null;
   return (
     <aside className="pwa-update" role="status" aria-live="polite">
-      <svg className="pwa-update__icon" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M20 11a8 8 0 1 0 2.2 5.5" />
-        <path d="M20 4v7h-7" />
-      </svg>
+      <MaterialSymbol name="refresh" className="pwa-update__icon" />
       <div className="pwa-update__content">
         <strong>{t('pwa.updateAvailable')}</strong>
         <p>{t('pwa.updateDescription')}</p>

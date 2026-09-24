@@ -61,6 +61,7 @@ export function getCompatibleItemsForSlot({
   includeTraderPrices,
   traderLevels,
   strictTraderLevels,
+  includeRefOffers,
 }) {
   const slotContext = providedSlotContext
     || findBuildSlotContext(weapon, buildParts, slotInstanceId).slotContext;
@@ -85,12 +86,12 @@ export function getCompatibleItemsForSlot({
     if (second.id === currentItem?.id) return 1;
     const firstPrice = getPurchasePriceValue(
       first,
-      { priceMode, includeTraderPrices, traderLevels, strictTraderLevels },
+      { priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers },
       Number.POSITIVE_INFINITY,
     );
     const secondPrice = getPurchasePriceValue(
       second,
-      { priceMode, includeTraderPrices, traderLevels, strictTraderLevels },
+      { priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers },
       Number.POSITIVE_INFINITY,
     );
     return firstPrice - secondPrice
@@ -204,6 +205,7 @@ export function planBuildSlotChange({
   includeTraderPrices,
   traderLevels,
   strictTraderLevels,
+  includeRefOffers,
 }) {
   const { slotContext } = findBuildSlotContext(weapon, buildParts, slotInstanceId);
   if (!slotContext) {
@@ -228,6 +230,7 @@ export function planBuildSlotChange({
       includeTraderPrices,
       traderLevels,
       strictTraderLevels,
+      includeRefOffers,
     }).map(item => item.id));
     if (!compatibleIds.has(nextItem.id)) {
       return { errors: ['The selected module is incompatible with this slot instance.'] };

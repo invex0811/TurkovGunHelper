@@ -3,6 +3,7 @@ import { useI18n } from '../i18n/useI18n.js';
 
 import { getPurchasePriceValue } from '../data/price/priceMapper.js';
 import { getSlotOptionComparison } from './weaponBuildSlotStats.js';
+import { MaterialSymbol } from './MaterialSymbol.js';
 
 function getItemName(item, t) {
   return item?.name || item?.shortName || t('ui.slot.unknownModule');
@@ -14,11 +15,12 @@ function formatPrice(
   includeTraderPrices,
   traderLevels,
   strictTraderLevels,
+  includeRefOffers,
   t,
 ) {
   const price = getPurchasePriceValue(
     item,
-    { priceMode, includeTraderPrices, traderLevels, strictTraderLevels },
+    { priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers },
     Number.POSITIVE_INFINITY,
   );
   return Number.isFinite(price)
@@ -38,6 +40,7 @@ export default function WeaponBuildSlotPanel({
   includeTraderPrices,
   traderLevels,
   strictTraderLevels,
+  includeRefOffers,
   onChoose,
   onRemove,
   onConfirmPlan,
@@ -68,7 +71,7 @@ export default function WeaponBuildSlotPanel({
           <h3>{slotContext.slot.name}</h3>
           <p>{getItemName(parentItem, t)}</p>
         </div>
-        <button className="btn btn--ghost" type="button" onClick={onClose} aria-label={t('ui.slot.close')}>×</button>
+        <button className="btn btn--ghost" type="button" onClick={onClose} aria-label={t('ui.slot.close')}><MaterialSymbol name="close" /></button>
       </header>
 
       <div className="weapon-slot-panel__body">
@@ -76,7 +79,7 @@ export default function WeaponBuildSlotPanel({
           <section className="weapon-slot-panel__current" aria-label={t('ui.slot.currentModule')}>
             <span>{t('ui.slot.installed')}</span>
             <strong>{getItemName(currentItem, t)}</strong>
-            <small>{formatPrice(currentItem, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, t)}</small>
+            <small>{formatPrice(currentItem, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers, t)}</small>
           </section>
         )}
 
@@ -121,6 +124,7 @@ export default function WeaponBuildSlotPanel({
               includeTraderPrices,
               traderLevels,
               strictTraderLevels,
+              includeRefOffers,
             });
             return (
               <button
@@ -152,7 +156,7 @@ export default function WeaponBuildSlotPanel({
                   </span>
                 </span>
                 <span className="weapon-slot-option__meta">
-                  <small>{formatPrice(item, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, t)}</small>
+                  <small>{formatPrice(item, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers, t)}</small>
                   <em className={`is-${comparison.priceTone}`}>{comparison.priceDiff === null ? t('ui.slot.differenceUnavailable') : comparison.priceDiffText}</em>
                   {isCurrent && <span className="weapon-slot-option__badge">{t('ui.slot.current')}</span>}
                 </span>

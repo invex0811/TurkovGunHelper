@@ -177,3 +177,37 @@ for (const [category, options] of [
     assert.deepEqual(missing.build, []);
   });
 }
+
+// The optional magazine slot costs weight and ergonomics, so a violation-only
+// ranking used to drop it from every Constraints build.
+function calculateWithMagazine(limits) {
+  const stock = part('light-stock', { weight: 0.5 });
+  const magazines = [
+    part('mag-30', { weight: 0.4, ergonomicsModifier: -2, categories: [{ name: 'Magazine' }], properties: { slots: [], capacity: 30 } }),
+    part('mag-60', { weight: 0.9, ergonomicsModifier: -8, categories: [{ name: 'Magazine' }], properties: { slots: [], capacity: 60 } }),
+  ];
+  const parts = [stock, ...magazines];
+  const weapon = {
+    id: 'constraint-magazine', weight: 1, avg24hPrice: 100,
+    properties: { ergonomics: 50, recoilVertical: 100, recoilHorizontal: 300, slots: [
+      { name: 'stock', nameId: 'stock', required: true, filters: { allowedItems: [{ id: stock.id }] } },
+      { name: 'magazine', nameId: 'mod_magazine', required: false,
+        filters: { allowedItems: magazines.map(({ id }) => ({ id })) } },
+    ] },
+  };
+  return calculateBestBuild(weapon, 'custom', limits.ergonomics, limits.verticalRecoil,
+    Object.fromEntries(parts.map(item => [item.id, item])), { magazineCapacity: 60 }, limits);
+}
+
+test('a satisfied Constraints build keeps the selected magazine', () => {
+  const result = calculateWithMagazine({ ergonomics: 0, verticalRecoil: 200, horizontalRecoil: 400, weight: 0 });
+  assert.equal(result.error, undefined);
+  assert.ok(result.build.some(entry => entry.item.id === 'mag-60'));
+});
+
+test('a magazine that breaks the desired weight and ergonomics is still installed', () => {
+  const result = calculateWithMagazine({ ergonomics: 45, verticalRecoil: 200, horizontalRecoil: 400, weight: 2 });
+  assert.equal(result.error, undefined);
+  assert.ok(result.build.some(entry => entry.item.id === 'mag-60'));
+  assert.equal(result.constraintEvaluation.satisfied, false);
+});

@@ -7,8 +7,16 @@ import {
 } from './priceModes.js';
 import { getEffectiveTraderLevel } from '../../domain/traderLevels.js';
 
+export const REF_TRADER_ID = '6617beeaa9cfa777ca915b7c';
+export const REF_TRADER_NORMALIZED_NAME = 'ref';
+
 function isPositiveNumber(value) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+export function isRefOffer(offer) {
+  return offer?.traderId === REF_TRADER_ID
+    || offer?.vendorNormalizedName === REF_TRADER_NORMALIZED_NAME;
 }
 
 function getLegacyFleaCandidates(item) {
@@ -203,6 +211,28 @@ export function normalizePurchaseOffers(item, mode = DEFAULT_PRICE_MODE) {
   };
 }
 
+function isRefTrader(trader) {
+  return trader?.id === REF_TRADER_ID
+    || trader?.normalizedName === REF_TRADER_NORMALIZED_NAME;
+}
+
+// True when Ref is the only source for the item: no Flea offer and no offer
+// or barter from another trader. Raw offers are checked because Ref barters
+// cost GP coins, which have no RUB price, so they never become priced offers.
+export function isRefOnlyItem(item) {
+  const buyFor = item?.buyFor || [];
+  const bartersFor = item?.bartersFor || [];
+  const soldByRef = buyFor.some(offer => isRefTrader(offer?.vendor))
+    || bartersFor.some(barter => isRefTrader(barter?.trader));
+  if (!soldByRef) return false;
+
+  const offers = item.purchaseOffers ?? normalizePurchaseOffers(item);
+  return !offers?.fleaMarket
+    && (offers?.traderOffers || []).every(isRefOffer)
+    && buyFor.every(offer => isRefTrader(offer?.vendor))
+    && bartersFor.every(barter => isRefTrader(barter?.trader));
+}
+
 function createMissingPrice(mode, item, offers = null) {
   return {
     value: null,
@@ -273,7 +303,9 @@ export function selectPurchasePrice(item, options = {}) {
     offers = normalizePurchaseOffers(item, mode);
   }
 
-  const traderOffers = offers.traderOffers || [];
+  const includeRefOffers = options.includeRefOffers !== false;
+  const traderOffers = (offers.traderOffers || [])
+    .filter(offer => includeRefOffers || !isRefOffer(offer));
   const evaluatesTraderAvailability = Boolean(
     includeTraderPrices
     && options.strictTraderLevels === true

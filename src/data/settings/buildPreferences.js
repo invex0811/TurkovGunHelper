@@ -6,6 +6,7 @@ import {
 const PRICE_MODE_STORAGE_KEY = 'tarkovGunHelper.priceMode';
 const INCLUDE_TRADER_PRICES_STORAGE_KEY = 'tarkovGunHelper.includeTraderPrices';
 const STRICT_TRADER_LEVELS_STORAGE_KEY = 'tarkovGunHelper.strictTraderLevels';
+const INCLUDE_REF_OFFERS_STORAGE_KEY = 'tarkovGunHelper.includeRefOffers';
 const LAST_SELECTED_FLASHLIGHT_ID_STORAGE_KEY = 'tarkovGunHelper.lastSelectedFlashlightId';
 const LAST_SELECTED_TBL_ID_STORAGE_KEY = 'tarkovGunHelper.lastSelectedTblId';
 const REMEMBER_TACTICAL_DEVICE_SELECTION_STORAGE_KEY = 'tarkovGunHelper.rememberTacticalDeviceSelection';
@@ -16,6 +17,7 @@ const SUPPORTED_TARGET_TYPES = ['meta', 'custom'];
 
 export const DEFAULT_INCLUDE_TRADER_PRICES = true;
 export const DEFAULT_STRICT_TRADER_LEVELS = false;
+export const DEFAULT_INCLUDE_REF_OFFERS = true;
 export const DEFAULT_REMEMBER_TACTICAL_DEVICE_SELECTION = false;
 export const BUILD_GOAL_MODES = Object.freeze({
   META: 'meta',
@@ -175,6 +177,36 @@ export function saveStrictTraderLevelsPreference(strictTraderLevels) {
     window.localStorage.setItem(
       STRICT_TRADER_LEVELS_STORAGE_KEY,
       String(strictTraderLevels),
+    );
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+export function loadIncludeRefOffersPreference() {
+  if (typeof window === 'undefined') {
+    return DEFAULT_INCLUDE_REF_OFFERS;
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(INCLUDE_REF_OFFERS_STORAGE_KEY);
+    if (storedValue === 'false') return false;
+    if (storedValue === 'true') return true;
+    return DEFAULT_INCLUDE_REF_OFFERS;
+  } catch {
+    return DEFAULT_INCLUDE_REF_OFFERS;
+  }
+}
+
+export function saveIncludeRefOffersPreference(includeRefOffers) {
+  if (typeof window === 'undefined' || typeof includeRefOffers !== 'boolean') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      INCLUDE_REF_OFFERS_STORAGE_KEY,
+      String(includeRefOffers),
     );
   } catch {
     // Ignore storage errors.

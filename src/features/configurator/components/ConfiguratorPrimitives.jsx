@@ -1,24 +1,10 @@
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import { normalizeStatFillPercent } from '../../../ui/weaponStatMeters.js';
 import { getInlineMessageA11y } from '../configuratorNotifications.js';
+import { MaterialSymbol } from '../../../ui/MaterialSymbol.js';
 
 export function WarningIcon({ className = '' }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="1.8"
-      aria-hidden="true"
-    >
-      <path d="M10.3 3.7 2.4 17.4A1.8 1.8 0 0 0 4 20h16a1.8 1.8 0 0 0 1.6-2.6L13.7 3.7a2 2 0 0 0-3.4 0Z" />
-      <path d="M12 9v4" />
-      <path d="M12 17h.01" />
-    </svg>
-  );
+  return <MaterialSymbol name="warning" className={className} />;
 }
 
 export function CriticalModuleBadge({ t }) {
@@ -31,30 +17,15 @@ export function CriticalModuleBadge({ t }) {
 }
 
 function ErrorIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" />
-      <path d="m9 9 6 6m0-6-6 6" />
-    </svg>
-  );
+  return <MaterialSymbol name="error" />;
 }
 
 function InfoIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 11v6m0-10h.01" />
-    </svg>
-  );
+  return <MaterialSymbol name="info" />;
 }
 
 function SuccessIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" />
-      <path d="m8 12 2.5 2.5L16 9" />
-    </svg>
-  );
+  return <MaterialSymbol name="check_circle" />;
 }
 
 const MESSAGE_ICONS = {
@@ -63,6 +34,47 @@ const MESSAGE_ICONS = {
   info: InfoIcon,
   success: SuccessIcon,
 };
+
+// Shows on hover and keyboard focus; a tap pins it for touch screens and
+// Escape hides it until the pointer or focus leaves.
+export function InfoTooltip({ label, children }) {
+  const tooltipId = useId();
+  const [pinned, setPinned] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const reset = () => {
+    setPinned(false);
+    setDismissed(false);
+  };
+
+  return (
+    <span
+      className="info-tooltip"
+      data-pinned={pinned || undefined}
+      data-dismissed={dismissed || undefined}
+      onMouseLeave={() => setDismissed(false)}
+    >
+      <button
+        type="button"
+        className="info-tooltip__trigger"
+        aria-label={label}
+        aria-describedby={tooltipId}
+        onClick={() => {
+          setDismissed(false);
+          setPinned(current => !current);
+        }}
+        onBlur={reset}
+        onKeyDown={event => {
+          if (event.key !== 'Escape') return;
+          setPinned(false);
+          setDismissed(true);
+        }}
+      >
+        <InfoIcon />
+      </button>
+      <span id={tooltipId} role="tooltip" className="info-tooltip__bubble">{children}</span>
+    </span>
+  );
+}
 
 export function InlineMessage({
   type = 'info',

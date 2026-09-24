@@ -211,6 +211,7 @@ export function buildWeaponDiagramGraph(weapon, buildParts = [], options = {}) {
           includeTraderPrices: options.includeTraderPrices,
           traderLevels: options.traderLevels,
           strictTraderLevels: options.strictTraderLevels,
+          includeRefOffers: options.includeRefOffers,
         });
         if (compatibleItems.length === 0) return;
 

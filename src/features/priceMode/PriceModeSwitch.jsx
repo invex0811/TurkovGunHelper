@@ -1,6 +1,7 @@
 import { PRICE_MODES } from '../../data/price/priceModes.js';
 import { useI18n } from '../../i18n/useI18n.js';
 import { usePriceMode } from './usePriceMode.js';
+import { MaterialSymbol } from '../../ui/MaterialSymbol.js';
 
 export default function PriceModeSwitch() {
   const { t } = useI18n();
@@ -15,7 +16,7 @@ export default function PriceModeSwitch() {
           aria-pressed={priceMode === mode}
           onClick={() => setPriceMode(mode)}
         >
-          <span aria-hidden="true" className="price-mode-switch__indicator">✓</span>
+          <MaterialSymbol name="check" className="price-mode-switch__indicator" />
           {t(`priceMode.${mode}`)}
         </button>
       ))}
