@@ -199,7 +199,6 @@ test('Rank 1 recoil advantage beats lower priority weight across all canonical r
     fixture.modMap,
     fixture.options,
     { ergonomics: 999, verticalRecoil: -1, horizontalRecoil: -1, weight: 0.01, price: 0 },
-    null,
     THREE_PRIORITIES,
     'priorities',
   );
@@ -217,7 +216,6 @@ test('Rank 1 recoil advantage beats lower priority weight across all canonical r
     fixture.modMap,
     fixture.options,
     { ergonomics: 999, verticalRecoil: -1, horizontalRecoil: -1, weight: 0.01, price: 0 },
-    null,
     [],
     'priorities',
   );
@@ -240,11 +238,11 @@ test('weighted Priority selection changes only final selection and preserves the
   const fixture = createPriorityFixture();
   const pool = generatePriorityCandidates(fixture);
   const recoilOnly = calculateBestBuild(
-    fixture.weapon, 'custom', 0, 0, fixture.modMap, fixture.options, null, null,
+    fixture.weapon, 'custom', 0, 0, fixture.modMap, fixture.options, null,
     THREE_PRIORITIES, 'priorities', 'weighted', { recoil: 100, ergonomics: 0, weight: 0 },
   );
   const weightOnly = calculateBestBuild(
-    fixture.weapon, 'custom', 0, 0, fixture.modMap, fixture.options, null, null,
+    fixture.weapon, 'custom', 0, 0, fixture.modMap, fixture.options, null,
     THREE_PRIORITIES, 'priorities', 'weighted', { recoil: 0, ergonomics: 0, weight: 100 },
   );
 
@@ -257,7 +255,7 @@ test('weighted Priority respects maxPrice before final scoring', () => {
   const fixture = createPriorityFixture();
   const result = calculateBestBuild(
     fixture.weapon, 'custom', 0, 0, fixture.modMap,
-    { ...fixture.options, maxPrice: 3_000 }, null, null,
+    { ...fixture.options, maxPrice: 3_000 }, null,
     THREE_PRIORITIES, 'priorities', 'weighted', { recoil: 100, ergonomics: 0, weight: 0 },
   );
 

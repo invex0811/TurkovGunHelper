@@ -14,7 +14,6 @@ const DANGEROUS_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 const ALLOWED_SETTING_KEYS = new Set([
   'targetType',
   'customProfile',
-  'customExactTargets',
   'characteristicMode',
   'priorityAttributes',
   'prioritySelectionMode',

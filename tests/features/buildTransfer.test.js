@@ -174,6 +174,18 @@ test('export migrates a legacy priority budget to the shared maximum price', () 
   assert.equal(parsed.builds[0].settings.priorityMaxPrice, 250000);
 });
 
+test('legacy lock settings are accepted on import and omitted from exports', () => {
+  const legacy = importedBuild();
+  legacy.settings.customExactTargets = { ergonomics: true, weight: true };
+  const parsed = parseBuildImport(JSON.stringify(envelope([legacy])));
+  assert.equal(Object.hasOwn(parsed.builds[0].settings, 'customExactTargets'), false);
+  assert.equal(parsed.builds[0].settings.targetType, legacy.settings.targetType);
+
+  const saved = savedBuild();
+  saved.settings.customExactTargets = legacy.settings.customExactTargets;
+  assert.equal(Object.hasOwn(exportBuild(saved).settings, 'customExactTargets'), false);
+});
+
 test('legacy imports default weighted settings and ignore unknown setting keys', () => {
   const build = importedBuild();
   build.settings.unrelated = 'ignored';

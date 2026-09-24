@@ -43,10 +43,6 @@ import {
   rebindBuildPartsToCatalog,
 } from '../../domain/weaponAssembly.js';
 import {
-  DEFAULT_CUSTOM_EXACT_TARGETS,
-  normalizeCustomExactTargets,
-} from '../../domain/customExactTargets.js';
-import {
   movePriorityAttribute,
   normalizePriorityAttributes,
   normalizePrioritySelectionMode,
@@ -995,10 +991,6 @@ const GROUP_ORDER = [
 ];
 
 function getBuildResultErrorMessage(buildResult, language, t) {
-  if (buildResult.errorCode === 'CUSTOM_EXACT_TARGETS_UNMET') {
-    return t('config.exactTargetsUnmet');
-  }
-
   return language === 'ru' ? t('config.constraintMessage') : buildResult.error;
 }
 
@@ -1025,11 +1017,6 @@ function Configurator() {
   const [buildGoalMode, setBuildGoalMode] = useState(loadBuildGoalModePreference);
   const { targetType, characteristicMode } = getCalculatorGoalState(buildGoalMode);
   const [customProfile, setCustomProfile] = useState(CUSTOM_BUILD_DEFAULT_PROFILE);
-  const [customExactTargets, setCustomExactTargets] = useState(DEFAULT_CUSTOM_EXACT_TARGETS);
-  const effectiveCustomExactTargets = useMemo(() => ({
-    ...customExactTargets,
-    price: false,
-  }), [customExactTargets]);
   const [priorityAttributes, setPriorityAttributes] = useState([]);
   const [prioritySelectionMode, setPrioritySelectionMode] = useState(PRIORITY_SELECTION_MODES.ORDERED);
   const [priorityWeights, setPriorityWeights] = useState(() => normalizePriorityWeights());
@@ -1100,6 +1087,9 @@ function Configurator() {
   const [priceModeNotice, setPriceModeNotice] = useState(null);
   const [maxPriceDraft, setMaxPriceDraft] = useState(null);
   const maxWeight = customProfile.weight > 0 ? String(customProfile.weight) : '';
+  // Only Meta turns its weight field into a hard maximum; in Constraints the
+  // same profile value is a soft desired limit.
+  const effectiveHardMaxWeight = targetType === 'meta' ? maxWeight : 0;
   const {
     cancelPendingCalculations,
     latestCalculationRequestIdRef,
@@ -1123,7 +1113,6 @@ function Configurator() {
       buildGoalMode,
       targetType,
       customProfile,
-      customExactTargets: effectiveCustomExactTargets,
       characteristicMode,
       priorityAttributes,
       prioritySelectionMode,
@@ -1279,7 +1268,6 @@ function Configurator() {
         setOwnedItems(requestedSavedBuild.ownedItems || []);
         setBuildGoalMode(getBuildGoalModeFromSettings(settings));
         setCustomProfile(createCustomBuildProfileFromSettings(settings, weaponData));
-        setCustomExactTargets(normalizeCustomExactTargets(settings.customExactTargets));
         setPriorityAttributes(normalizePriorityAttributes(settings.priorityAttributes));
         setPrioritySelectionMode(normalizePrioritySelectionMode(settings.prioritySelectionMode));
         setPriorityWeights(normalizePriorityWeights(settings.priorityWeights));
@@ -1318,7 +1306,6 @@ function Configurator() {
       } else {
         setBuildResult(null);
         setOwnedItems([]);
-        setCustomExactTargets(DEFAULT_CUSTOM_EXACT_TARGETS);
         setRequiredModuleIds([]);
         const savedFlashlightItemId = rememberTacticalDeviceSelection
           ? loadLastSelectedFlashlightId()
@@ -1396,7 +1383,7 @@ function Configurator() {
       traderLevels: activeTraderLevels,
       strictTraderLevels,
       ownedItems: reconciledOwnedItems,
-      maxWeight,
+      maxWeight: effectiveHardMaxWeight,
       maxPrice,
       requiredItemIds,
       suppressorMode,
@@ -1449,7 +1436,7 @@ function Configurator() {
       traderLevels: activeTraderLevels,
       strictTraderLevels,
       ownedItems: reconciledOwnedItems,
-      maxWeight,
+      maxWeight: effectiveHardMaxWeight,
       maxPrice,
       requiredItemIds,
       suppressorMode,
@@ -1473,7 +1460,7 @@ function Configurator() {
     includeTraderPrices,
     strictTraderLevels,
     maxPrice,
-    maxWeight,
+    effectiveHardMaxWeight,
     priceMode,
     reconciledOwnedItems,
     requiredItemIds,
@@ -1619,7 +1606,7 @@ function Configurator() {
     try {
       const options = {
         ...getSuppressorOptions(suppressorMode),
-        maxWeight: customProfile.weight,
+        maxWeight: Number(effectiveHardMaxWeight) || 0,
         maxPrice,
         magazineCapacity: Number(magazineCapacity) || 30,
         priceMode,
@@ -1640,7 +1627,6 @@ function Configurator() {
           ...customProfile,
           price: maxPrice,
         },
-        customExactTargets: effectiveCustomExactTargets,
         characteristicMode,
         priorityAttributes,
         prioritySelectionMode,
@@ -1666,7 +1652,7 @@ function Configurator() {
     activeTraderLevels,
     allMods,
     characteristicMode,
-    effectiveCustomExactTargets,
+    effectiveHardMaxWeight,
     customProfile,
     priorityAttributes,
     prioritySelectionMode,
@@ -2053,7 +2039,6 @@ function Configurator() {
       <BuildSettings
         availableCapacities={availableCapacities}
         buildGoalMode={buildGoalMode}
-        customExactTargets={effectiveCustomExactTargets}
         customProfile={customProfile}
         priorityAttributes={priorityAttributes}
         prioritySelectionMode={prioritySelectionMode}
@@ -2074,7 +2059,6 @@ function Configurator() {
         moduleResults={requiredModuleResultViews}
         onAddModule={handleAddRequiredModule}
         onBuildGoalModeChange={setBuildGoalMode}
-        onExactChange={(axisKey, enabled) => setCustomExactTargets(current => ({ ...current, [axisKey]: enabled }))}
         onPriorityAttributeToggle={attribute => setPriorityAttributes(current => (
           togglePriorityAttribute(current, attribute)
         ))}

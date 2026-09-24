@@ -67,7 +67,6 @@ test('calculator worker forwards characteristic mode and the shared maxPrice opt
         weapon,
         targetType: 'custom',
         customProfile,
-        customExactTargets: { ergonomics: true },
         priorityAttributes: ['ergonomics', 'recoil', 'weight'],
         options: {},
       },
@@ -80,7 +79,6 @@ test('calculator worker forwards characteristic mode and the shared maxPrice opt
         weapon,
         targetType: 'custom',
         customProfile,
-        customExactTargets: { ergonomics: true },
         priorityAttributes: ['recoil', 'ergonomics', 'weight'],
         characteristicMode: 'priorities',
         prioritySelectionMode: 'weighted',
@@ -99,15 +97,36 @@ test('calculator worker forwards characteristic mode and the shared maxPrice opt
         options: {},
       },
     });
+    globalThis.self.onmessage({
+      data: {
+        type: 'calculate',
+        requestId: 4,
+        modMapVersion: 1,
+        weapon,
+        targetType: 'meta',
+        customProfile,
+        options: {},
+      },
+    });
 
     assert.equal(messages[0].requestId, 1);
-    assert.equal(messages[0].result.errorCode, 'CUSTOM_EXACT_TARGETS_UNMET');
+    // Ergonomics 80 is unreachable (max 60): the worker still returns the
+    // closest build with a soft-limit warning instead of an error.
+    assert.equal(messages[0].result.error, undefined);
+    assert.deepEqual(messages[0].result.build.map(entry => entry.item.id), [part.id]);
+    assert.equal(messages[0].result.constraintEvaluation.satisfied, false);
+    assert.equal(messages[0].result.warningCode, 'REQUIREMENTS_UNMET_CLOSEST_BUILD');
     assert.equal(messages[1].requestId, 3);
     assert.equal(messages[1].result.error, undefined);
     assert.equal(messages[1].result.stats.recoilModifier, -12.5);
     assert.equal(messages[2].requestId, 2);
     assert.equal(messages[2].result.error, undefined);
     assert.equal(messages[2].result.stats.accuracyMoa, 0.34);
+    assert.equal(messages[2].result.constraintEvaluation.satisfied, true);
+    assert.equal(messages[3].requestId, 4);
+    assert.equal(messages[3].result.error, undefined);
+    assert.equal(messages[3].result.stats.ergonomics, 60);
+    assert.equal(messages[3].result.stats.recoilModifier, -12.5);
   } finally {
     globalThis.self = previousSelf;
   }

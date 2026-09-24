@@ -85,7 +85,7 @@ test('legacy English price warning is mapped to the active language', () => {
   );
 });
 
-test('closest-build warning code is localized in Russian and English', () => {
+test('closest-build warning explains unreachable values in Russian and English', () => {
   const warning = {
     code: 'REQUIREMENTS_UNMET_CLOSEST_BUILD',
     fallback: "It's physically impossible to meet your exact requirements with the current available parts. Showing the closest balanced build possible.",
@@ -93,11 +93,11 @@ test('closest-build warning code is localized in Russian and English', () => {
 
   assert.equal(
     localizeBuildWarning(warning, translator('ru')),
-    'Точно выполнить выбранные требования с доступными модулями невозможно. Показана наиболее близкая сбалансированная сборка.',
+    'Не все заданные значения достижимы. Показана ближайшая найденная сборка.',
   );
   assert.equal(
     localizeBuildWarning(warning, translator('en')),
-    'The selected requirements cannot be met exactly with the available modules. The closest balanced build is shown.',
+    'Not all selected values are reachable. Showing the closest build found.',
   );
 });
 
@@ -124,7 +124,7 @@ test('structured warning arrays preserve order, ignore empty entries, and remove
 
   assert.deepEqual(warnings, [
     'Для одного или нескольких предметов сборки нет доступной цены при текущих настройках цен.',
-    'Точно выполнить выбранные требования с доступными модулями невозможно. Показана наиболее близкая сбалансированная сборка.',
+    'Не все заданные значения достижимы. Показана ближайшая найденная сборка.',
   ]);
 });
 

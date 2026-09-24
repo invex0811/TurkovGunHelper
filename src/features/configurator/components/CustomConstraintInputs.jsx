@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import {
   getCustomBuildRadarAxes,
   updateCustomBuildProfileValue,
@@ -11,29 +11,9 @@ const CONSTRAINT_KEYS = new Set([
   'ergonomics',
 ]);
 
-function ExactLockIcon({ locked }) {
-  return (
-    <svg
-      className="custom-constraints__exact-icon"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <rect x="5" y="10" width="14" height="10" rx="2" />
-      {locked ? (
-        <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-      ) : (
-        <path d="M8 10V8a4 4 0 0 1 7.5-2" />
-      )}
-      <circle cx="12" cy="15" r="1" />
-    </svg>
-  );
-}
-
 function ConstraintValueInput({
   axis,
-  exact,
   onChange,
-  onExactChange,
   profile,
   t,
   value,
@@ -42,6 +22,8 @@ function ConstraintValueInput({
   const [draft, setDraft] = useState(null);
   const cancelEditRef = useRef(false);
   const label = t(`ui.radar.axis.${axis.key}`);
+  const inputId = useId();
+  const directionId = `${inputId}-direction`;
 
   const commitValue = () => {
     if (cancelEditRef.current) {
@@ -60,16 +42,23 @@ function ConstraintValueInput({
   };
 
   return (
-    <div className={`custom-constraints__field ${exact ? 'is-exact' : ''}`}>
-      <span className="custom-constraints__label">{label}</span>
+    <div className="custom-constraints__field">
+      <label className="custom-constraints__label" htmlFor={inputId}>{label}</label>
+      <span id={directionId} className="visually-hidden">
+        {t(`ui.radar.constraint.${axis.constraint}`)}
+        {axis.allowNoLimit ? `. ${t('config.maxPriceHelp')}` : ''}
+      </span>
       <span className={`custom-constraints__control ${axis.unit ? 'has-unit' : ''}`}>
+        <span className="custom-constraints__symbol" aria-hidden="true">{axis.constraintSymbol}</span>
         <input
+          id={inputId}
           type="number"
           min={axis.range.min}
           max={axis.range.max}
           step={axis.step}
           value={draft ?? (Number.isFinite(value) ? String(value) : '')}
           aria-label={t('ui.radar.value', { label })}
+          aria-describedby={directionId}
           onFocus={() => setDraft(Number.isFinite(value) ? String(value) : '')}
           onChange={event => setDraft(event.target.value)}
           onBlur={commitValue}
@@ -83,23 +72,12 @@ function ConstraintValueInput({
         />
         {axis.unit && <span className="custom-constraints__unit">{axis.unit}</span>}
       </span>
-      <label className="custom-constraints__exact-toggle" title={t('ui.radar.exactTooltip')}>
-        <input
-          type="checkbox"
-          checked={exact}
-          aria-label={t('ui.radar.exactTarget', { label })}
-          onChange={event => onExactChange(axis.key, event.target.checked)}
-        />
-        <ExactLockIcon locked={exact} />
-      </label>
     </div>
   );
 }
 
 export default function CustomConstraintInputs({
-  exactTargets = {},
   onChange,
-  onExactChange,
   profile,
   t,
   weapon,
@@ -119,8 +97,6 @@ export default function CustomConstraintInputs({
           profile={profile}
           weapon={weapon}
           onChange={onChange}
-          exact={exactTargets[axis.key] === true}
-          onExactChange={onExactChange}
           t={t}
         />
       ))}

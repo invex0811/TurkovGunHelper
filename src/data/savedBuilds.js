@@ -1,4 +1,3 @@
-import { normalizeCustomExactTargets } from '../domain/customExactTargets.js';
 import {
   normalizeCustomCharacteristicMode,
   normalizePriorityAttributes,
@@ -27,6 +26,14 @@ function getDefaultStorage() {
 
 function isRecord(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function copyCurrentSettings(settings) {
+  if (!isRecord(settings)) return settings;
+  const currentSettings = { ...settings };
+  // Old snapshots remain readable, but retired locks never enter new data.
+  delete currentSettings.customExactTargets;
+  return currentSettings;
 }
 
 function isValidSavedBuild(value) {
@@ -119,14 +126,13 @@ export function readSavedBuilds(storage = getDefaultStorage()) {
           )).map(item => ({ key: item.key, itemId: item.itemId }))
           : [],
         settings: migrateSharedMaxPriceSettings({
-          ...build.settings,
+          ...copyCurrentSettings(build.settings),
           includeTraderPrices: build.settings.includeTraderPrices !== false,
           strictTraderLevels: build.settings.strictTraderLevels === true,
           traderLevelsSnapshot: build.settings.traderLevelsSnapshot
             && typeof build.settings.traderLevelsSnapshot === 'object'
             ? { ...build.settings.traderLevelsSnapshot }
             : {},
-          customExactTargets: normalizeCustomExactTargets(build.settings.customExactTargets),
           characteristicMode: normalizeCustomCharacteristicMode(build.settings.characteristicMode),
           priorityAttributes: normalizePriorityAttributes(build.settings.priorityAttributes),
           prioritySelectionMode: normalizePrioritySelectionMode(build.settings.prioritySelectionMode),
@@ -160,6 +166,7 @@ export function saveBuildSnapshot(snapshot, storage = getDefaultStorage(), optio
   const now = options.now || new Date().toISOString();
   const savedBuild = {
     ...snapshot,
+    settings: copyCurrentSettings(snapshot.settings),
     id: snapshot.id || options.id || createId(),
     version: SAVED_BUILD_SCHEMA_VERSION,
     name: String(snapshot.name || snapshot.weapon?.shortName || 'Weapon build').trim().slice(0, 80),
@@ -217,6 +224,7 @@ export function importSavedBuildSnapshots(entries, storage = getDefaultStorage()
       : entry.snapshot.name;
     const savedBuild = {
       ...entry.snapshot,
+      settings: copyCurrentSettings(entry.snapshot.settings),
       id: isReplacement ? nextBuilds[replacementIndex].id : createId(),
       version: SAVED_BUILD_SCHEMA_VERSION,
       name: String(name || entry.snapshot.weapon?.shortName || 'Weapon build').trim().slice(0, 80),
@@ -283,7 +291,7 @@ export function createBuildSnapshot({
       price: buildResult.stats.price,
     },
     settings: migrateSharedMaxPriceSettings({
-      ...settings,
+      ...copyCurrentSettings(settings),
       characteristicMode: normalizeCustomCharacteristicMode(settings.characteristicMode),
       priorityAttributes: normalizePriorityAttributes(settings.priorityAttributes),
       prioritySelectionMode: normalizePrioritySelectionMode(settings.prioritySelectionMode),

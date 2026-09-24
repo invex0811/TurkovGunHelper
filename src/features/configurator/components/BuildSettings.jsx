@@ -623,7 +623,6 @@ export default function BuildSettings(props) {
   const {
     availableCapacities,
     buildGoalMode,
-    customExactTargets,
     customProfile,
     flashlightItemId,
     flashlightItems,
@@ -638,7 +637,6 @@ export default function BuildSettings(props) {
     moduleResults,
     onAddModule,
     onBuildGoalModeChange,
-    onExactChange,
     onGenerate,
     onIncludeTraderPricesChange,
     onMaxPriceBlur,
@@ -809,10 +807,9 @@ export default function BuildSettings(props) {
         <div className="config__mode" data-build-goal="constraints">
           <section className="custom-characteristic-settings" aria-labelledby="customCharacteristicSettingsTitle">
             <h3 id="customCharacteristicSettingsTitle">{t('config.characteristicSettings')}</h3>
+            <p className="field-help">{t('ui.radar.help')}</p>
             <CustomConstraintInputs
-              exactTargets={customExactTargets}
               onChange={setters.customProfile}
-              onExactChange={onExactChange}
               profile={customProfile}
               t={t}
               weapon={weapon}

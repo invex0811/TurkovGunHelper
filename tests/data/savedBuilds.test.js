@@ -5,6 +5,7 @@ import {
   MAX_SAVED_BUILDS,
   SAVED_BUILDS_STORAGE_KEY,
   SavedBuildStorageError,
+  createBuildSnapshot,
   deleteSavedBuild,
   getSavedBuild,
   importSavedBuildSnapshots,
@@ -237,7 +238,7 @@ test('saved builds migrate legacy Custom prices to one shared limit without a sc
   const restored = getSavedBuild('custom-radar', storage);
   assert.equal(restored.version, 1);
   assert.deepEqual(restored.settings.customProfile, customProfile);
-  assert.deepEqual(restored.settings.customExactTargets, customExactTargets);
+  assert.equal(Object.hasOwn(restored.settings, 'customExactTargets'), false);
   assert.equal(restored.settings.characteristicMode, 'priorities');
   assert.deepEqual(restored.settings.priorityAttributes, [
     'weight',
@@ -253,25 +254,64 @@ test('saved builds migrate legacy Custom prices to one shared limit without a sc
   assert.equal(restored.settings.customRecoil, 74);
 });
 
-test('old saved builds default every Custom Exact target to disabled', () => {
+test('old saved builds receive current constraint and priority defaults', () => {
   const storage = createStorage();
-  saveBuildSnapshot(createSnapshot(), storage, { id: 'before-exact-targets' });
+  saveBuildSnapshot(createSnapshot(), storage, { id: 'legacy-defaults' });
 
-  assert.deepEqual(getSavedBuild('before-exact-targets', storage).settings.customExactTargets, {
-    ergonomics: false,
-    verticalRecoil: false,
-    horizontalRecoil: false,
-    weight: false,
-    price: false,
-  });
-  assert.deepEqual(getSavedBuild('before-exact-targets', storage).settings.priorityAttributes, []);
-  assert.equal(getSavedBuild('before-exact-targets', storage).settings.characteristicMode, 'constraints');
-  assert.equal(getSavedBuild('before-exact-targets', storage).settings.prioritySelectionMode, 'ordered');
-  assert.deepEqual(getSavedBuild('before-exact-targets', storage).settings.priorityWeights, {
+  assert.equal(Object.hasOwn(getSavedBuild('legacy-defaults', storage).settings, 'customExactTargets'), false);
+  assert.deepEqual(getSavedBuild('legacy-defaults', storage).settings.priorityAttributes, []);
+  assert.equal(getSavedBuild('legacy-defaults', storage).settings.characteristicMode, 'constraints');
+  assert.equal(getSavedBuild('legacy-defaults', storage).settings.prioritySelectionMode, 'ordered');
+  assert.deepEqual(getSavedBuild('legacy-defaults', storage).settings.priorityWeights, {
     recoil: 50, ergonomics: 30, weight: 20,
   });
-  assert.equal(getSavedBuild('before-exact-targets', storage).settings.sharedMaxPrice, 0);
-  assert.equal(getSavedBuild('before-exact-targets', storage).settings.priorityMaxPrice, 0);
+  assert.equal(getSavedBuild('legacy-defaults', storage).settings.sharedMaxPrice, 0);
+  assert.equal(getSavedBuild('legacy-defaults', storage).settings.priorityMaxPrice, 0);
+});
+
+test('legacy stored builds load without locks and discard the field on the next save', () => {
+  const storage = createStorage();
+  const legacy = {
+    ...createSnapshot(),
+    version: 1,
+    id: 'legacy-locks',
+    settings: {
+      targetType: 'custom',
+      customProfile: { ergonomics: 50, verticalRecoil: 80, horizontalRecoil: 150, weight: 4 },
+      customExactTargets: { ergonomics: true, weight: true },
+    },
+  };
+  storage.setItem(SAVED_BUILDS_STORAGE_KEY, JSON.stringify([legacy]));
+
+  const restored = getSavedBuild(legacy.id, storage);
+  assert.equal(restored.id, legacy.id);
+  assert.deepEqual(restored.settings.customProfile, { ...legacy.settings.customProfile, price: 0 });
+  assert.equal(Object.hasOwn(restored.settings, 'customExactTargets'), false);
+  const saved = saveBuildSnapshot(restored, storage);
+  assert.equal(Object.hasOwn(saved.settings, 'customExactTargets'), false);
+  assert.equal(storage.getItem(SAVED_BUILDS_STORAGE_KEY).includes('customExactTargets'), false);
+});
+
+test('new snapshots and batch saves omit legacy locks without mutating their input', () => {
+  const settings = {
+    targetType: 'custom',
+    customExactTargets: { weight: true },
+  };
+  const source = createSnapshot({ settings });
+  const snapshot = createBuildSnapshot({
+    weapon: { ...source.weapon, properties: { slots: [] } },
+    buildResult: { build: [], stats: source.stats },
+    settings,
+  });
+  assert.equal(Object.hasOwn(snapshot.settings, 'customExactTargets'), false);
+
+  const storage = createStorage();
+  const result = importSavedBuildSnapshots([
+    { snapshot: source, status: 'ready', strategy: 'copy' },
+  ], storage);
+  assert.equal(Object.hasOwn(result.imported[0].settings, 'customExactTargets'), false);
+  assert.equal(storage.getItem(SAVED_BUILDS_STORAGE_KEY).includes('customExactTargets'), false);
+  assert.deepEqual(settings.customExactTargets, { weight: true });
 });
 
 test('legacy priority-only budgets migrate when the old constraint budget was unlimited', () => {

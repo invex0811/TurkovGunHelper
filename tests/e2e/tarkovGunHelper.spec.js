@@ -179,11 +179,14 @@ test('build goal modes preserve their state and calculator settings', async ({ p
   await expectGenerateButtonGreen();
   const characteristicSettings = page.locator('.custom-characteristic-settings');
   await expect(characteristicSettings).toBeVisible();
-  await expect(characteristicSettings.locator('svg')).toHaveCount(4);
+  await expect(characteristicSettings.locator('svg')).toHaveCount(0);
   await expect(characteristicSettings.locator('.custom-radar')).toHaveCount(0);
   await expect(characteristicSettings.getByRole('spinbutton')).toHaveCount(4);
   await expect(characteristicSettings.getByRole('spinbutton', { name: /Price value/ })).toHaveCount(0);
   await expect(characteristicSettings.getByRole('checkbox', { name: /Price/ })).toHaveCount(0);
+  await expect(characteristicSettings.getByRole('checkbox')).toHaveCount(0);
+  await expect(characteristicSettings.locator('.custom-constraints__symbol'))
+    .toHaveText(['≤', '≤', '≤', '≥']);
 
   const ergonomicsInput = characteristicSettings.getByRole('spinbutton', {
     name: 'Ergonomics value',
@@ -191,13 +194,8 @@ test('build goal modes preserve their state and calculator settings', async ({ p
   });
   await ergonomicsInput.fill('51');
   await ergonomicsInput.press('Enter');
-  const exactErgonomics = characteristicSettings.getByRole('checkbox', {
-    name: 'Use exact target for Ergonomics',
-    exact: true,
-  });
-  await exactErgonomics.evaluate(element => element.click());
   await expect(ergonomicsInput).toHaveValue('51');
-  await expect(exactErgonomics).toBeChecked();
+  await expect(ergonomicsInput).toHaveAccessibleDescription('at least');
 
   const constraintBudget = config.locator('[data-build-goal="constraints"]').getByRole('spinbutton', {
     name: 'Maximum price',
@@ -276,7 +274,7 @@ test('build goal modes preserve their state and calculator settings', async ({ p
 
   await constraintsButton.click();
   await expect(page.getByRole('spinbutton', { name: 'Ergonomics value', exact: true })).toHaveValue('51');
-  await expect(page.getByRole('checkbox', { name: 'Use exact target for Ergonomics', exact: true })).toBeChecked();
+  await expect(characteristicSettings.getByRole('checkbox')).toHaveCount(0);
   await expect(config.getByRole('spinbutton', { name: 'Maximum price', exact: true })).toHaveValue('250000');
   await expect(config.locator('.required-module').filter({ hasText: 'Alternative Grip' })).toBeVisible();
 
@@ -363,7 +361,7 @@ test('build goal modes preserve their state and calculator settings', async ({ p
   expect(savedSettings.priorityMaxPrice).toBe(250000);
   expect(savedSettings.customProfile.price).toBe(250000);
   expect(savedSettings.requiredModuleIds).toContain('mod-2');
-  expect(savedSettings.customExactTargets.price).toBe(false);
+  expect(savedSettings).not.toHaveProperty('customExactTargets');
 
   await openSavedBuild(page, 'Priority build');
   await expect(page.getByRole('group', { name: 'Build Goal' })
@@ -380,6 +378,63 @@ test('build goal modes preserve their state and calculator settings', async ({ p
   await expect(page.locator('.custom-priority-attributes__item').nth(0))
     .toContainText('Rank 1Ergonomics');
   await expect(page.locator('.required-module').filter({ hasText: 'Alternative Grip' })).toBeVisible();
+});
+
+test('constraint inputs rank builds by desired limits and warn when a value is unreachable', async ({ page }) => {
+  await createBuild(page);
+  await page.getByRole('group', { name: 'Build Goal' })
+    .getByRole('button', { name: 'By constraints', exact: true }).click();
+  const constraints = page.locator('.custom-characteristic-settings');
+  const limits = [
+    ['Weight', '4', 'at most. 0 = no limit'],
+    ['Vertical recoil', '100', 'at most'],
+    ['Horizontal recoil', '200', 'at most'],
+    ['Ergonomics', '50', 'at least'],
+  ];
+
+  for (const [label, value, description] of limits) {
+    const input = constraints.getByRole('spinbutton', { name: `${label} value`, exact: true });
+    await expect(input).toHaveAccessibleDescription(description);
+    await constraints.locator('label').filter({ hasText: label }).click();
+    await expect(input).toBeFocused();
+    await input.fill(value);
+    await input.press('Enter');
+  }
+
+  await page.setViewportSize({ width: 360, height: 800 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
+  await expect(constraints.getByRole('checkbox')).toHaveCount(0);
+  await expect(constraints.locator('svg')).toHaveCount(0);
+  await expect(constraints.locator('.custom-constraints__symbol')).toHaveText(['≤', '≤', '≤', '≥']);
+  await page.getByRole('button', { name: 'Generate Build', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Save build', exact: true })).toBeVisible();
+  await saveBuild(page, 'Hard limits build');
+  const saved = await page.evaluate(key => JSON.parse(localStorage.getItem(key))[0], SAVED_BUILDS_KEY);
+  expect(Number(saved.stats.weight)).toBeLessThanOrEqual(4);
+  expect(saved.stats.recoilVertical).toBeLessThanOrEqual(100);
+  expect(saved.stats.recoilHorizontal).toBeLessThanOrEqual(200);
+  expect(saved.stats.ergonomics).toBeGreaterThanOrEqual(50);
+  expect(saved.settings).not.toHaveProperty('customExactTargets');
+  expect(saved.settings.buildGoalMode).toBe('constraints');
+
+  // An unreachable desired weight returns the closest build with a warning.
+  const weight = constraints.getByRole('spinbutton', { name: 'Weight value', exact: true });
+  await weight.fill('0.05');
+  await weight.press('Enter');
+  await page.getByRole('button', { name: 'Generate Build', exact: true }).click();
+  await expect(page.getByText(
+    'Not all selected values are reachable. Showing the closest build found.',
+    { exact: true },
+  )).toBeVisible();
+  await expect(page.getByLabel('Build name')).toBeVisible();
+  await expect(page.locator('.part-card').first()).toBeVisible();
+
+  await weight.fill('0');
+  await weight.press('Enter');
+  await page.getByRole('button', { name: 'Generate Build', exact: true }).click();
+  await expect(page.getByLabel('Build name')).toBeVisible();
+  await expect(page.locator('.part-card').filter({ hasText: 'Starter Grip' })).toBeVisible();
 });
 
 test('build goal mode persists across weapons and page reloads', async ({ page }) => {
@@ -955,6 +1010,7 @@ test('exports, deletes, imports, and opens a saved build', async ({ page }) => {
   await card.getByRole('button', { name: 'Export', exact: true }).click();
   const download = await downloadPromise;
   const exportedBuild = await readFile(await download.path());
+  expect(exportedBuild.toString()).not.toContain('customExactTargets');
 
   const deleteTrigger = card.getByRole('button', { name: 'Delete', exact: true });
   const bodyOverflowBefore = await page.evaluate(() => getComputedStyle(document.body).overflow);

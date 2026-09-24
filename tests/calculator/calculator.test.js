@@ -213,7 +213,7 @@ const defaultOptions = {
 
 for (const targetType of ['meta', 'custom']) {
   test(`${targetType} build has valid unique parts and consistent stats`, () => {
-    const result = calculateBestBuild(weapon, targetType, 70, 50, modMap, {
+    const result = calculateBestBuild(weapon, targetType, 50, 50, modMap, {
       forbidSuppressor: false,
       requireSuppressor: false,
       maxWeight: 0,
@@ -226,8 +226,8 @@ for (const targetType of ['meta', 'custom']) {
   });
 }
 
-test('legacy Custom calculation keeps its established fixture result', () => {
-  const result = calculateBestBuild(weapon, 'custom', 70, 50, modMap, {
+test('legacy Custom keeps its fixture result and returns a closest build for unreachable limits', () => {
+  const result = calculateBestBuild(weapon, 'custom', 50, 50, modMap, {
     forbidSuppressor: false,
     requireSuppressor: false,
     maxWeight: 0,
@@ -259,6 +259,14 @@ test('legacy Custom calculation keeps its established fixture result', () => {
     weight: '4.24',
     price: null,
   });
+
+  const unreachable = calculateBestBuild(weapon, 'custom', 70, 50, modMap, defaultOptions);
+  assert.equal(unreachable.error, undefined);
+  assert.ok(unreachable.build.length > 0);
+  assert.equal(unreachable.constraintEvaluation.satisfied, false);
+  assert.ok(unreachable.warnings.some(warning => warning.code === 'REQUIREMENTS_UNMET_CLOSEST_BUILD'));
+  assertNoDuplicateParts(unreachable);
+  assertNoInstalledConflicts(unreachable);
 });
 
 test('Custom profile enforces vertical and horizontal recoil independently', () => {
@@ -303,7 +311,7 @@ test('Custom profile enforces vertical and horizontal recoil independently', () 
   assertInstalled(horizontalResult, recoilPart.id);
 });
 
-test('Custom profile returns an error instead of a violating closest build', () => {
+test('Custom profile returns the closest build below an unreachable ergonomics minimum', () => {
   const ergonomicPart = createTestMod({ id: 'limited-ergo-part', ergonomicsModifier: 10 });
   const testWeapon = createTestWeapon({
     ergonomics: 50,
@@ -319,8 +327,158 @@ test('Custom profile returns an error instead of a violating closest build', () 
     { ergonomics: 90, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 },
   );
 
-  assert.deepEqual(result.build, []);
-  assert.match(result.error, /No available build satisfies all Custom requirements/);
+  assert.equal(result.error, undefined);
+  assertInstalled(result, ergonomicPart.id);
+  assert.equal(result.stats.ergonomics, 60);
+  assert.equal(result.constraintEvaluation.axes.ergonomics.violation, 30);
+});
+
+test('Constraints leaves an optional branch empty when the base build already matches its targets', () => {
+  const worseningPart = createTestMod({
+    id: 'optional-target-worsening',
+    recoilModifier: -10,
+    weight: 0.1,
+  });
+  const testWeapon = createTestWeapon({
+    weight: 1,
+    slots: [createSlot('Optional stock', [worseningPart.id])],
+  });
+  const profile = {
+    ergonomics: 50,
+    verticalRecoil: 100,
+    horizontalRecoil: 100,
+    weight: 1,
+    price: 0,
+  };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(worseningPart),
+    defaultOptions,
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.constraintEvaluation.satisfied, true);
+  assertNotInstalled(result, worseningPart.id);
+});
+
+test('Constraints use capped displayed ergonomics before selecting an optional part', () => {
+  const loweringPart = createTestMod({
+    id: 'capped-exact-ergonomics-part',
+    ergonomicsModifier: -10,
+    avg24hPrice: 1_000,
+  });
+  const testWeapon = createTestWeapon({
+    ergonomics: 110,
+    avg24hPrice: 1_000,
+    slots: [createSlot('Optional stock', [loweringPart.id])],
+  });
+  const profile = {
+    ergonomics: 100,
+    verticalRecoil: 100,
+    horizontalRecoil: 100,
+    weight: 0,
+    price: 0,
+  };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(loweringPart),
+    defaultOptions,
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.constraintEvaluation.satisfied, true);
+  assert.equal(result.stats.ergonomics, 100);
+  assert.equal(result.stats.price, 1_000);
+  assertNotInstalled(result, loweringPart.id);
+});
+
+test('Constraints skips an unrelated worsening root branch when another root provides a required item', () => {
+  const requiredPart = createTestMod({
+    id: 'separate-required-part',
+    weight: 0,
+  });
+  const worseningPart = createTestMod({
+    id: 'separate-optional-worsening',
+    recoilModifier: -10,
+    weight: 0.1,
+  });
+  const testWeapon = createTestWeapon({
+    weight: 1,
+    slots: [
+      createSlot('Optional stock', [worseningPart.id]),
+      createSlot('Required receiver', [requiredPart.id]),
+    ],
+  });
+  const profile = {
+    ergonomics: 50,
+    verticalRecoil: 100,
+    horizontalRecoil: 100,
+    weight: 1,
+    price: 0,
+  };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(requiredPart, worseningPart),
+    { ...defaultOptions, requiredItemIds: [requiredPart.id] },
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.constraintEvaluation.satisfied, true);
+  assertInstalled(result, requiredPart.id);
+  assertNotInstalled(result, worseningPart.id);
+});
+
+test('Constraints scores an optional child from its required parent state', () => {
+  const optionalChild = createTestMod({
+    id: 'parent-state-optional-child',
+    ergonomicsModifier: 5,
+  });
+  const requiredParent = createTestMod({
+    id: 'parent-state-required-parent',
+    ergonomicsModifier: 10,
+    slots: [createSlot('Optional child', [optionalChild.id])],
+  });
+  const testWeapon = createTestWeapon({
+    ergonomics: 50,
+    slots: [createSlot('Parent', [requiredParent.id])],
+  });
+  const profile = {
+    ergonomics: 65,
+    verticalRecoil: 100,
+    horizontalRecoil: 100,
+    weight: 0,
+    price: 0,
+  };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(requiredParent, optionalChild),
+    { ...defaultOptions, requiredItemIds: [requiredParent.id] },
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.stats.ergonomics, 65);
+  assertInstalled(result, requiredParent.id);
+  assertInstalled(result, optionalChild.id);
 });
 
 test('Custom profile passes weight and price limits through the existing price policy', () => {
@@ -403,7 +561,6 @@ test('Meta, Custom constraints, and priorities use the shared maxPrice option', 
     createModMap(affordablePart, highPerformancePart),
     unlimitedOptions,
     profile,
-    { ergonomics: true, verticalRecoil: true, horizontalRecoil: true, weight: true, price: true },
     ['ergonomics'],
     'priorities',
   );
@@ -415,7 +572,6 @@ test('Meta, Custom constraints, and priorities use the shared maxPrice option', 
     createModMap(affordablePart, highPerformancePart),
     cappedOptions,
     profile,
-    null,
     ['ergonomics'],
     'priorities',
     100_000,
@@ -429,7 +585,6 @@ test('Meta, Custom constraints, and priorities use the shared maxPrice option', 
     createModMap(affordablePart, highPerformancePart),
     cappedOptions,
     constraintProfile,
-    null,
     ['ergonomics'],
     'constraints',
   );
@@ -488,13 +643,6 @@ test('Priorities order selects different required-slot modules and ignores const
     weight: 0.01,
     price: 1,
   };
-  const exactTargets = {
-    ergonomics: true,
-    verticalRecoil: true,
-    horizontalRecoil: true,
-    weight: true,
-    price: true,
-  };
   const hardBudget = 2_500;
   const options = {
     ...defaultOptions,
@@ -510,7 +658,6 @@ test('Priorities order selects different required-slot modules and ignores const
     createModMap(ergonomicPart, recoilPart),
     options,
     impossibleConstraintProfile,
-    exactTargets,
     ['ergonomics', 'verticalRecoil'],
     'priorities',
   );
@@ -522,7 +669,6 @@ test('Priorities order selects different required-slot modules and ignores const
     createModMap(ergonomicPart, recoilPart),
     options,
     impossibleConstraintProfile,
-    exactTargets,
     ['verticalRecoil', 'ergonomics'],
     'priorities',
   );
@@ -537,7 +683,7 @@ test('Priorities order selects different required-slot modules and ignores const
   assert.equal(prioritiesByVerticalRecoil.stats.price <= hardBudget, true);
 });
 
-test('Custom reuses a Meta build when its displayed stats satisfy the profile', () => {
+test('Constraints finds a build within limits taken from the Meta build', () => {
   const metaResult = calculateBestBuild(weapon, 'meta', 0, 0, modMap, defaultOptions);
   const profile = {
     ergonomics: metaResult.stats.ergonomics,
@@ -557,48 +703,10 @@ test('Custom reuses a Meta build when its displayed stats satisfy the profile', 
   );
 
   assert.equal(customResult.error, undefined);
-  assert.deepEqual(getInstalledItemIds(customResult), getInstalledItemIds(metaResult));
-  assert.deepEqual(customResult.stats, metaResult.stats);
+  assert.equal(customResult.constraintEvaluation.satisfied, true);
 });
 
-test('Custom with every Exact flag disabled keeps the established result unchanged', () => {
-  const profile = {
-    ergonomics: 50,
-    verticalRecoil: 80,
-    horizontalRecoil: 240,
-    weight: 5,
-    price: 0,
-  };
-  const previousResult = calculateBestBuild(
-    weapon,
-    'custom',
-    profile.ergonomics,
-    profile.verticalRecoil,
-    modMap,
-    defaultOptions,
-    profile,
-  );
-  const exactOffResult = calculateBestBuild(
-    weapon,
-    'custom',
-    profile.ergonomics,
-    profile.verticalRecoil,
-    modMap,
-    defaultOptions,
-    profile,
-    {
-      ergonomics: false,
-      verticalRecoil: false,
-      horizontalRecoil: false,
-      weight: false,
-      price: false,
-    },
-  );
-
-  assert.deepEqual(exactOffResult, previousResult);
-});
-
-test('Exact ergonomics replaces the directional minimum with a tolerance window', () => {
+test('Constraints ergonomics minimum uses the displayed value', () => {
   const closePart = createTestMod({
     id: 'exact-ergo-close',
     ergonomicsModifier: 10,
@@ -629,7 +737,6 @@ test('Exact ergonomics replaces the directional minimum with a tolerance window'
     createModMap(closePart, highPart),
     defaultOptions,
     profile,
-    { ergonomics: true },
   );
 
   assert.equal(result.error, undefined);
@@ -637,7 +744,7 @@ test('Exact ergonomics replaces the directional minimum with a tolerance window'
   assertInstalled(result, closePart.id);
 });
 
-test('Exact vertical and horizontal recoil can be enabled together', () => {
+test('Constraints vertical and horizontal recoil limits apply together', () => {
   const recoilPart = createTestMod({
     id: 'exact-recoil-part',
     recoilModifier: -20,
@@ -666,7 +773,6 @@ test('Exact vertical and horizontal recoil can be enabled together', () => {
     createModMap(recoilPart, ergoPart),
     defaultOptions,
     profile,
-    { verticalRecoil: true, horizontalRecoil: true },
   );
 
   assert.equal(result.error, undefined);
@@ -675,129 +781,468 @@ test('Exact vertical and horizontal recoil can be enabled together', () => {
   assertInstalled(result, recoilPart.id);
 });
 
-test('Exact ranking minimizes total normalized error before the existing Custom score', () => {
-  const lowerScorePart = createTestMod({
-    id: 'exact-total-error-a',
-    ergonomicsModifier: 9,
-    recoilModifier: -6,
-  });
-  const lowerErrorPart = createTestMod({
-    id: 'exact-total-error-b',
-    ergonomicsModifier: 11,
-    recoilModifier: -5,
-  });
+test('Constraints beam keeps repeated root identifiers as distinct required slot instances', () => {
+  const firstPart = createTestMod({ id: 'duplicate-root-first', ergonomicsModifier: 5 });
+  const secondPart = createTestMod({ id: 'duplicate-root-second', ergonomicsModifier: 5 });
   const testWeapon = createTestWeapon({
     ergonomics: 50,
-    recoilVertical: 100,
-    recoilHorizontal: 100,
-    slots: [createSlot('Stock', [lowerScorePart.id, lowerErrorPart.id], 'mod_stock', true)],
+    slots: [
+      createSlot('Duplicate root A', [firstPart.id], 'duplicate_root', true),
+      createSlot('Duplicate root B', [secondPart.id], 'duplicate_root', true),
+    ],
   });
-  const profile = {
-    ergonomics: 60,
-    verticalRecoil: 95,
-    horizontalRecoil: 100,
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    60,
+    100,
+    createModMap(firstPart, secondPart),
+    defaultOptions,
+    { ergonomics: 60, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 },
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.stats.ergonomics, 60);
+  assertInstalled(result, firstPart.id);
+  assertInstalled(result, secondPart.id);
+});
+
+test('Constraints reject a base weapon that already exceeds the maximum price', () => {
+  const targetPart = createTestMod({ id: 'budget-target-part', ergonomicsModifier: 10, avg24hPrice: 200 });
+  const testWeapon = createTestWeapon({
+    basePrice: 1_000,
+    avg24hPrice: 1_000,
+    slots: [createSlot('Stock', [targetPart.id], 'mod_stock', true)],
+  });
+  const profile = { ergonomics: 60, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const overBudget = calculateBestBuild(
+    testWeapon,
+    'custom',
+    60,
+    100,
+    createModMap(targetPart),
+    { ...defaultOptions, maxPrice: 500 },
+    profile,
+  );
+  const affordable = calculateBestBuild(
+    testWeapon,
+    'custom',
+    60,
+    100,
+    createModMap(targetPart),
+    { ...defaultOptions, maxPrice: 1_500 },
+    profile,
+  );
+
+  assert.equal(overBudget.errorCode, 'MAX_PRICE_EXCEEDED');
+  assert.match(overBudget.error, /selected max price/i);
+  assert.equal(affordable.error, undefined);
+  assertInstalled(affordable, targetPart.id);
+});
+
+test('Constraints final ties choose lower price independently of allowed-item order', () => {
+  const expensive = createTestMod({ id: 'target-expensive', ergonomicsModifier: 10, avg24hPrice: 1_100 });
+  const cheap = createTestMod({ id: 'target-cheap', ergonomicsModifier: 10, avg24hPrice: 200 });
+  const testWeapon = createTestWeapon({
+    slots: [createSlot('Stock', [expensive.id, cheap.id], 'mod_stock', true)],
+  });
+  const profile = { ergonomics: 60, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon, 'custom', 60, 100, createModMap(expensive, cheap), defaultOptions, profile,
+  );
+
+  assert.equal(result.constraintEvaluation.satisfied, true);
+  assertInstalled(result, cheap.id);
+  assertNotInstalled(result, expensive.id);
+});
+
+test('Constraints final ties choose build key independently of allowed-item order', () => {
+  const laterKey = createTestMod({ id: 'z-target-tie', ergonomicsModifier: 10, avg24hPrice: 200 });
+  const earlierKey = createTestMod({ id: 'a-target-tie', ergonomicsModifier: 10, avg24hPrice: 200 });
+  const testWeapon = createTestWeapon({
+    slots: [createSlot('Stock', [laterKey.id, earlierKey.id], 'mod_stock', true)],
+  });
+  const profile = { ergonomics: 60, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon, 'custom', 60, 100, createModMap(laterKey, earlierKey), defaultOptions, profile,
+  );
+
+  assert.equal(result.constraintEvaluation.satisfied, true);
+  assertInstalled(result, earlierKey.id);
+  assertNotInstalled(result, laterKey.id);
+});
+
+test('Constraints routes retain a ninth required-item provider', () => {
+  const parts = Array.from({ length: 9 }, (_, index) => createTestMod({
+    id: `route-required-${String(index + 1).padStart(2, '0')}`,
     weight: 0,
-    price: 0,
-  };
+  }));
+  const requiredPart = parts.at(-1);
+  const testWeapon = createTestWeapon({
+    slots: [createSlot('Required receiver', parts.map(part => part.id), 'mod_receiver', true)],
+  });
+  const profile = { ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
   const result = calculateBestBuild(
     testWeapon,
     'custom',
     profile.ergonomics,
     profile.verticalRecoil,
-    createModMap(lowerScorePart, lowerErrorPart),
-    defaultOptions,
+    createModMap(...parts),
+    { ...defaultOptions, requiredItemIds: [requiredPart.id] },
     profile,
-    { ergonomics: true, verticalRecoil: true },
   );
 
   assert.equal(result.error, undefined);
-  assertInstalled(result, lowerErrorPart.id);
-  assert.equal(result.stats.ergonomics, 61);
-  assert.equal(result.stats.recoilVertical, 95);
+  assertInstalled(result, requiredPart.id);
 });
 
-test('Exact ranking uses the existing Custom score when normalized errors tie', () => {
-  const betterCustomScorePart = createTestMod({
-    id: 'exact-score-a',
-    ergonomicsModifier: 9,
-    recoilModifier: -6,
-  });
-  const otherPart = createTestMod({
-    id: 'exact-score-b',
-    ergonomicsModifier: 11,
-    recoilModifier: -5,
+test('Constraints routes retain a ninth suppressor provider', () => {
+  const regularParts = Array.from({ length: 8 }, (_, index) => createTestMod({
+    id: `route-regular-${String(index + 1).padStart(2, '0')}`,
+    weight: 0,
+  }));
+  const suppressor = createTestMod({
+    id: 'route-suppressor-09',
+    weight: 0,
+    categories: createCategories(['Silencer']),
   });
   const testWeapon = createTestWeapon({
-    ergonomics: 50,
-    recoilVertical: 100,
-    recoilHorizontal: 200,
-    slots: [createSlot('Stock', [betterCustomScorePart.id, otherPart.id], 'mod_stock', true)],
+    slots: [createSlot('Required muzzle', [...regularParts, suppressor].map(part => part.id), 'mod_muzzle', true)],
   });
-  const profile = {
-    ergonomics: 60,
-    verticalRecoil: 100,
-    horizontalRecoil: 200,
-    weight: 0,
-    price: 0,
-  };
+  const profile = { ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
   const result = calculateBestBuild(
     testWeapon,
     'custom',
     profile.ergonomics,
     profile.verticalRecoil,
-    createModMap(betterCustomScorePart, otherPart),
-    defaultOptions,
+    createModMap(...regularParts, suppressor),
+    { ...defaultOptions, requireSuppressor: true },
     profile,
-    { ergonomics: true },
   );
 
   assert.equal(result.error, undefined);
-  assertInstalled(result, betterCustomScorePart.id);
-  assert.equal(result.stats.ergonomics, 59);
+  assertInstalled(result, suppressor.id);
 });
 
-test('Exact weight and price allow their tolerance above the entered targets', () => {
-  const exactPart = createTestMod({
-    id: 'exact-weight-price',
-    weight: 0.55,
-    avg24hPrice: 5_000,
-    ergonomicsModifier: 20,
-  });
-  const cheapPart = createTestMod({
-    id: 'exact-weight-price-cheap',
-    weight: 0.2,
+test('Constraints routes retain a ninth maximum-price-feasible required choice', () => {
+  const expensiveParts = Array.from({ length: 8 }, (_, index) => createTestMod({
+    id: `route-expensive-${String(index + 1).padStart(2, '0')}`,
     avg24hPrice: 1_000,
-    recoilModifier: -10,
+    basePrice: 1_000,
+    weight: 0,
+  }));
+  const affordablePart = createTestMod({
+    id: 'route-affordable-09',
+    avg24hPrice: 100,
+    basePrice: 100,
+    weight: 0,
   });
   const testWeapon = createTestWeapon({
-    weight: 1,
-    avg24hPrice: 1_000,
-    slots: [createSlot('Stock', [exactPart.id, cheapPart.id], 'mod_stock', true)],
+    avg24hPrice: 100,
+    basePrice: 100,
+    slots: [createSlot('Required stock', [...expensiveParts, affordablePart].map(part => part.id), 'mod_stock', true)],
   });
-  const profile = {
-    ergonomics: 0,
-    verticalRecoil: 100,
-    horizontalRecoil: 100,
-    weight: 1.5,
-    price: 5_000,
-  };
+  const profile = { ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
   const result = calculateBestBuild(
     testWeapon,
     'custom',
     profile.ergonomics,
     profile.verticalRecoil,
-    createModMap(exactPart, cheapPart),
-    defaultOptions,
+    createModMap(...expensiveParts, affordablePart),
+    { ...defaultOptions, maxPrice: 200 },
     profile,
-    { weight: true, price: true },
   );
 
   assert.equal(result.error, undefined);
-  assert.equal(result.stats.weight, '1.55');
-  assert.equal(result.stats.price, 6_000);
+  assert.equal(result.stats.price, 200);
+  assertInstalled(result, affordablePart.id);
 });
 
-test('Exact price uses the active trader policy', () => {
+test('Constraints global frontier retains required coverage from an earlier root', () => {
+  const regularFirstRootParts = Array.from({ length: 8 }, (_, index) => createTestMod({
+    id: `frontier-regular-first-${String(index + 1).padStart(2, '0')}`,
+    weight: 0,
+  }));
+  const requiredPart = createTestMod({
+    id: 'frontier-required-first-09',
+    ergonomicsModifier: -50,
+    weight: 0,
+  });
+  const secondRootParts = Array.from({ length: 9 }, (_, index) => createTestMod({
+    id: `frontier-second-${String(index + 1).padStart(2, '0')}`,
+    weight: 0,
+  }));
+  const testWeapon = createTestWeapon({
+    slots: [
+      createSlot('First required root', [...regularFirstRootParts, requiredPart].map(part => part.id), 'mod_first', true),
+      createSlot('Second required root', secondRootParts.map(part => part.id), 'mod_second', true),
+    ],
+  });
+  const profile = { ergonomics: 0, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(...regularFirstRootParts, requiredPart, ...secondRootParts),
+    { ...defaultOptions, requiredItemIds: [requiredPart.id] },
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, requiredPart.id);
+});
+
+test('Constraints global frontier retains the cheapest complete maximum-price route', () => {
+  const createRootParts = prefix => [
+    ...Array.from({ length: 8 }, (_, index) => createTestMod({
+      id: `${prefix}-expensive-${String(index + 1).padStart(2, '0')}`,
+      ergonomicsModifier: 10,
+      avg24hPrice: 200,
+      basePrice: 200,
+      weight: 0,
+    })),
+    createTestMod({
+      id: `${prefix}-cheap-09`,
+      ergonomicsModifier: -10,
+      avg24hPrice: 100,
+      basePrice: 100,
+      weight: 0,
+    }),
+  ];
+  const firstRootParts = createRootParts('frontier-price-first');
+  const secondRootParts = createRootParts('frontier-price-second');
+  const testWeapon = createTestWeapon({
+    avg24hPrice: 100,
+    basePrice: 100,
+    slots: [
+      createSlot('First required root', firstRootParts.map(part => part.id), 'mod_first', true),
+      createSlot('Second required root', secondRootParts.map(part => part.id), 'mod_second', true),
+    ],
+  });
+  const profile = { ergonomics: 0, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(...firstRootParts, ...secondRootParts),
+    { ...defaultOptions, maxPrice: 300 },
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.stats.price, 300);
+  assertInstalled(result, firstRootParts.at(-1).id);
+  assertInstalled(result, secondRootParts.at(-1).id);
+});
+
+test('Constraints ignores conflicting nested suppressor paths when retaining routes', () => {
+  const blockedSuppressor = createTestMod({
+    id: 'frontier-blocked-suppressor',
+    categories: createCategories(['Silencer']),
+    weight: 0,
+  });
+  const falseProviders = Array.from({ length: 24 }, (_, index) => createTestMod({
+    id: `frontier-false-suppressor-${String(index + 1).padStart(2, '0')}`,
+    conflictingItemIds: [blockedSuppressor.id],
+    slots: [createSlot('Blocked suppressor', [blockedSuppressor.id])],
+    weight: 0,
+  }));
+  const directSuppressor = createTestMod({
+    id: 'frontier-direct-suppressor',
+    ergonomicsModifier: -10,
+    categories: createCategories(['Silencer']),
+    weight: 0,
+  });
+  const testWeapon = createTestWeapon({
+    slots: [createSlot(
+      'Required muzzle',
+      [...falseProviders, directSuppressor].map(part => part.id),
+      'mod_muzzle',
+      true,
+    )],
+  });
+  const profile = { ergonomics: 0, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(...falseProviders, blockedSuppressor, directSuppressor),
+    { ...defaultOptions, requireSuppressor: true },
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, directSuppressor.id);
+  assertNotInstalled(result, blockedSuppressor.id);
+});
+
+test('Constraints keeps a nested plan that covers required items from independent slots', () => {
+  const requiredX = createTestMod({ id: 'frontier-required-x', weight: 0 });
+  const requiredY = createTestMod({ id: 'frontier-required-y', weight: 0 });
+  const falseRoots = Array.from({ length: 24 }, (_, index) => createTestMod({
+    id: `frontier-exclusive-${String(index + 1).padStart(2, '0')}`,
+    slots: [createSlot('Mutually exclusive', [requiredX.id, requiredY.id])],
+    weight: 0,
+  }));
+  const completeRoot = createTestMod({
+    id: 'frontier-complete-required-root',
+    ergonomicsModifier: -10,
+    slots: [
+      createSlot('Required X', [requiredX.id]),
+      createSlot('Required Y', [requiredY.id]),
+    ],
+    weight: 0,
+  });
+  const testWeapon = createTestWeapon({
+    slots: [createSlot(
+      'Required root',
+      [...falseRoots, completeRoot].map(part => part.id),
+      'mod_root',
+      true,
+    )],
+  });
+  const profile = { ergonomics: 0, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(...falseRoots, completeRoot, requiredX, requiredY),
+    { ...defaultOptions, requiredItemIds: [requiredX.id, requiredY.id] },
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, completeRoot.id);
+  assertInstalled(result, requiredX.id);
+  assertInstalled(result, requiredY.id);
+});
+
+test('Constraints frontier retains a compatible first root for a mandatory later root', () => {
+  const requiredSecondRoot = createTestMod({ id: 'frontier-required-second-root', weight: 0 });
+  const conflictingCheapRoots = Array.from({ length: 24 }, (_, index) => createTestMod({
+    id: `frontier-conflicting-first-${String(index + 1).padStart(2, '0')}`,
+    conflictingItemIds: [requiredSecondRoot.id],
+    weight: 0,
+  }));
+  const compatibleFirstRoot = createTestMod({
+    id: 'frontier-compatible-first-root',
+    ergonomicsModifier: -10,
+    weight: 0,
+  });
+  const testWeapon = createTestWeapon({
+    slots: [
+      createSlot('First required root', [...conflictingCheapRoots, compatibleFirstRoot].map(part => part.id), 'mod_first', true),
+      createSlot('Second required root', [requiredSecondRoot.id], 'mod_second', true),
+    ],
+  });
+  const profile = { ergonomics: 0, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(...conflictingCheapRoots, compatibleFirstRoot, requiredSecondRoot),
+    { ...defaultOptions, requiredItemIds: [requiredSecondRoot.id] },
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, compatibleFirstRoot.id);
+  assertInstalled(result, requiredSecondRoot.id);
+});
+
+test('Constraints frontier retains a combined required-item, suppressor, and budget route', () => {
+  const requiredItem = createTestMod({
+    id: 'frontier-combined-required-item',
+    avg24hPrice: 50,
+    basePrice: 50,
+    weight: 0,
+  });
+  const suppressor = createTestMod({
+    id: 'frontier-combined-suppressor',
+    avg24hPrice: 50,
+    basePrice: 50,
+    categories: createCategories(['Silencer']),
+    weight: 0,
+  });
+  const feasibleParent = createTestMod({
+    id: 'frontier-combined-parent',
+    avg24hPrice: 50,
+    basePrice: 50,
+    slots: [
+      createSlot('Required item path', [requiredItem.id]),
+      createSlot('Suppressor path', [suppressor.id]),
+    ],
+    weight: 0,
+  });
+  const expensiveParents = Array.from({ length: 8 }, (_, index) => createTestMod({
+    id: `frontier-combined-expensive-${String(index + 1).padStart(2, '0')}`,
+    avg24hPrice: 200,
+    basePrice: 200,
+    weight: 0,
+  }));
+  const requiredSecondRoot = createTestMod({
+    id: 'frontier-combined-second-root',
+    avg24hPrice: 50,
+    basePrice: 50,
+    weight: 0,
+  });
+  const testWeapon = createTestWeapon({
+    avg24hPrice: 100,
+    basePrice: 100,
+    slots: [
+      createSlot('First required root', [...expensiveParents, feasibleParent].map(part => part.id), 'mod_first', true),
+      createSlot('Second required root', [requiredSecondRoot.id], 'mod_second', true),
+    ],
+  });
+  const profile = { ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon,
+    'custom',
+    profile.ergonomics,
+    profile.verticalRecoil,
+    createModMap(
+      ...expensiveParents,
+      feasibleParent,
+      requiredItem,
+      suppressor,
+      requiredSecondRoot,
+    ),
+    {
+      ...defaultOptions,
+      maxPrice: 300,
+      requireSuppressor: true,
+      requiredItemIds: [requiredItem.id],
+    },
+    profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.stats.price, 300);
+  assertInstalled(result, feasibleParent.id);
+  assertInstalled(result, requiredItem.id);
+  assertInstalled(result, suppressor.id);
+  assertInstalled(result, requiredSecondRoot.id);
+});
+
+test('Constraints price follows the active trader policy', () => {
   const pricedPart = createTestMod({
     id: 'exact-trader-price',
     avg24hPrice: 10_000,
@@ -825,7 +1270,6 @@ test('Exact price uses the active trader policy', () => {
     createModMap(pricedPart),
     { ...defaultOptions, includeTraderPrices: true },
     profile,
-    { price: true },
   );
   const fleaOnly = calculateBestBuild(
     testWeapon,
@@ -835,15 +1279,15 @@ test('Exact price uses the active trader policy', () => {
     createModMap(pricedPart),
     { ...defaultOptions, includeTraderPrices: false },
     profile,
-    { price: true },
   );
 
   assert.equal(withTrader.error, undefined);
   assert.equal(withTrader.stats.price, 5_000);
-  assert.equal(fleaOnly.errorCode, 'CUSTOM_EXACT_TARGETS_UNMET');
+  assert.equal(fleaOnly.error, undefined);
+  assert.equal(fleaOnly.stats.price, 11_000);
 });
 
-test('impossible Exact targets return structured failures without a violating build', () => {
+test('unreachable limits return the closest build with structured diagnostics', () => {
   const part = createTestMod({ id: 'exact-impossible', ergonomicsModifier: 10 });
   const testWeapon = createTestWeapon({
     ergonomics: 50,
@@ -864,33 +1308,17 @@ test('impossible Exact targets return structured failures without a violating bu
     createModMap(part),
     defaultOptions,
     profile,
-    { ergonomics: true },
   );
 
-  assert.deepEqual(result.build, []);
-  assert.equal(result.errorCode, 'CUSTOM_EXACT_TARGETS_UNMET');
-  assert.deepEqual(result.exactTargetFailures.map(failure => failure.key), ['ergonomics']);
-  assert.equal(result.exactTargetFailures[0].actual, 60);
-  assert.match(result.error, /Disable Exact/);
+  assert.equal(result.error, undefined);
+  assertInstalled(result, part.id);
+  assert.equal(result.constraintEvaluation.satisfied, false);
+  assert.deepEqual(result.constraintEvaluation.failures.map(failure => failure.key), ['ergonomics']);
+  assert.equal(result.constraintEvaluation.failures[0].actual, 60);
+  assert.equal(result.constraintEvaluation.failures[0].violation, 20);
 });
 
-test('Meta ignores Custom Exact flags', () => {
-  const normal = calculateBestBuild(weapon, 'meta', 0, 0, modMap, defaultOptions);
-  const withCustomFlags = calculateBestBuild(
-    weapon,
-    'meta',
-    100,
-    0,
-    modMap,
-    defaultOptions,
-    null,
-    { ergonomics: true, price: true },
-  );
-
-  assert.deepEqual(withCustomFlags, normal);
-});
-
-test('Custom retries another weighting when an early recoil route starves a required charging handle', () => {
+test('Constraints prefer a build within the desired weight limit', () => {
   const heavyRecoilStock = createTestMod({
     id: 'heavy-recoil-stock',
     weight: 3,
@@ -943,6 +1371,85 @@ test('Custom retries another weighting when an early recoil route starves a requ
   assertInstalled(result, requiredChargingHandle.id);
   assertNotInstalled(result, heavyRecoilStock.id);
   assert.equal(Number(result.stats.weight) <= 4, true);
+  assert.equal(result.constraintEvaluation.satisfied, true);
+});
+
+test('Constraints return a heavy required stock above the soft weight limit', () => {
+  const heavyStock = createTestMod({ id: 'only-heavy-stock', weight: 3 });
+  const testWeapon = createTestWeapon({
+    weight: 1,
+    slots: [createSlot('Stock', [heavyStock.id], 'mod_stock', true)],
+  });
+  const profile = { ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: 3.5, price: 0 };
+
+  const result = calculateBestBuild(
+    testWeapon, 'custom', 50, 100, createModMap(heavyStock), defaultOptions, profile,
+  );
+
+  assert.equal(result.error, undefined);
+  assertInstalled(result, heavyStock.id);
+  assert.equal(result.stats.weight, '4.00');
+  assert.deepEqual(result.constraintEvaluation.failures.map(failure => failure.key), ['weight']);
+  assert.equal(result.constraintEvaluation.axes.weight.violation, 0.5);
+});
+
+test('Constraints keep the profile weight soft and the maxWeight option hard', () => {
+  const heavyStock = createTestMod({ id: 'weight-limit-heavy-stock', weight: 2, recoilModifier: -30 });
+  const lightStock = createTestMod({ id: 'weight-limit-light-stock', weight: 0.5 });
+  const testWeapon = createTestWeapon({
+    weight: 1,
+    slots: [createSlot('Stock', [heavyStock.id, lightStock.id], 'mod_stock', true)],
+  });
+  const modsMap = createModMap(heavyStock, lightStock);
+  const calculate = (profileWeight, maxWeight) => calculateBestBuild(
+    testWeapon, 'custom', 50, 100, modsMap, { ...defaultOptions, maxWeight },
+    { ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: profileWeight, price: 0 },
+  );
+
+  assertInstalled(calculate(0, 0), heavyStock.id);
+  assertInstalled(calculate(2.5, 0), lightStock.id);
+  assertInstalled(calculate(0, 2.5), lightStock.id);
+  assertInstalled(calculate(5, 2.5), lightStock.id);
+  assertInstalled(calculate(2.5, 5), lightStock.id);
+});
+
+test('Constraints keep a specific builder failure for an unmet hard requirement', () => {
+  const stock = createTestMod({ id: 'no-suppressor-stock' });
+  const testWeapon = createTestWeapon({
+    slots: [createSlot('Stock', [stock.id], 'mod_stock', true)],
+  });
+
+  const result = calculateBestBuild(
+    testWeapon, 'custom', 50, 100, createModMap(stock),
+    { ...defaultOptions, requireSuppressor: true },
+    { ergonomics: 50, verticalRecoil: 100, horizontalRecoil: 100, weight: 0, price: 0 },
+  );
+
+  assert.match(result.error, /No compatible suppressor/);
+  assert.deepEqual(result.build, []);
+});
+
+test('M4A1 Constraints 4 / 50 / 50 / 50 returns the nearest build instead of an error', () => {
+  const limits = { weight: 4, verticalRecoil: 50, horizontalRecoil: 50, ergonomics: 50, price: 0 };
+  const result = calculateBestBuild(
+    weapon,
+    'custom',
+    limits.ergonomics,
+    limits.verticalRecoil,
+    modMap,
+    { forbidSuppressor: false, requireSuppressor: false, maxWeight: 0 },
+    limits,
+  );
+
+  assert.equal(result.error, undefined);
+  assert.ok(result.build.length > 0);
+  assertNoDuplicateParts(result);
+  assertNoInstalledConflicts(result);
+  assertStatsMatchParts(result);
+  assert.equal(result.constraintEvaluation.satisfied, false);
+  assert.ok(result.constraintEvaluation.totalViolation > 0);
+  assert.equal(result.constraintEvaluation.axes.horizontalRecoil.satisfied, false);
+  assert.ok(result.warnings.some(warning => warning.code === 'REQUIREMENTS_UNMET_CLOSEST_BUILD'));
 });
 
 test('budget Custom prioritizes required module branches before expensive optional root parts', () => {
@@ -986,7 +1493,7 @@ test('budget Custom prioritizes required module branches before expensive option
   const result = calculateBestBuild(
     testWeapon,
     'custom',
-    0,
+    1,
     200,
     createModMap(expensiveGrip, cheapGrip, receiver, requiredScope, requiredCup),
     {
@@ -994,7 +1501,7 @@ test('budget Custom prioritizes required module branches before expensive option
       requiredItemIds: [requiredScope.id, requiredCup.id],
     },
     {
-      ergonomics: 0,
+      ergonomics: 1,
       verticalRecoil: 200,
       horizontalRecoil: 200,
       weight: 0,
@@ -2487,7 +2994,8 @@ test('Budget Limit Option: should restrict the build cost to maxPrice', () => {
       maxPrice: 5000,
     }
   );
-  assert.match(resultTooLow.warning, /exceeds the selected max price/i);
+  assert.equal(resultTooLow.errorCode, 'MAX_PRICE_EXCEEDED');
+  assert.match(resultTooLow.error, /selected max price/i);
 });
 
 test('recalculateBuildStats should correctly sum ergonomics, recoil, weight and price', () => {

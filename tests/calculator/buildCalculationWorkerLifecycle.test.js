@@ -62,6 +62,7 @@ function assertInitializeThenCalculate(worker, requestId) {
   assert.equal(worker.messages[0].modMapVersion, worker.messages[1].modMapVersion);
   assert.equal(worker.messages[1].prioritySelectionMode, 'weighted');
   assert.deepEqual(worker.messages[1].priorityWeights, { recoil: 80, ergonomics: 10, weight: 10 });
+  assert.equal(Object.hasOwn(worker.messages[1], 'customExactTargets'), false);
 }
 
 test('keeps a successful worker alive after initializing and calculating a normal request', async () => {

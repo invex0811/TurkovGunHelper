@@ -8,6 +8,9 @@ import { createCalculationCache } from './calculationCache.js';
 import { createCompatibilityTools } from './compatibility.js';
 import { createPricingTools } from './pricing.js';
 import { scopeSupportsZoom } from '../scopeZoom.js';
+import { evaluateCustomConstraints } from '../customConstraints.js';
+import { getCustomScore } from './scoring.js';
+import { getRootSlotRouteKey } from './constraints.js';
 
 export function _calculateWeighted(
   weapon,
@@ -43,6 +46,13 @@ export function _calculateWeighted(
 
   const build = [];
   const budgetAwareSearch = searchCapabilities?.budgetAwareSearch === true;
+  const characteristicConstraints = searchCapabilities?.characteristicConstraints ?? null;
+  // Guidance steers branches by constraint violation. Weighted sweeps disable it
+  // and still validate the completed build against every active limit.
+  const constraintGuidance = Boolean(characteristicConstraints)
+    && searchCapabilities?.constraintGuidance !== false;
+  const forcedRootChoices = searchCapabilities?.forcedRootChoices ?? null;
+  const forcedNestedChoices = searchCapabilities?.forcedNestedChoices ?? null;
   let branchEvaluatorOptions = options;
 
   function clearForcedBranchCaches() {
@@ -75,7 +85,7 @@ export function _calculateWeighted(
   const requireSight = options.requireSight === true;
   const maxWeight = Number(options.maxWeight) || 0;
   const maxPrice = Number(options.maxPrice) || 0;
-  const weightEpsilon = 0.0001;
+  const weightEpsilon = characteristicConstraints ? 0 : 0.0001;
   const requiredItemIds = new Set(
     (options.requiredItemIds || [])
       .map(String)
@@ -472,6 +482,15 @@ export function _calculateWeighted(
     return false;
   }
 
+  function countMissingTacticalDevicesProvided(branchEval) {
+    if (!characteristicConstraints) return 0;
+    const items = (branchEval.branchEval ?? branchEval).items;
+    return Number(options.includeLaser === true && !hasLaserDevice(installedIds)
+      && items.some(part => hasCategory(part.item, 'Comb. tact. device')))
+      + Number(options.includeFlashlight === true && !hasFlashlightDevice(installedIds)
+      && items.some(part => hasCategory(part.item, 'Flashlight')));
+  }
+
   function isReservedForRequiredTacticalDevice(item) {
     if (requiredItemIds.has(item.id)) return false;
 
@@ -528,6 +547,50 @@ export function _calculateWeighted(
       || slotNameId.includes('equipment');
   }
 
+  function getConstraintBranchImprovement(
+    branchEval,
+    {
+      ergonomics = totalErgo,
+      recoilModifier = totalRecoilMod,
+      weight = totalWeight,
+    } = {},
+  ) {
+    if (!constraintGuidance) return null;
+
+    const baseMatching = evaluateCustomConstraints(
+      {
+        ergonomics: Math.max(0, Math.min(100, ergonomics)),
+        verticalRecoil: baseRecoilV * (1 + (recoilModifier / 100)),
+        horizontalRecoil: baseRecoilH * (1 + (recoilModifier / 100)),
+        weight,
+      },
+      characteristicConstraints,
+    );
+    const projectedRecoilModifier = recoilModifier + branchEval.statsDelta.recoil;
+    const projectedMatching = evaluateCustomConstraints(
+      {
+        ergonomics: Math.max(0, Math.min(100, ergonomics + branchEval.statsDelta.ergonomics)),
+        verticalRecoil: baseRecoilV * (1 + (projectedRecoilModifier / 100)),
+        horizontalRecoil: baseRecoilH * (1 + (projectedRecoilModifier / 100)),
+        weight: weight + branchEval.statsDelta.weight,
+      },
+      characteristicConstraints,
+    );
+
+    return {
+      violationImprovement: baseMatching.totalViolation - projectedMatching.totalViolation,
+      qualityImprovement: getCustomScore({
+        ergonomics: Math.max(0, Math.min(100, ergonomics + branchEval.statsDelta.ergonomics)),
+        verticalRecoil: baseRecoilV * (1 + projectedRecoilModifier / 100),
+        horizontalRecoil: baseRecoilH * (1 + projectedRecoilModifier / 100),
+      }) - getCustomScore({
+        ergonomics: Math.max(0, Math.min(100, ergonomics)),
+        verticalRecoil: baseRecoilV * (1 + recoilModifier / 100),
+        horizontalRecoil: baseRecoilH * (1 + recoilModifier / 100),
+      }),
+    };
+  }
+
   const {
     evaluateBranch,
     isBetterBranch,
@@ -536,6 +599,7 @@ export function _calculateWeighted(
     get addItemConflictsToSet() { return addItemConflictsToSet; },
     get branchHasOnlyOptionalSight() { return branchHasOnlyOptionalSight; },
     get branchHasRequiredSight() { return branchHasRequiredSight; },
+    get countMissingTacticalDevicesProvided() { return countMissingTacticalDevicesProvided; },
     get ergoCap() { return ergoCap; },
     get ergoSoftCap() { return ergoSoftCap; },
     get ergoWeight() { return ergoWeight; },
@@ -545,6 +609,12 @@ export function _calculateWeighted(
     get getRemainingRequiredSlotPrice() { return getRemainingRequiredSlotPrice; },
     get getRemainingRequiredSlotWeight() { return getRemainingRequiredSlotWeight; },
     get getSortedSlots() { return getSortedSlots; },
+    get getConstraintBranchImprovement() { return getConstraintBranchImprovement; },
+    get getForcedNestedChoice() {
+      return slotPath => (forcedNestedChoices && Object.hasOwn(forcedNestedChoices, slotPath)
+        ? forcedNestedChoices[slotPath]
+        : undefined);
+    },
     get hasCategory() { return hasCategory; },
     get hasFlashlightDevice() { return hasFlashlightDevice; },
     get hasLaserDevice() { return hasLaserDevice; },
@@ -572,8 +642,11 @@ export function _calculateWeighted(
     get requireSight() { return requireSight; },
     get requiredItemIds() { return requiredItemIds; },
     get targetCapacity() { return targetCapacity; },
+    get characteristicConstraints() { return characteristicConstraints; },
+    get constraintGuidance() { return constraintGuidance; },
     get targetType() { return targetType; },
     get totalPrice() { return totalPrice; },
+    get totalRecoilModifier() { return totalRecoilMod; },
     get totalWeight() { return totalWeight; },
     get weaponHasSeparateStockSlot() { return weaponHasSeparateStockSlot; },
     get weightEpsilon() { return weightEpsilon; },
@@ -612,6 +685,16 @@ export function _calculateWeighted(
 
       if (isMagazineSlot(slot)) {
         allowed = filterAllowedItems(allowed, targetCapacity);
+      }
+
+      const routeKey = getRootSlotRouteKey(slot, weapon.properties.slots);
+      if (forcedRootChoices && Object.hasOwn(forcedRootChoices, routeKey)) {
+        const forcedItemId = forcedRootChoices[routeKey];
+        if (forcedItemId == null) {
+          if (slot.required === true) missingRequiredSlotNames.add(slot.name || slot.nameId || 'Unknown slot');
+          continue;
+        }
+        allowed = allowed.filter(allowedItem => allowedItem.id === forcedItemId);
       }
 
       if (allowed.length === 0) {
@@ -656,6 +739,8 @@ export function _calculateWeighted(
           reservedPrice,
           reservedWeight,
           slot.nameId || slot.id,
+          totalRecoilMod,
+          routeKey,
         );
         if (!branchEval.isValid) return;
         if (hasSight && branchEval.hasSight && !branchHasRequiredSight(branchEval)) return;
@@ -718,14 +803,20 @@ export function _calculateWeighted(
         && (rootItem.ergonomicsModifier || 0) > 0
         && (rootItem.recoilModifier || 0) >= 0
         && !hasCategory(rootItem, 'Magazine');
-      if (
-        (isMount || isOptionalErgoOnlyBudgetAwarePart)
-        && slot.required !== true
-        && bestCandidate.score <= 0
+      const isUnrequiredNonImprovement = slot.required !== true
+        && (constraintGuidance
+          ? (bestCandidate.branchEval.violationImprovement < 0
+            || (bestCandidate.branchEval.violationImprovement === 0 && bestCandidate.score <= 0))
+          : bestCandidate.score <= 0)
         && !(options.requireSuppressor && !hasSuppressorGlobal && bestCandidate.hasSuppressor)
         && !(requireSight && !hasSight && bestCandidate.hasSight)
-        && bestCandidate.requiredMatches.size === 0
-      ) {
+        && countMissingTacticalDevicesProvided(bestCandidate) === 0
+        && bestCandidate.requiredMatches.size === 0;
+      const shouldSkipConstraintWorseningBranch = constraintGuidance && isUnrequiredNonImprovement;
+      const shouldSkipLegacyOptionalPart = !constraintGuidance
+        && (isMount || isOptionalErgoOnlyBudgetAwarePart)
+        && isUnrequiredNonImprovement;
+      if (shouldSkipConstraintWorseningBranch || shouldSkipLegacyOptionalPart) {
         continue;
       }
 
@@ -775,9 +866,11 @@ export function _calculateWeighted(
   });
 
   processSlots(weapon.properties.slots);
-  optimizeFinalBarrelBlock();
-  optimizeFinalMuzzleBlock();
-  optimizeBudgetAwareLeafRecoilUpgrades();
+  if (!forcedNestedChoices || Object.keys(forcedNestedChoices).length === 0) {
+    optimizeFinalBarrelBlock();
+    optimizeFinalMuzzleBlock();
+    optimizeBudgetAwareLeafRecoilUpgrades();
+  }
   rebuildBuildState();
 
   const finalRecoilV = baseRecoilV * (1 + (totalRecoilMod / 100));
@@ -786,7 +879,7 @@ export function _calculateWeighted(
   const result = {
     build,
     stats: {
-      ergonomics: Math.min(100, Math.round(totalErgo)),
+      ergonomics: Math.max(0, Math.min(100, Math.round(totalErgo))),
       recoilModifier: totalRecoilMod,
       recoilVertical: Math.round(finalRecoilV),
       recoilHorizontal: Math.round(finalRecoilH),
@@ -799,6 +892,15 @@ export function _calculateWeighted(
   const errors = [];
   if (options.requireSuppressor && !hasSuppressorGlobal) {
     errors.push('No compatible suppressor could be installed with the current constraints.');
+  }
+  if (requireSight && !hasSight) {
+    errors.push('No compatible sight could be installed with the current constraints.');
+  }
+  if (characteristicConstraints && options.includeLaser && !hasLaserDevice(installedIds)) {
+    errors.push('No compatible laser could be installed with the current constraints.');
+  }
+  if (characteristicConstraints && options.includeFlashlight && !hasFlashlightDevice(installedIds)) {
+    errors.push('No compatible flashlight could be installed with the current constraints.');
   }
   const missingRequiredIds = [...requiredItemIds].filter(itemId => !installedIds.has(itemId));
   if (missingRequiredIds.length > 0) {
@@ -825,6 +927,8 @@ export function _calculateWeighted(
       params: { maxPrice },
       fallback: 'The build exceeds the selected max price.',
     });
+    result.errorCode = 'MAX_PRICE_EXCEEDED';
+    errors.push(`The build exceeds the selected max price of ${maxPrice} RUB.`);
   }
   if (!Number.isFinite(totalPrice)) {
     const missingItemCount = [
@@ -836,6 +940,19 @@ export function _calculateWeighted(
       params: { count: Math.max(1, missingItemCount) },
       fallback: 'One or more selected items have no available price under the active price policy.',
     });
+  }
+  if (characteristicConstraints) {
+    // Characteristic limits are soft: they rank builds but never invalidate
+    // one. Ergonomics and recoil are judged on the displayed integers.
+    result.constraintEvaluation = evaluateCustomConstraints({
+      ...result.stats,
+      weight: totalWeight,
+    }, characteristicConstraints);
+    // options.maxWeight is the separate hard technical maximum.
+    if (maxWeight > 0 && totalWeight > maxWeight) {
+      errors.push('The build exceeds the maximum weight.');
+    }
+    if (errors.length > 0) result.build = [];
   }
   setBuildWarnings(result, warnings);
   if (errors.length > 0) {

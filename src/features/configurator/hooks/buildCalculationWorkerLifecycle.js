@@ -153,7 +153,6 @@ export function createBuildCalculationWorkerLifecycle({
         weapon: calculationInput.weapon,
         targetType: calculationInput.targetType,
         customProfile: calculationInput.customProfile,
-        customExactTargets: calculationInput.customExactTargets,
         priorityAttributes: calculationInput.priorityAttributes,
         characteristicMode: calculationInput.characteristicMode,
         prioritySelectionMode: calculationInput.prioritySelectionMode,

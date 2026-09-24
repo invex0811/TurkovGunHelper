@@ -1,3 +1,5 @@
+import { getNestedSlotRouteKey } from './constraints.js';
+
 export function createBranchEvaluator(context) {
   function invalidBranchEvaluation() {
     return {
@@ -86,7 +88,35 @@ export function createBranchEvaluator(context) {
       return candidate.hasSight;
     }
 
-    return candidate.score > bestCandidate.score;
+    if (context.characteristicConstraints) {
+      const candidateTacticalCount = context.countMissingTacticalDevicesProvided(candidate);
+      const bestTacticalCount = context.countMissingTacticalDevicesProvided(bestCandidate);
+      if (candidateTacticalCount !== bestTacticalCount) return candidateTacticalCount > bestTacticalCount;
+    }
+
+    if (context.constraintGuidance) {
+      const candidateImprovement = (candidate.branchEval ?? candidate).violationImprovement;
+      const bestImprovement = (bestCandidate.branchEval ?? bestCandidate).violationImprovement;
+      if (candidateImprovement !== bestImprovement) return candidateImprovement > bestImprovement;
+    }
+
+    if (candidate.score !== bestCandidate.score) return candidate.score > bestCandidate.score;
+
+    if (context.constraintGuidance) {
+      const candidateBranch = candidate.branchEval ?? candidate;
+      const bestBranch = bestCandidate.branchEval ?? bestCandidate;
+      const candidatePrice = candidateBranch.statsDelta.price;
+      const bestCandidatePrice = bestBranch.statsDelta.price;
+      if (candidatePrice !== bestCandidatePrice) return candidatePrice < bestCandidatePrice;
+
+      const getTieKey = branch => branch.items
+        .map(part => String(part.item?.id ?? ''))
+        .sort()
+        .join('|');
+      return getTieKey(candidateBranch).localeCompare(getTieKey(bestBranch)) < 0;
+    }
+
+    return false;
   }
 
   function shouldApplyChildBranch(
@@ -112,6 +142,11 @@ export function createBranchEvaluator(context) {
       return childEval.hasSight;
     }
 
+    if (context.characteristicConstraints && context.countMissingTacticalDevicesProvided(childEval) > 0) return true;
+
+    if (context.constraintGuidance && childEval.violationImprovement !== 0) {
+      return childEval.violationImprovement > 0;
+    }
     return childEval.score > 0;
   }
 
@@ -127,6 +162,8 @@ export function createBranchEvaluator(context) {
     reservedPrice = 0,
     reservedWeight = 0,
     slotNameId = '',
+    currentRecoilModifier = context.totalRecoilModifier,
+    branchPath = '',
   ) {
     const item = context.modMap[itemId];
     if (!item) return invalidBranchEvaluation();
@@ -189,7 +226,14 @@ export function createBranchEvaluator(context) {
     }
 
     const price = context.getItemPrice(item);
-    if (context.maxPrice > 0 && currentPrice + price + reservedPrice > context.maxPrice) {
+    if (
+      context.maxPrice > 0
+      && (
+        !Number.isFinite(price)
+        || !Number.isFinite(currentPrice)
+        || currentPrice + price + reservedPrice > context.maxPrice
+      )
+    ) {
       return invalidBranchEvaluation();
     }
 
@@ -242,6 +286,7 @@ export function createBranchEvaluator(context) {
 
     let branchErgo = Math.max(0, currentErgo + ergoMod);
     let branchTotalWeight = currentWeight + itemWeight;
+    let branchRecoilModifier = currentRecoilModifier + recoilMod;
     let branchTotalPrice = currentPrice + price;
 
     const branchInstalledIds = new Set(parentBranchInstalledIds);
@@ -258,11 +303,26 @@ export function createBranchEvaluator(context) {
 
       for (let slotIndex = 0; slotIndex < sortedSlots.length; slotIndex += 1) {
         const slot = sortedSlots[slotIndex];
-        if (context.isSkippedSlot(slot)) continue;
+        const slotPath = getNestedSlotRouteKey(
+          branchPath,
+          item,
+          slot,
+          item.properties?.slots || [],
+        );
+        const forcedChildItemId = context.getForcedNestedChoice?.(slotPath);
+        const hasForcedChild = forcedChildItemId !== undefined;
+        if (hasForcedChild && forcedChildItemId === null) {
+          if (slot.required === true) return invalidBranchEvaluation();
+          continue;
+        }
+        if (context.isSkippedSlot(slot)) {
+          if (hasForcedChild) return invalidBranchEvaluation();
+          continue;
+        }
 
         let allowed = slot.filters?.allowedItems;
         if (!allowed || allowed.length === 0) {
-          if (slot.required === true) return invalidBranchEvaluation();
+          if (slot.required === true || hasForcedChild) return invalidBranchEvaluation();
           continue;
         }
 
@@ -270,8 +330,12 @@ export function createBranchEvaluator(context) {
           allowed = context.filterAllowedItems(allowed, context.targetCapacity);
         }
 
+        if (hasForcedChild) {
+          allowed = allowed.filter(allowedItem => allowedItem.id === forcedChildItemId);
+        }
+
         if (allowed.length === 0) {
-          if (slot.required === true) return invalidBranchEvaluation();
+          if (slot.required === true || hasForcedChild) return invalidBranchEvaluation();
           continue;
         }
 
@@ -280,8 +344,8 @@ export function createBranchEvaluator(context) {
           slotIndex,
           nextPathIds,
         );
-        if (!Number.isFinite(remainingRequiredPrice)) return invalidBranchEvaluation();
-        const childReservedPrice = reservedPrice + remainingRequiredPrice;
+        if (context.maxPrice > 0 && !Number.isFinite(remainingRequiredPrice)) return invalidBranchEvaluation();
+        const childReservedPrice = reservedPrice + (Number.isFinite(remainingRequiredPrice) ? remainingRequiredPrice : 0);
         const remainingRequiredWeight = context.getRemainingRequiredSlotWeight(
           sortedSlots,
           slotIndex,
@@ -317,6 +381,8 @@ export function createBranchEvaluator(context) {
             childReservedPrice,
             childReservedWeight,
             slot.nameId || slot.id,
+            branchRecoilModifier,
+            slotPath,
           );
 
           if (childEval.isValid && childEval.score !== -Infinity) {
@@ -349,10 +415,10 @@ export function createBranchEvaluator(context) {
           activeMustFindSuppressor,
           activeMustFindSight,
           activeMustFindRequired,
-          slot.required === true,
+          slot.required === true || hasForcedChild,
         );
 
-        if (slot.required === true && !shouldApply) {
+        if ((slot.required === true || hasForcedChild) && !shouldApply) {
           return invalidBranchEvaluation();
         }
 
@@ -361,11 +427,24 @@ export function createBranchEvaluator(context) {
 
           branchErgo = Math.max(0, branchErgo + bestChildEval.statsDelta.ergonomics);
           branchTotalWeight += bestChildEval.statsDelta.weight;
+          branchRecoilModifier += bestChildEval.statsDelta.recoil;
           branchTotalPrice += bestChildEval.statsDelta.price;
 
           bestChildEval.items.forEach(part => branchInstalledIds.add(part.item.id));
           bestChildEval.conflicts.forEach(conflictId => branchConflicts.add(conflictId));
         }
+      }
+    }
+
+    if (typeof context.getConstraintBranchImprovement === 'function') {
+      const improvement = context.getConstraintBranchImprovement(branchEval, {
+        ergonomics: currentErgo,
+        recoilModifier: currentRecoilModifier,
+        weight: currentWeight,
+      });
+      if (improvement) {
+        branchEval.violationImprovement = improvement.violationImprovement;
+        branchEval.score = improvement.qualityImprovement;
       }
     }
 
