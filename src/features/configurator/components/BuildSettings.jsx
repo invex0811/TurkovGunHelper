@@ -18,6 +18,7 @@ import {
 } from '../scopeZoomDisplay.js';
 import { getScopeAutoCopy } from '../scopeAutoCopy.js';
 import CustomConstraintInputs from './CustomConstraintInputs.jsx';
+import { InfoTooltip } from './ConfiguratorPrimitives.jsx';
 import { PriceSource } from './PriceDisplay.jsx';
 import TacticalDevicePicker from './TacticalDevicePicker.jsx';
 
@@ -806,8 +807,12 @@ export default function BuildSettings(props) {
       {buildGoalMode === BUILD_GOAL_MODES.CONSTRAINTS && (
         <div className="config__mode" data-build-goal="constraints">
           <section className="custom-characteristic-settings" aria-labelledby="customCharacteristicSettingsTitle">
-            <h3 id="customCharacteristicSettingsTitle">{t('config.characteristicSettings')}</h3>
-            <p className="field-help">{t('ui.radar.help')}</p>
+            <div className="custom-characteristic-settings__head">
+              <h3 id="customCharacteristicSettingsTitle">{t('config.characteristicSettings')}</h3>
+              <InfoTooltip label={t('config.characteristicSettingsInfo')}>
+                {t('ui.radar.help')}
+              </InfoTooltip>
+            </div>
             <CustomConstraintInputs
               onChange={setters.customProfile}
               profile={customProfile}

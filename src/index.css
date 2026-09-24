@@ -766,7 +766,15 @@ a {
   border-bottom: 1px solid var(--panel-border);
 }
 
-.custom-characteristic-settings > h3 {
+.custom-characteristic-settings__head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.custom-characteristic-settings__head > h3 {
   min-width: 0;
   margin: 0;
   color: var(--text-primary);
@@ -776,6 +784,83 @@ a {
   line-height: 1.25;
   letter-spacing: 0;
   text-transform: none;
+}
+
+.info-tooltip__trigger {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin: -6px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: help;
+}
+
+.info-tooltip__trigger svg {
+  width: 16px;
+  height: 16px;
+}
+
+.info-tooltip[data-pinned] .info-tooltip__trigger {
+  color: var(--color-gold);
+}
+
+@media (hover: hover) {
+  .info-tooltip__trigger:hover {
+    color: var(--color-gold);
+  }
+}
+
+/* Anchored to the nearest positioned header, so the bubble spans its width. */
+.info-tooltip__bubble {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  padding: 10px 12px;
+  border: 1px solid var(--panel-border-active);
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+  font-size: .8rem;
+  font-weight: 400;
+  line-height: 1.45;
+  text-transform: none;
+  visibility: hidden;
+  opacity: 0;
+}
+
+/* Keeps the hover alive while the pointer crosses the gap to the bubble. */
+.info-tooltip__bubble::before {
+  content: "";
+  position: absolute;
+  inset: -10px 0 100%;
+}
+
+.info-tooltip:not([data-dismissed]) .info-tooltip__trigger:focus-visible + .info-tooltip__bubble,
+.info-tooltip[data-pinned] .info-tooltip__bubble {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Touch screens keep :hover after a tap, so they rely on the tap toggle. */
+@media (hover: hover) {
+  .info-tooltip:not([data-dismissed]):hover .info-tooltip__bubble {
+    visibility: visible;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .info-tooltip__bubble {
+    transition: opacity .15s ease, visibility .15s;
+  }
 }
 
 .custom-priority-attributes {

@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import { normalizeStatFillPercent } from '../../../ui/weaponStatMeters.js';
 import { getInlineMessageA11y } from '../configuratorNotifications.js';
 
@@ -45,6 +45,47 @@ function InfoIcon() {
       <circle cx="12" cy="12" r="9" />
       <path d="M12 11v6m0-10h.01" />
     </svg>
+  );
+}
+
+// Shows on hover and keyboard focus; a tap pins it for touch screens and
+// Escape hides it until the pointer or focus leaves.
+export function InfoTooltip({ label, children }) {
+  const tooltipId = useId();
+  const [pinned, setPinned] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const reset = () => {
+    setPinned(false);
+    setDismissed(false);
+  };
+
+  return (
+    <span
+      className="info-tooltip"
+      data-pinned={pinned || undefined}
+      data-dismissed={dismissed || undefined}
+      onMouseLeave={() => setDismissed(false)}
+    >
+      <button
+        type="button"
+        className="info-tooltip__trigger"
+        aria-label={label}
+        aria-describedby={tooltipId}
+        onClick={() => {
+          setDismissed(false);
+          setPinned(current => !current);
+        }}
+        onBlur={reset}
+        onKeyDown={event => {
+          if (event.key !== 'Escape') return;
+          setPinned(false);
+          setDismissed(true);
+        }}
+      >
+        <InfoIcon />
+      </button>
+      <span id={tooltipId} role="tooltip" className="info-tooltip__bubble">{children}</span>
+    </span>
   );
 }
 
