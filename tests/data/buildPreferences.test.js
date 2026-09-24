@@ -4,10 +4,12 @@ import assert from 'node:assert/strict';
 import {
   BUILD_GOAL_MODES,
   DEFAULT_BUILD_GOAL_MODE,
+  DEFAULT_INCLUDE_REF_OFFERS,
   DEFAULT_INCLUDE_TRADER_PRICES,
   DEFAULT_REMEMBER_TACTICAL_DEVICE_SELECTION,
   DEFAULT_STRICT_TRADER_LEVELS,
   loadBuildGoalModePreference,
+  loadIncludeRefOffersPreference,
   loadIncludeTraderPricesPreference,
   loadLastSelectedFlashlightId,
   loadLastSelectedTblId,
@@ -18,6 +20,7 @@ import {
   normalizeBuildGoalMode,
   normalizeTargetType,
   saveBuildGoalModePreference,
+  saveIncludeRefOffersPreference,
   saveIncludeTraderPricesPreference,
   saveLastSelectedFlashlightId,
   saveLastSelectedTblId,
@@ -55,6 +58,29 @@ function createStorage() {
 test('trader prices are enabled by default', () => {
   assert.equal(DEFAULT_INCLUDE_TRADER_PRICES, true);
   assert.equal(loadIncludeTraderPricesPreference(), true);
+});
+
+test('Ref offers are enabled by default and the choice persists', () => {
+  assert.equal(DEFAULT_INCLUDE_REF_OFFERS, true);
+  assert.equal(loadIncludeRefOffersPreference(), true);
+
+  withWindow(createStorage(), () => {
+    assert.equal(loadIncludeRefOffersPreference(), true);
+    saveIncludeRefOffersPreference(false);
+    assert.equal(loadIncludeRefOffersPreference(), false);
+    saveIncludeRefOffersPreference('true');
+    assert.equal(loadIncludeRefOffersPreference(), false);
+    saveIncludeRefOffersPreference(true);
+    assert.equal(loadIncludeRefOffersPreference(), true);
+  });
+
+  withWindow({
+    getItem: () => { throw new Error('denied'); },
+    setItem: () => { throw new Error('denied'); },
+  }, () => {
+    assert.equal(loadIncludeRefOffersPreference(), true);
+    assert.doesNotThrow(() => saveIncludeRefOffersPreference(false));
+  });
 });
 
 test('price mode defaults safely and persists both supported modes', () => {

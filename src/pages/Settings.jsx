@@ -21,6 +21,8 @@ export default function Settings({ theme, setTheme }) {
     traderLevels,
     strictTraderLevels,
     setStrictTraderLevels,
+    includeRefOffers,
+    setIncludeRefOffers,
     initializeTraderLevels,
     updateTraderLevel,
     resetTraderLevels,
@@ -152,6 +154,18 @@ export default function Settings({ theme, setTheme }) {
             <p>{t('traders.description')}</p>
           </div>
         </div>
+
+        <label className="check settings-trader-toggle">
+          <input
+            type="checkbox"
+            checked={includeRefOffers}
+            onChange={event => setIncludeRefOffers(event.target.checked)}
+          />
+          <span>
+            <strong>{t('traders.includeRef')}</strong>
+            <small>{t('traders.includeRefDescription')}</small>
+          </span>
+        </label>
 
         <label className="check settings-trader-toggle">
           <input

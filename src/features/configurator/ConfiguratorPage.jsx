@@ -9,6 +9,7 @@ import {
 import { useParams, useSearchParams } from 'react-router-dom';
 import { PRICE_CONFIDENCE } from '../../data/price/priceModes.js';
 import {
+  isRefOnlyItem,
   selectPurchasePrice,
   selectWeaponPurchasePrice,
   sumPurchasePrices,
@@ -195,6 +196,7 @@ function findCompatibleAlternatives(
   includeTraderPrices,
   traderLevels,
   strictTraderLevels,
+  includeRefOffers,
   sightMode,
   t,
   mode = 'EXACT_ITEM',
@@ -400,6 +402,7 @@ function findCompatibleAlternatives(
         for (const allowed of allowedItems) {
           const scopeItem = allMods[allowed.id];
           if (!scopeItem) continue;
+          if (includeRefOffers === false && isRefOnlyItem(scopeItem)) continue;
 
           if (!isValidSightForMode(scopeItem, sightMode)) continue;
           if (currentSight && scopeItem.id === currentSight.id) continue;
@@ -411,6 +414,7 @@ function findCompatibleAlternatives(
             includeTraderPrices,
             traderLevels,
             strictTraderLevels,
+            includeRefOffers,
           );
           if (score > bestScopeScore) {
             bestScopeScore = score;
@@ -537,6 +541,7 @@ function findCompatibleAlternatives(
     includeTraderPrices,
     traderLevels,
     strictTraderLevels,
+    includeRefOffers,
   });
 }
 
@@ -550,6 +555,7 @@ function getSelectedPriceInfo(
   includeTraderPrices,
   traderLevels,
   strictTraderLevels,
+  includeRefOffers,
   useWeaponFallback = false,
 ) {
   const priceInfo = (useWeaponFallback ? selectWeaponPurchasePrice : selectPurchasePrice)(item, {
@@ -557,6 +563,7 @@ function getSelectedPriceInfo(
     includeTraderPrices,
     traderLevels,
     strictTraderLevels,
+    includeRefOffers,
   });
 
   return {
@@ -577,6 +584,7 @@ function getPackagePriceInfo(
   includeTraderPrices,
   traderLevels,
   strictTraderLevels,
+  includeRefOffers,
   t,
 ) {
   const packagePrice = sumPurchasePrices(items, {
@@ -584,6 +592,7 @@ function getPackagePriceInfo(
     includeTraderPrices,
     traderLevels,
     strictTraderLevels,
+    includeRefOffers,
   });
   const sourceLabels = Array.from(new Set(
     packagePrice.priceInfos.map(priceInfo => formatPriceSource(priceInfo, t)).filter(Boolean),
@@ -622,6 +631,7 @@ function collectBuildPriceDiagnostics(
   includeTraderPrices,
   traderLevels,
   strictTraderLevels,
+  includeRefOffers,
   ownedItems,
   t,
   instances = null,
@@ -640,6 +650,7 @@ function collectBuildPriceDiagnostics(
       includeTraderPrices,
       traderLevels,
       strictTraderLevels,
+      includeRefOffers,
       instance.isWeapon,
     ),
   }));
@@ -752,6 +763,7 @@ function getReplacementConstraintErrors({
   includeTraderPrices,
   traderLevels,
   strictTraderLevels,
+  includeRefOffers,
   ownedItems,
   maxWeight,
   maxPrice,
@@ -815,6 +827,7 @@ function getReplacementConstraintErrors({
     includeTraderPrices,
     traderLevels,
     strictTraderLevels,
+    includeRefOffers,
   });
   const parsedMaxWeight = Number(maxWeight) || 0;
   const parsedMaxPrice = Number(maxPrice) || 0;
@@ -827,6 +840,7 @@ function getReplacementConstraintErrors({
       includeTraderPrices,
       traderLevels,
       strictTraderLevels,
+      includeRefOffers,
     },
   });
 
@@ -1000,6 +1014,7 @@ function Configurator() {
   const {
     traderLevels,
     strictTraderLevels,
+    includeRefOffers,
   } = useTraderLevels();
   const activeTraderLevels = useMemo(
     () => traderLevels.profiles?.[priceMode] || {},
@@ -1122,6 +1137,7 @@ function Configurator() {
       priceMode,
       includeTraderPrices,
       strictTraderLevels,
+      includeRefOffers,
       traderLevelsSnapshot: activeTraderLevels,
       magazineCapacity,
       includeLaser,
@@ -1190,6 +1206,7 @@ function Configurator() {
             includeTraderPrices,
             traderLevels: activeTraderLevels,
             strictTraderLevels,
+            includeRefOffers,
           });
           return {
             ...current,
@@ -1216,6 +1233,7 @@ function Configurator() {
                 includeTraderPrices,
                 traderLevels: activeTraderLevels,
                 strictTraderLevels,
+                includeRefOffers,
               },
             }).remainingTotal
             : null;
@@ -1250,6 +1268,7 @@ function Configurator() {
           includeTraderPrices: restoredIncludeTraderPrices,
           traderLevels: activeTraderLevels,
           strictTraderLevels,
+          includeRefOffers,
         });
 
         setBuildResult({
@@ -1382,6 +1401,7 @@ function Configurator() {
       includeTraderPrices,
       traderLevels: activeTraderLevels,
       strictTraderLevels,
+      includeRefOffers,
       ownedItems: reconciledOwnedItems,
       maxWeight: effectiveHardMaxWeight,
       maxPrice,
@@ -1435,6 +1455,7 @@ function Configurator() {
       includeTraderPrices,
       traderLevels: activeTraderLevels,
       strictTraderLevels,
+      includeRefOffers,
       ownedItems: reconciledOwnedItems,
       maxWeight: effectiveHardMaxWeight,
       maxPrice,
@@ -1459,6 +1480,7 @@ function Configurator() {
     buildResult,
     includeTraderPrices,
     strictTraderLevels,
+    includeRefOffers,
     maxPrice,
     effectiveHardMaxWeight,
     priceMode,
@@ -1552,6 +1574,7 @@ function Configurator() {
       includeTraderPrices: nextValue,
       traderLevels: activeTraderLevels,
       strictTraderLevels,
+      includeRefOffers,
     });
     const budgetLimit = Number(maxPrice) || 0;
     const remainingTotal = calculateBuildCostSummary({
@@ -1564,6 +1587,7 @@ function Configurator() {
         includeTraderPrices: nextValue,
         traderLevels: activeTraderLevels,
         strictTraderLevels,
+        includeRefOffers,
       },
     }).remainingTotal;
 
@@ -1613,6 +1637,7 @@ function Configurator() {
         includeTraderPrices,
         traderLevels: activeTraderLevels,
         strictTraderLevels,
+        includeRefOffers,
         includeLaser,
         includeFlashlight,
         sightMode,
@@ -1668,6 +1693,7 @@ function Configurator() {
     runBuildCalculation,
     sightMode,
     strictTraderLevels,
+    includeRefOffers,
     suppressorMode,
     t,
     targetType,
@@ -1701,6 +1727,7 @@ function Configurator() {
           includeTraderPrices,
           traderLevels: activeTraderLevels,
           strictTraderLevels,
+          includeRefOffers,
         },
       })
       : null,
@@ -1713,6 +1740,7 @@ function Configurator() {
       currentBuildSnapshot,
       priceMode,
       strictTraderLevels,
+      includeRefOffers,
       weapon,
     ],
   );
@@ -1735,6 +1763,7 @@ function Configurator() {
       includeTraderPrices,
       activeTraderLevels,
       strictTraderLevels,
+      includeRefOffers,
     );
     return {
       item,
@@ -1799,12 +1828,13 @@ function Configurator() {
         includeTraderPrices,
         activeTraderLevels,
         strictTraderLevels,
+        includeRefOffers,
         sightMode,
         t,
         replaceMode,
       ),
     };
-  }, [weapon, buildResult, currentBuildSnapshot, hasBuildParts, activeReplacePartId, allMods, priceMode, includeTraderPrices, activeTraderLevels, strictTraderLevels, sightMode, t, replaceMode]);
+  }, [weapon, buildResult, currentBuildSnapshot, hasBuildParts, activeReplacePartId, allMods, priceMode, includeTraderPrices, activeTraderLevels, strictTraderLevels, includeRefOffers, sightMode, t, replaceMode]);
 
   const isLoading = loading || (weapon && weapon.id !== weaponId);
 
@@ -1830,6 +1860,7 @@ function Configurator() {
       includeTraderPrices,
       activeTraderLevels,
       strictTraderLevels,
+      includeRefOffers,
       reconciledOwnedItems,
       t,
       currentBuildSnapshot?.instances,
@@ -1865,6 +1896,7 @@ function Configurator() {
         includeTraderPrices,
         activeTraderLevels,
         strictTraderLevels,
+        includeRefOffers,
         true,
       ).value,
       'RUB',
@@ -1978,6 +2010,7 @@ function Configurator() {
             includeTraderPrices,
             activeTraderLevels,
             strictTraderLevels,
+            includeRefOffers,
           )
           : null,
       }));
@@ -2010,6 +2043,7 @@ function Configurator() {
           includeTraderPrices,
           activeTraderLevels,
           strictTraderLevels,
+          includeRefOffers,
           true,
         ),
       }],
@@ -2225,6 +2259,7 @@ function Configurator() {
           includeTraderPrices={includeTraderPrices}
           traderLevels={activeTraderLevels}
           strictTraderLevels={strictTraderLevels}
+          includeRefOffers={includeRefOffers}
           onBuildChange={handleDiagramBuildChange}
           onClose={handleCloseBuildDiagram}
         />
@@ -2245,6 +2280,7 @@ function Configurator() {
           includeTraderPrices,
           activeTraderLevels,
           strictTraderLevels,
+          includeRefOffers,
         );
 
         return (
@@ -2325,6 +2361,7 @@ function Configurator() {
                           includeTraderPrices,
                           activeTraderLevels,
                           strictTraderLevels,
+                          includeRefOffers,
                           t,
                         );
                         const altPriceValue = altPriceInfo.value;
@@ -2350,6 +2387,7 @@ function Configurator() {
                           includeTraderPrices,
                           activeTraderLevels,
                           strictTraderLevels,
+                          includeRefOffers,
                           t,
                         );
                         const baselinePrice = baselinePriceInfo.value;

@@ -1,4 +1,4 @@
-import { getPurchasePriceValue } from '../../../data/price/priceMapper.js';
+import { getPurchasePriceValue, isRefOnlyItem } from '../../../data/price/priceMapper.js';
 import { hasItemCategory } from '../../../domain/itemCategories.js';
 import { scopeSupportsZoom } from '../../../domain/scopeZoom.js';
 
@@ -58,7 +58,7 @@ export function getAlternativeDisplayName(item) {
     : formatPartName(item.shortName, item);
 }
 
-function getItemsMetrics(items, priceMode, includeTraderPrices, traderLevels, strictTraderLevels) {
+function getItemsMetrics(items, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers) {
   return items.reduce((metrics, item) => ({
     ergonomics: metrics.ergonomics + (item.ergonomicsModifier || 0),
     recoil: metrics.recoil + (item.recoilModifier || 0),
@@ -68,6 +68,7 @@ function getItemsMetrics(items, priceMode, includeTraderPrices, traderLevels, st
       includeTraderPrices,
       traderLevels,
       strictTraderLevels,
+      includeRefOffers,
     }, MISSING_PRICE_COMPARISON_VALUE),
   }), {
     ergonomics: 0,
@@ -77,7 +78,7 @@ function getItemsMetrics(items, priceMode, includeTraderPrices, traderLevels, st
   });
 }
 
-function getNodeMetrics(node, priceMode, includeTraderPrices, traderLevels, strictTraderLevels) {
+function getNodeMetrics(node, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers) {
   const items = [];
   function collect(currentNode) {
     if (!currentNode?.item) return;
@@ -85,7 +86,7 @@ function getNodeMetrics(node, priceMode, includeTraderPrices, traderLevels, stri
     currentNode.children.forEach(collect);
   }
   collect(node);
-  return getItemsMetrics(items, priceMode, includeTraderPrices, traderLevels, strictTraderLevels);
+  return getItemsMetrics(items, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers);
 }
 
 function getSimilarityDistance(
@@ -95,6 +96,7 @@ function getSimilarityDistance(
   includeTraderPrices,
   traderLevels,
   strictTraderLevels,
+  includeRefOffers,
 ) {
   const candidateMetrics = getItemsMetrics(
     getAlternativePackageItems(item),
@@ -102,6 +104,7 @@ function getSimilarityDistance(
     includeTraderPrices,
     traderLevels,
     strictTraderLevels,
+    includeRefOffers,
   );
   return (Math.abs(referenceMetrics.ergonomics - candidateMetrics.ergonomics) * 1.5)
     + (Math.abs(referenceMetrics.recoil - candidateMetrics.recoil) * 4)
@@ -138,7 +141,7 @@ export function isValidSightForMode(item, sightMode) {
   return true;
 }
 
-export function scoreScope(item, priceMode, includeTraderPrices, traderLevels, strictTraderLevels) {
+export function scoreScope(item, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers) {
   const ergonomics = item.ergonomicsModifier || 0;
   const recoil = item.recoilModifier || 0;
   const weight = item.weight || 0;
@@ -147,6 +150,7 @@ export function scoreScope(item, priceMode, includeTraderPrices, traderLevels, s
     includeTraderPrices,
     traderLevels,
     strictTraderLevels,
+    includeRefOffers,
   }, MISSING_PRICE_COMPARISON_VALUE);
   return ergonomics - recoil * 5 - weight * 10 - (price > 0 ? price * 0.0001 : 0);
 }
@@ -208,6 +212,7 @@ export function selectReplacementCandidates({
   includeTraderPrices,
   traderLevels,
   strictTraderLevels,
+  includeRefOffers,
 }) {
   const uniqueAlternatives = new Map();
   const referenceMetricsByNode = new Map();
@@ -229,6 +234,7 @@ export function selectReplacementCandidates({
         includeTraderPrices,
         traderLevels,
         strictTraderLevels,
+        includeRefOffers,
       );
       referenceMetricsByNode.set(distanceNode, referenceMetrics);
     }
@@ -240,12 +246,17 @@ export function selectReplacementCandidates({
       includeTraderPrices,
       traderLevels,
       strictTraderLevels,
+      includeRefOffers,
     );
     distanceByAlternative.set(alternative, distance);
     return distance;
   };
 
   alternatives.forEach(alternative => {
+    if (
+      includeRefOffers === false
+      && getAlternativePackageItems(alternative).some(isRefOnlyItem)
+    ) return;
     const isSightOrHasAttached = isSightItem(alternative) || alternative.attachedScope;
     const key = isSightOrHasAttached
       ? (alternative.attachedScope?.id || alternative.id)

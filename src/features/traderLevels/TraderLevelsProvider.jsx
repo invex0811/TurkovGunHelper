@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
+  loadIncludeRefOffersPreference,
   loadStrictTraderLevelsPreference,
+  saveIncludeRefOffersPreference,
   saveStrictTraderLevelsPreference,
 } from '../../data/settings/buildPreferences.js';
 import {
@@ -22,6 +24,15 @@ export default function TraderLevelsProvider({ children }) {
     const normalizedValue = nextValue === true;
     setStrictTraderLevelsState(normalizedValue);
     saveStrictTraderLevelsPreference(normalizedValue);
+  }, []);
+  const [includeRefOffers, setIncludeRefOffersState] = useState(
+    loadIncludeRefOffersPreference,
+  );
+
+  const setIncludeRefOffers = useCallback(nextValue => {
+    const normalizedValue = nextValue !== false;
+    setIncludeRefOffersState(normalizedValue);
+    saveIncludeRefOffersPreference(normalizedValue);
   }, []);
 
   const updateTraderLevel = useCallback((traderId, level, priceMode, traders) => {
@@ -52,12 +63,16 @@ export default function TraderLevelsProvider({ children }) {
     traderLevels,
     strictTraderLevels,
     setStrictTraderLevels,
+    includeRefOffers,
+    setIncludeRefOffers,
     initializeTraderLevels: initializeProfile,
     updateTraderLevel,
     resetTraderLevels: resetProfile,
   }), [
+    includeRefOffers,
     initializeProfile,
     resetProfile,
+    setIncludeRefOffers,
     setStrictTraderLevels,
     strictTraderLevels,
     traderLevels,

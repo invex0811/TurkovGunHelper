@@ -30,6 +30,7 @@ const ALLOWED_SETTING_KEYS = new Set([
   'suppressorMode',
   'includeTraderPrices',
   'strictTraderLevels',
+  'includeRefOffers',
   'traderLevelsSnapshot',
   'maxWeight',
   'maxPrice',
