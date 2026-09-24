@@ -4,7 +4,9 @@ import { loadItemsCatalog } from '../data/tarkovApi/repository.js';
 import { getTarkovDevGameMode } from '../data/price/priceProvider.js';
 import { getCatalogTraders } from '../data/tarkovApi/traders.js';
 import {
+  loadRememberRequiredModulesPreference,
   loadRememberTacticalDeviceSelectionPreference,
+  saveRememberRequiredModulesPreference,
   saveRememberTacticalDeviceSelectionPreference,
 } from '../data/settings/buildPreferences.js';
 import InstallAppButton from '../features/pwa/InstallAppButton.jsx';
@@ -32,6 +34,9 @@ export default function Settings({ theme, setTheme }) {
   const [strictNotice, setStrictNotice] = useState(null);
   const [rememberTacticalDeviceSelection, setRememberTacticalDeviceSelection] = useState(
     loadRememberTacticalDeviceSelectionPreference,
+  );
+  const [rememberRequiredModules, setRememberRequiredModules] = useState(
+    loadRememberRequiredModulesPreference,
   );
 
   useEffect(() => {
@@ -137,6 +142,18 @@ export default function Settings({ theme, setTheme }) {
             }}
           />
           <span>{t('settings.rememberTacticalDeviceSelection')}</span>
+        </label>
+        <label className="check settings-trader-toggle">
+          <input
+            type="checkbox"
+            checked={rememberRequiredModules}
+            onChange={event => {
+              const nextValue = event.target.checked;
+              setRememberRequiredModules(nextValue);
+              saveRememberRequiredModulesPreference(nextValue);
+            }}
+          />
+          <span>{t('settings.rememberRequiredModules')}</span>
         </label>
         <InstallAppButton />
       </section>

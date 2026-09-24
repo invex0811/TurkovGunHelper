@@ -6,6 +6,7 @@ import {
   DEFAULT_BUILD_GOAL_MODE,
   DEFAULT_INCLUDE_REF_OFFERS,
   DEFAULT_INCLUDE_TRADER_PRICES,
+  DEFAULT_REMEMBER_REQUIRED_MODULES,
   DEFAULT_REMEMBER_TACTICAL_DEVICE_SELECTION,
   DEFAULT_STRICT_TRADER_LEVELS,
   loadBuildGoalModePreference,
@@ -14,6 +15,8 @@ import {
   loadLastSelectedFlashlightId,
   loadLastSelectedTblId,
   loadPriceModePreference,
+  loadRememberRequiredModulesPreference,
+  loadRememberedRequiredModuleIds,
   loadRememberTacticalDeviceSelectionPreference,
   loadStrictTraderLevelsPreference,
   loadTargetTypePreference,
@@ -25,6 +28,8 @@ import {
   saveLastSelectedFlashlightId,
   saveLastSelectedTblId,
   savePriceModePreference,
+  saveRememberRequiredModulesPreference,
+  saveRememberedRequiredModuleIds,
   saveRememberTacticalDeviceSelectionPreference,
   saveStrictTraderLevelsPreference,
   saveTargetTypePreference,
@@ -52,6 +57,7 @@ function createStorage() {
   return {
     getItem: key => values.get(key) ?? null,
     setItem: (key, value) => values.set(key, value),
+    removeItem: key => values.delete(key),
   };
 }
 
@@ -191,6 +197,66 @@ test('remember tactical device selection is disabled by default and persists a b
 
     storage.setItem('tarkovGunHelper.rememberTacticalDeviceSelection', 'invalid');
     assert.equal(loadRememberTacticalDeviceSelectionPreference(), false);
+  });
+});
+
+test('remember required modules is disabled by default and persists a boolean choice', () => {
+  const storage = createStorage();
+
+  withWindow(storage, () => {
+    assert.equal(DEFAULT_REMEMBER_REQUIRED_MODULES, false);
+    assert.equal(loadRememberRequiredModulesPreference(), false);
+
+    saveRememberRequiredModulesPreference(true);
+    assert.equal(loadRememberRequiredModulesPreference(), true);
+
+    saveRememberRequiredModulesPreference(false);
+    assert.equal(loadRememberRequiredModulesPreference(), false);
+  });
+});
+
+test('remembered required modules are kept per weapon', () => {
+  const storage = createStorage();
+
+  withWindow(storage, () => {
+    assert.deepEqual(loadRememberedRequiredModuleIds('weapon-a'), []);
+
+    saveRememberedRequiredModuleIds('weapon-a', ['grip', 'stock', 'grip', null]);
+    saveRememberedRequiredModuleIds('weapon-b', ['muzzle']);
+    assert.deepEqual(loadRememberedRequiredModuleIds('weapon-a'), ['grip', 'stock']);
+    assert.deepEqual(loadRememberedRequiredModuleIds('weapon-b'), ['muzzle']);
+
+    saveRememberedRequiredModuleIds('weapon-a', []);
+    assert.deepEqual(loadRememberedRequiredModuleIds('weapon-a'), []);
+    assert.deepEqual(loadRememberedRequiredModuleIds('weapon-b'), ['muzzle']);
+  });
+});
+
+test('turning off remember required modules forgets the remembered lists', () => {
+  const storage = createStorage();
+
+  withWindow(storage, () => {
+    saveRememberRequiredModulesPreference(true);
+    saveRememberedRequiredModuleIds('weapon-a', ['grip']);
+
+    saveRememberRequiredModulesPreference(false);
+    saveRememberRequiredModulesPreference(true);
+    assert.deepEqual(loadRememberedRequiredModuleIds('weapon-a'), []);
+  });
+});
+
+test('remembered required modules ignore malformed storage', () => {
+  const storage = createStorage();
+
+  withWindow(storage, () => {
+    storage.setItem('tarkovGunHelper.rememberedRequiredModules', '{broken');
+    assert.deepEqual(loadRememberedRequiredModuleIds('weapon-a'), []);
+
+    storage.setItem('tarkovGunHelper.rememberedRequiredModules', JSON.stringify({ 'weapon-a': 'grip' }));
+    assert.deepEqual(loadRememberedRequiredModuleIds('weapon-a'), []);
+
+    saveRememberedRequiredModuleIds('weapon-a', ['grip']);
+    assert.deepEqual(loadRememberedRequiredModuleIds('weapon-a'), ['grip']);
   });
 });
 
