@@ -1,3 +1,42 @@
+/* Self-hosted Material Symbols Outlined subset (FILL 0, wght 200, GRAD -25,
+   opsz 24); refresh with `npm run icons` after changing the icon list. */
+@font-face {
+  font-family: "Material Symbols Outlined";
+  font-style: normal;
+  font-weight: 200;
+  font-display: block;
+  src: url("./assets/fonts/material-symbols-outlined.woff2") format("woff2");
+}
+
+.material-symbol {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 1em;
+  height: 1em;
+  overflow: hidden;
+  font-size: 24px;
+  line-height: 1;
+  user-select: none;
+}
+
+/* Ligature-critical text styles live on the pseudo-element, which rules such
+   as ".panel span { text-transform: uppercase }" never reach. */
+.material-symbol::before {
+  content: attr(data-icon);
+  display: block;
+  font-family: "Material Symbols Outlined";
+  font-style: normal;
+  font-weight: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+}
+
 /* Стили для фонового экрана загрузки */
 #loader-wrapper {
   position: fixed;
@@ -357,14 +396,8 @@ body {
 
 .pwa-update__icon {
   color: var(--color-accent-gold);
-  flex: 0 0 auto;
-  height: 24px;
   margin-top: 0.1rem;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 2;
-  width: 24px;
+  font-size: 24px;
 }
 
 .pwa-update__content {
@@ -553,7 +586,9 @@ a {
 }
 
 .price-mode-switch__button[aria-pressed="true"] .price-mode-switch__indicator {
-  display: inline;
+  display: inline-block;
+  font-size: 16px;
+  vertical-align: -3px;
 }
 
 .brand__mark {
@@ -800,9 +835,8 @@ a {
   cursor: help;
 }
 
-.info-tooltip__trigger svg {
-  width: 16px;
-  height: 16px;
+.info-tooltip__trigger .material-symbol {
+  font-size: 20px;
 }
 
 .info-tooltip[data-pinned] .info-tooltip__trigger {
@@ -1443,17 +1477,13 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
 }
 
 .tactical-device-picker__chevron {
-  width: 7px;
-  height: 7px;
   justify-self: center;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: translateY(-2px) rotate(45deg);
+  font-size: 20px;
   transition: transform 0.15s ease;
 }
 
 .tactical-device-picker.is-open .tactical-device-picker__chevron {
-  transform: translateY(2px) rotate(225deg);
+  transform: rotate(180deg);
 }
 
 .tactical-device-picker__panel {
@@ -1526,16 +1556,12 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
 }
 
 .tactical-device-picker__filter-chevron {
-  width: 7px;
-  height: 7px;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: translateY(-2px) rotate(45deg);
+  font-size: 18px;
   transition: transform 0.15s ease;
 }
 
 .tactical-device-picker__filter--toggle.is-expanded .tactical-device-picker__filter-chevron {
-  transform: translateY(2px) rotate(225deg);
+  transform: rotate(180deg);
 }
 
 .tactical-device-picker__option,
@@ -1580,7 +1606,7 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   top: 50%;
   right: 10px;
   color: var(--color-gold);
-  font-weight: 700;
+  font-size: 20px;
   transform: translateY(-50%);
 }
 
@@ -1895,12 +1921,17 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
 }
 
 .weapon-diagram-modal__close {
+  display: inline-grid;
   width: 38px;
   height: 38px;
+  place-items: center;
   padding: 0;
   color: var(--text);
-  font-size: 1.45rem;
-  line-height: 1;
+}
+
+.weapon-diagram-modal__close .material-symbol {
+  color: var(--text);
+  font-size: 24px;
 }
 
 .weapon-diagram {
@@ -1938,14 +1969,12 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   gap: 6px;
 }
 
-.weapon-diagram__text-control svg {
-  width: 14px;
-  height: 14px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.8;
+.weapon-diagram__text-control .material-symbol {
+  font-size: 18px;
+}
+
+.weapon-diagram__toolbar .btn .material-symbol {
+  vertical-align: middle;
 }
 
 .weapon-diagram__toolbar > span {
@@ -2210,10 +2239,15 @@ button.weapon-diagram-node:focus-visible,
 }
 
 .weapon-slot-panel__head .btn {
+  display: inline-grid;
   width: 34px;
   height: 34px;
+  place-items: center;
   padding: 0;
-  font-size: 1.25rem;
+}
+
+.weapon-slot-panel__head .btn .material-symbol {
+  font-size: 22px;
 }
 
 .weapon-slot-panel__body {
@@ -2529,9 +2563,7 @@ button.weapon-diagram-node:focus-visible,
 }
 
 .tarkov-dev-link__icon {
-  width: 0.85rem;
-  height: 0.85rem;
-  flex: 0 0 auto;
+  font-size: 1rem;
 }
 
 .weapon__image {
@@ -2695,9 +2727,8 @@ button.weapon-diagram-node:focus-visible,
   color: var(--inline-message-accent);
 }
 
-.inline-message__icon svg {
-  width: 20px;
-  height: 20px;
+.inline-message__icon .material-symbol {
+  font-size: 22px;
 }
 
 .inline-message__content {
@@ -2907,9 +2938,7 @@ button.weapon-diagram-node:focus-visible,
 }
 
 .critical-module-badge__icon {
-  width: 11px;
-  height: 11px;
-  flex: 0 0 auto;
+  font-size: 13px;
 }
 
 .part-card__media--warning {
@@ -2919,8 +2948,7 @@ button.weapon-diagram-node:focus-visible,
 }
 
 .part-card__warning-icon {
-  width: 30px;
-  height: 30px;
+  font-size: 30px;
 }
 
 .part-card h4.part-card__empty-warning {
@@ -3119,9 +3147,8 @@ button.weapon-diagram-node:focus-visible,
   gap: 8px;
 }
 
-.home-filter-trigger svg {
-  width: 16px;
-  height: 16px;
+.home-filter-trigger .material-symbol {
+  font-size: 18px;
 }
 
 .home-filter-trigger__badge {
@@ -3426,9 +3453,7 @@ button.weapon-diagram-node:focus-visible,
 }
 
 .settings-trigger__icon {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 auto;
+  font-size: 18px;
 }
 
 .settings-dropdown {
@@ -3818,16 +3843,8 @@ button.weapon-diagram-node:focus-visible,
   color: var(--color-gold);
 }
 
-.build-card__compare span {
-  position: relative;
-  display: grid;
-  flex: 0 0 14px;
-  width: 14px;
-  height: 14px;
-  place-items: center;
-  border: 1px solid currentColor;
-  border-radius: 50%;
-  line-height: 1;
+.build-card__compare .material-symbol {
+  font-size: 18px;
 }
 
 .builds-hero__tools {
@@ -4295,9 +4312,10 @@ button.weapon-diagram-node:focus-visible,
   border-radius: 50%;
   background: rgba(205, 57, 68, .14);
   color: #ef6b75;
-  font-family: var(--font-display);
-  font-size: 1.5rem;
-  font-weight: 800;
+}
+
+.delete-confirm__icon .material-symbol {
+  font-size: 28px;
 }
 
 .delete-confirm__content {
@@ -4680,7 +4698,8 @@ button.weapon-diagram-node:focus-visible,
 .module-comparison-table__item strong { white-space: nowrap; }
 .module-comparison-table td.is-best { border-left: 3px solid var(--color-green); background: color-mix(in srgb, var(--color-green) 14%, var(--surface)); color: var(--color-green); }
 .module-comparison-table td.is-worst { border-left: 3px solid var(--color-accent-red); background: color-mix(in srgb, var(--color-accent-red) 12%, var(--surface)); color: var(--color-accent-red); }
-.comparison-value-marker { margin-right: 4px; font-weight: 900; }
+.comparison-value-marker { margin-right: 2px; font-size: 16px; vertical-align: -3px; }
+.module-comparison-table__sort-icon { font-size: 16px; vertical-align: -3px; }
 
 @media (max-width: 760px) {
   .module-comparison-page { width: min(100% - 20px, 1240px); padding-top: 22px; }

@@ -1,4 +1,5 @@
 import { createElement } from 'react';
+import { MaterialSymbol } from './MaterialSymbol.js';
 
 const TARKOV_DEV_ITEM_ORIGINS = new Set([
   'https://tarkov.dev',
@@ -51,22 +52,7 @@ export function getTarkovDevItemUrl(weapon) {
 }
 
 function ExternalLinkIcon() {
-  return createElement(
-    'svg',
-    {
-      className: 'tarkov-dev-link__icon',
-      viewBox: '0 0 24 24',
-      fill: 'none',
-      stroke: 'currentColor',
-      strokeLinecap: 'round',
-      strokeLinejoin: 'round',
-      strokeWidth: '1.8',
-      'aria-hidden': 'true',
-    },
-    createElement('path', { d: 'M14 5h5v5' }),
-    createElement('path', { d: 'm10 14 9-9' }),
-    createElement('path', { d: 'M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5' }),
-  );
+  return createElement(MaterialSymbol, { name: 'open_in_new', className: 'tarkov-dev-link__icon' });
 }
 
 export function TarkovDevItemLink({

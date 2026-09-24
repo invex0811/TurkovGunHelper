@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import AsyncImage from '../../ui/AsyncImage.jsx';
 import { formatMetric, getMetricExtremes, metricValue } from './comparison.js';
+import { MaterialSymbol } from '../../ui/MaterialSymbol.js';
 
 function SelectAllCheckbox({ checked, indeterminate, onChange, label }) {
   const ref = useRef(null);
@@ -17,18 +18,18 @@ export default function ModuleComparisonTable({
   const someSelected = selectedRowCount > 0 && !allSelected;
   const extremesByMetric = useMemo(() => new Map(metrics.map(metric => [metric.key, getMetricExtremes(rows.map(row => row.item), metric)])), [metrics, rows]);
   const toggleSort = key => onSort(key, key === sortKey ? (sortDirection === 'asc' ? 'desc' : 'asc') : undefined);
-  const sortLabel = key => sortKey !== key ? '↕' : sortDirection === 'asc' ? '↑' : '↓';
+  const sortIcon = key => <MaterialSymbol name={sortKey !== key ? 'unfold_more' : sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'} className="module-comparison-table__sort-icon" />;
 
   return <div className="module-comparison-table-wrap"><table className="module-comparison-table">
     <thead><tr>
       <th className="module-comparison-table__selection"><SelectAllCheckbox checked={allSelected} indeterminate={someSelected} label={t('moduleComparison.selectShown')} onChange={() => onToggleRows(rowIds, !allSelected)} /></th>
-      <th className="module-comparison-table__module" aria-sort={sortKey === 'name' ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}><button type="button" onClick={() => toggleSort('name')} aria-label={t('moduleComparison.sortBy', { column: t('moduleComparison.module') })}>{t('moduleComparison.module')} <span aria-hidden="true">{sortLabel('name')}</span></button></th>
-      {metrics.map(metric => <th key={metric.key} aria-sort={sortKey === metric.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}><button type="button" onClick={() => toggleSort(metric.key)} aria-label={t('moduleComparison.sortBy', { column: t(metric.labelKey) })}>{t(metric.labelKey)} <span aria-hidden="true">{sortLabel(metric.key)}</span></button></th>)}
+      <th className="module-comparison-table__module" aria-sort={sortKey === 'name' ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}><button type="button" onClick={() => toggleSort('name')} aria-label={t('moduleComparison.sortBy', { column: t('moduleComparison.module') })}>{t('moduleComparison.module')} {sortIcon('name')}</button></th>
+      {metrics.map(metric => <th key={metric.key} aria-sort={sortKey === metric.key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}><button type="button" onClick={() => toggleSort(metric.key)} aria-label={t('moduleComparison.sortBy', { column: t(metric.labelKey) })}>{t(metric.labelKey)} {sortIcon(metric.key)}</button></th>)}
     </tr></thead>
     <tbody>{rows.map(row => { const selected = selectedIds.has(row.item.id); return <tr key={row.item.id}>
       <td className="module-comparison-table__selection"><input type="checkbox" checked={selected} onChange={() => onToggle(row.item)} aria-label={t('moduleComparison.toggleItem', { name: row.item.shortName || row.item.name })} /></td>
       <th className="module-comparison-table__module" scope="row"><div className="module-comparison-table__item"><AsyncImage src={row.item.image512pxLink || row.item.iconLink} alt="" containerStyle={{ width: '52px', height: '52px', flex: '0 0 52px' }} style={{ maxHeight: '52px', maxWidth: '52px', objectFit: 'contain' }} /><span><strong>{row.item.shortName || row.item.name}</strong></span></div></th>
-      {metrics.map(metric => { const value = metricValue(row.item, metric); const extremes = extremesByMetric.get(metric.key); const state = value !== null && value === extremes.best ? ' is-best' : value !== null && value === extremes.worst ? ' is-worst' : ''; const announcement = state.includes('best') ? t('moduleComparison.best') : state.includes('worst') ? t('moduleComparison.worst') : ''; return <td key={metric.key} className={state} aria-label={announcement || undefined} title={announcement || undefined}>{state && <span className="comparison-value-marker" aria-hidden="true">{state.includes('best') ? '↑' : '↓'}</span>}{formatMetric(value, metric, locale)}</td>; })}
+      {metrics.map(metric => { const value = metricValue(row.item, metric); const extremes = extremesByMetric.get(metric.key); const state = value !== null && value === extremes.best ? ' is-best' : value !== null && value === extremes.worst ? ' is-worst' : ''; const announcement = state.includes('best') ? t('moduleComparison.best') : state.includes('worst') ? t('moduleComparison.worst') : ''; return <td key={metric.key} className={state} aria-label={announcement || undefined} title={announcement || undefined}>{state && <MaterialSymbol name={state.includes('best') ? 'arrow_upward' : 'arrow_downward'} className="comparison-value-marker" />}{formatMetric(value, metric, locale)}</td>; })}
     </tr>; })}</tbody>
   </table></div>;
 }

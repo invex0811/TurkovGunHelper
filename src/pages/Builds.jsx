@@ -12,6 +12,7 @@ import BuildImportModal from '../ui/BuildImportModal.jsx';
 import ModalDialog from '../ui/ModalDialog.jsx';
 import { useI18n } from '../i18n/useI18n.js';
 import { getBuildGameMode, getLocalizedBuildWeapon } from './buildsLocalizedWeapons.js';
+import { MaterialSymbol } from '../ui/MaterialSymbol.js';
 
 const METRICS = [
   { key: 'ergonomics', label: 'builds.metricErgonomics', direction: 'high' },
@@ -245,7 +246,7 @@ function Builds() {
                   aria-label={isSelected ? t('builds.removeComparison', { name: build.name }) : t('builds.addComparison', { name: build.name })}
                   onClick={event => toggleComparison(event, build.id)}
                 >
-                  <span aria-hidden="true">{isSelected ? '✓' : '+'}</span>
+                  <MaterialSymbol name={isSelected ? 'check' : 'add'} />
                   {isSelected ? t('builds.added') : t('builds.compare')}
                 </button>
 
@@ -380,7 +381,7 @@ function Builds() {
           onClose={() => setBuildPendingDeletion(null)}
           returnFocusRef={deleteTriggerRef}
         >
-            <div className="delete-confirm__icon" aria-hidden="true">!</div>
+            <div className="delete-confirm__icon" aria-hidden="true"><MaterialSymbol name="warning" /></div>
             <div className="delete-confirm__content">
               <span className="builds-hero__eyebrow">{t('builds.deleteSaved')}</span>
               <h2 id="deleteBuildTitle">{t('page.builds.deleteTitle', { name: buildPendingDeletion.name })}</h2>

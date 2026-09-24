@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../i18n/useI18n.js';
+import { MaterialSymbol } from './MaterialSymbol.js';
 
 import {
   getOrthogonalEdgePath,
@@ -65,7 +66,7 @@ function DiagramNode({ node, isSelected, onHighlight, onSelect, t }) {
             }}
           />
         ) : (
-          <span>{node.nodeType === 'slot' ? '+' : fallbackLabel}</span>
+          node.nodeType === 'slot' ? <MaterialSymbol name="add" /> : <span>{fallbackLabel}</span>
         )}
       </div>
       <div className="weapon-diagram-node__body">
@@ -116,21 +117,6 @@ function DiagramNode({ node, isSelected, onHighlight, onSelect, t }) {
   return (
     <article {...sharedProps}>{content}</article>
   );
-}
-
-function DiagramIcon({ type }) {
-  if (type === 'fit') {
-    return <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />;
-  }
-  if (type === 'center') {
-    return (
-      <>
-        <circle cx="12" cy="12" r="3" />
-        <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
-      </>
-    );
-  }
-  return null;
 }
 
 export default function WeaponBuildDiagram({ layout, selectedSlotId, stats, onSelectNode }) {
@@ -247,14 +233,14 @@ export default function WeaponBuildDiagram({ layout, selectedSlotId, stats, onSe
   return (
     <div className="weapon-diagram">
       <div className="weapon-diagram__toolbar" aria-label={t('ui.diagram.controls')}>
-        <button className="btn btn--ghost" type="button" onClick={() => zoomAtCenter(1.15)} aria-label={t('ui.diagram.zoomIn')}>+</button>
-        <button className="btn btn--ghost" type="button" onClick={() => zoomAtCenter(0.85)} aria-label={t('ui.diagram.zoomOut')}>−</button>
+        <button className="btn btn--ghost" type="button" onClick={() => zoomAtCenter(1.15)} aria-label={t('ui.diagram.zoomIn')}><MaterialSymbol name="zoom_in" /></button>
+        <button className="btn btn--ghost" type="button" onClick={() => zoomAtCenter(0.85)} aria-label={t('ui.diagram.zoomOut')}><MaterialSymbol name="zoom_out" /></button>
         <button className="btn btn--ghost weapon-diagram__text-control" type="button" onClick={fitToView}>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><DiagramIcon type="fit" /></svg>
+          <MaterialSymbol name="fit_screen" />
           {t('ui.diagram.fit')}
         </button>
         <button className="btn btn--ghost weapon-diagram__text-control" type="button" onClick={centerView}>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><DiagramIcon type="center" /></svg>
+          <MaterialSymbol name="filter_center_focus" />
           {t('ui.diagram.center')}
         </button>
         <span>{t('ui.diagram.panZoomHint', { scale: Math.round(view.scale * 100) })}</span>

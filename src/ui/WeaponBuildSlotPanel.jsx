@@ -3,6 +3,7 @@ import { useI18n } from '../i18n/useI18n.js';
 
 import { getPurchasePriceValue } from '../data/price/priceMapper.js';
 import { getSlotOptionComparison } from './weaponBuildSlotStats.js';
+import { MaterialSymbol } from './MaterialSymbol.js';
 
 function getItemName(item, t) {
   return item?.name || item?.shortName || t('ui.slot.unknownModule');
@@ -70,7 +71,7 @@ export default function WeaponBuildSlotPanel({
           <h3>{slotContext.slot.name}</h3>
           <p>{getItemName(parentItem, t)}</p>
         </div>
-        <button className="btn btn--ghost" type="button" onClick={onClose} aria-label={t('ui.slot.close')}>×</button>
+        <button className="btn btn--ghost" type="button" onClick={onClose} aria-label={t('ui.slot.close')}><MaterialSymbol name="close" /></button>
       </header>
 
       <div className="weapon-slot-panel__body">

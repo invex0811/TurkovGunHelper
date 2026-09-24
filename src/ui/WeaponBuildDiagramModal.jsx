@@ -17,6 +17,7 @@ import {
   buildWeaponDiagramGraph,
   layoutWeaponDiagramGraph,
 } from './weaponBuildDiagram.js';
+import { MaterialSymbol } from './MaterialSymbol.js';
 
 function getSlotPlanErrorMessage(error, t) {
   if (error === 'The selected slot no longer exists in the current build.') return t('ui.slot.errorSlotUnavailable');
@@ -259,7 +260,7 @@ export default function WeaponBuildDiagramModal({
             onClick={closeModal}
             aria-label={t('ui.diagram.close')}
           >
-            ×
+            <MaterialSymbol name="close" />
           </button>
         </header>
 

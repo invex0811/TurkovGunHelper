@@ -9,6 +9,7 @@
     "test": "node --test",
     "test:e2e": "playwright test",
     "lint": "eslint .",
+    "icons": "node scripts/update-material-symbols.mjs",
     "preview": "vite preview",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"

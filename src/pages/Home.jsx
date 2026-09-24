@@ -6,6 +6,7 @@ import { filterHomeWeapons, getHomeWeaponFilterOptions } from './homeWeaponFilte
 import HomeFilterModal from '../ui/HomeFilterModal.jsx';
 import { useI18n } from '../i18n/useI18n.js';
 import AsyncImage from '../ui/AsyncImage.jsx';
+import { MaterialSymbol } from '../ui/MaterialSymbol.js';
 import CatalogStatus from '../features/dataStatus/CatalogStatus.jsx';
 
 function Home() {
@@ -116,7 +117,7 @@ function Home() {
             aria-controls="homeFilterModal"
             onClick={() => setIsFilterModalOpen(true)}
           >
-            <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false"><path d="M3 5h18l-7.2 8.1v5.4l-3.6 1.8v-7.2L3 5Z" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>
+            <MaterialSymbol name="filter_alt" />
             <span>{t('home.filters')}</span>
             {activeFacetFilterCount > 0 && <span className="home-filter-trigger__badge" aria-label={t('home.activeFilters', { count: activeFacetFilterCount })}>{activeFacetFilterCount}</span>}
           </button>

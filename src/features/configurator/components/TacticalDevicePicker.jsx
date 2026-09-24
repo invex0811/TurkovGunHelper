@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { MaterialSymbol } from '../../../ui/MaterialSymbol.js';
 
 function getItemLabel(item) {
   return item?.name || item?.shortName || item?.id || '';
@@ -138,7 +139,7 @@ export default function TacticalDevicePicker({
         }}
       >
         <span className="tactical-device-picker__value">{displayedLabel}</span>
-        <span className="tactical-device-picker__chevron" aria-hidden="true" />
+        <MaterialSymbol name="expand_more" className="tactical-device-picker__chevron" />
       </button>
       {isOpen && panelPosition && createPortal(
         <section
@@ -189,7 +190,7 @@ export default function TacticalDevicePicker({
               >
                 <span>{option.label}</span>
                 {option.description && <small>{option.description}</small>}
-                {option.id === selectedItemId && <span className="tactical-device-picker__check" aria-hidden="true">✓</span>}
+                {option.id === selectedItemId && <MaterialSymbol name="check" className="tactical-device-picker__check" />}
               </button>
             ))}
             {options.length === 1 && (
