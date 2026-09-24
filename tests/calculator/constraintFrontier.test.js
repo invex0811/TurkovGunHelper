@@ -221,3 +221,53 @@ test('Minimum zero ergonomics agrees with the displayed and recalculated lower c
   assert.equal(result.constraintEvaluation.axes.ergonomics.actual, result.stats.ergonomics);
   assert.equal(result.constraintEvaluation.satisfied, true);
 });
+
+// Every root can hold the same adapters and silencers through nested muzzle
+// slots, so each adapter/silencer pair stays relevant to the later roots.
+// Before protected variants were capped, a required suppressor kept every
+// such combination and the search did not finish on real receiver trees.
+function sharedMuzzleTree(rootCount, mountsPerRoot, muzzleCount) {
+  const silencers = Array.from({ length: muzzleCount }, (_, index) => ({
+    ...silencer(`shared-silencer-${index}`),
+    ergonomicsModifier: -index,
+    avg24hPrice: 100 + index,
+  }));
+  const adapters = Array.from({ length: muzzleCount }, (_, index) => part(`shared-adapter-${index}`, {
+    recoilModifier: -index,
+    avg24hPrice: 100 + index,
+    properties: { slots: [slot('suppressor', silencers.map(item => item.id))] },
+  }));
+  const parts = [...silencers, ...adapters];
+  const slots = Array.from({ length: rootCount }, (_, root) => {
+    const mounts = Array.from({ length: mountsPerRoot }, (_, index) => part(`mount-${root}-${index}`, {
+      ergonomicsModifier: index,
+      avg24hPrice: 100 + index,
+      properties: { slots: [slot('muzzle', adapters.map(item => item.id))] },
+    }));
+    parts.push(...mounts);
+    return slot(`mount-root-${root}`, mounts.map(item => item.id), true);
+  });
+  return { base: weapon(slots), parts };
+}
+
+test('required suppressor frontier stays bounded when every variant is identity-unique', () => {
+  const { base, parts } = sharedMuzzleTree(4, 6, 8);
+  const routes = createConstraintSearchRoutes(base, mapParts(parts), targets, { requireSuppressor: true });
+  assert.ok(routes.length <= 48, `expected a bounded frontier, got ${routes.length}`);
+  assert.ok(routes.some(route => route.suppressorKind > 0));
+  assert.ok(routes.every(route => Object.keys(route.choices).length === 4));
+});
+
+test('an exhausted route expansion budget keeps the completed roots instead of stalling', () => {
+  const { base, parts } = sharedMuzzleTree(3, 3, 3);
+  const modMap = mapParts(parts);
+  const unlimited = createConstraintSearchRoutes(base, modMap, targets, { requireSuppressor: true });
+  assert.ok(unlimited.every(route => Object.keys(route.choices).length === 3));
+
+  const exhausted = createConstraintSearchRoutes(base, modMap, targets, { requireSuppressor: true }, undefined, 1);
+  assert.deepEqual(exhausted.map(route => route.choices), [{}]);
+
+  const result = calculate(base, parts, { requireSuppressor: true });
+  assert.equal(result.error, undefined);
+  assert.ok(result.build.some(entry => entry.item.categories.some(category => category.name === 'Silencer')));
+});

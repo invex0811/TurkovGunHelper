@@ -30,6 +30,15 @@ import {
 } from '../customPriorityAttributes.js';
 
 const CONSTRAINT_ROUTE_BEAM_WIDTH = 24;
+// Protected alternatives per hard-requirement state. Without this cap, a
+// required suppressor makes nearly every variant identity-unique (all muzzle
+// parts are still ahead), so nothing was pruned and the search never ended.
+const CONSTRAINT_PROTECTED_VARIANTS_PER_REQUIREMENT = 8;
+// Deterministic cap on nested capability expansions. When it runs out, the
+// routes built for the earlier required roots are kept and the ordinary
+// search completes the build, so a large catalog can never stall the worker.
+const CONSTRAINT_ROUTE_EXPANSION_BUDGET = 1_000_000;
+const ROUTE_EXPANSION_BUDGET_EXCEEDED = Symbol('route expansion budget exceeded');
 const CONSTRAINT_ROUTE_OPTIONS_PER_SLOT = 8;
 const CONSTRAINT_FALLBACK_SWEEP_STEPS = 10;
 
@@ -62,22 +71,43 @@ function getRouteEvaluation(weapon, route, targets) {
   );
 }
 
-function compareRoutes(left, right, weapon, targets) {
-  const distance = getRouteEvaluation(weapon, left, targets).totalViolation
-    - getRouteEvaluation(weapon, right, targets).totalViolation;
+function getRouteRankKey(weapon, route, targets) {
+  const baseErgonomics = weapon.properties?.ergonomics || 0;
+  const recoilScale = 1 + route.recoilModifier / 100;
+  return {
+    route,
+    violation: getRouteEvaluation(weapon, route, targets).totalViolation,
+    quality: getCustomScore({
+      ergonomics: Math.max(0, Math.min(100, baseErgonomics + route.ergonomics)),
+      verticalRecoil: (weapon.properties?.recoilVertical || 0) * recoilScale,
+      horizontalRecoil: (weapon.properties?.recoilHorizontal || 0) * recoilScale,
+    }),
+    tieKey: null,
+  };
+}
+
+function compareRouteRankKeys(left, right) {
+  const distance = left.violation - right.violation;
   if (distance !== 0) return distance;
-  const quality = getCustomScore({
-    ergonomics: Math.max(0, Math.min(100, (weapon.properties?.ergonomics || 0) + right.ergonomics)),
-    verticalRecoil: (weapon.properties?.recoilVertical || 0) * (1 + right.recoilModifier / 100),
-    horizontalRecoil: (weapon.properties?.recoilHorizontal || 0) * (1 + right.recoilModifier / 100),
-  }) - getCustomScore({
-    ergonomics: Math.max(0, Math.min(100, (weapon.properties?.ergonomics || 0) + left.ergonomics)),
-    verticalRecoil: (weapon.properties?.recoilVertical || 0) * (1 + left.recoilModifier / 100),
-    horizontalRecoil: (weapon.properties?.recoilHorizontal || 0) * (1 + left.recoilModifier / 100),
-  });
+  const quality = right.quality - left.quality;
   if (quality !== 0) return quality;
-  if (left.price !== right.price) return left.price - right.price;
-  return getRouteTieKey(left).localeCompare(getRouteTieKey(right));
+  if (left.route.price !== right.route.price) return left.route.price - right.route.price;
+  left.tieKey ??= getRouteTieKey(left.route);
+  right.tieKey ??= getRouteTieKey(right.route);
+  return left.tieKey.localeCompare(right.tieKey);
+}
+
+// Evaluates each route once instead of twice per comparison; the route
+// search sorts thousands of variants.
+function sortByRoute(entries, toRoute, weapon, targets) {
+  return entries
+    .map(entry => ({ entry, key: getRouteRankKey(weapon, toRoute(entry), targets) }))
+    .sort((left, right) => compareRouteRankKeys(left.key, right.key))
+    .map(({ entry }) => entry);
+}
+
+function getRankIndex(rankedEntries) {
+  return new Map(rankedEntries.map((entry, index) => [entry, index]));
 }
 
 function hasFillableRequiredSlots(item, modMap, visitedIds = new Set()) {
@@ -125,25 +155,14 @@ function getMinimumRequiredSlotPrice(slot, modMap, getItemPrice) {
 }
 
 function getConstraintRankedRouteOptions(entries, weapon, targets) {
-  return [...entries].sort((left, right) => {
-    const leftRoute = {
-      choices: { item: left.item.id },
-      nestedChoices: left.capabilities.nestedChoices,
-      ergonomics: left.capabilities.ergonomics,
-      recoilModifier: left.capabilities.recoilModifier,
-      weight: left.capabilities.weight,
-      price: left.capabilities.price,
-    };
-    const rightRoute = {
-      choices: { item: right.item.id },
-      nestedChoices: right.capabilities.nestedChoices,
-      ergonomics: right.capabilities.ergonomics,
-      recoilModifier: right.capabilities.recoilModifier,
-      weight: right.capabilities.weight,
-      price: right.capabilities.price,
-    };
-    return compareRoutes(leftRoute, rightRoute, weapon, targets);
-  });
+  return sortByRoute(entries, entry => ({
+    choices: { item: entry.item.id },
+    nestedChoices: entry.capabilities.nestedChoices,
+    ergonomics: entry.capabilities.ergonomics,
+    recoilModifier: entry.capabilities.recoilModifier,
+    weight: entry.capabilities.weight,
+    price: entry.capabilities.price,
+  }), weapon, targets);
 }
 
 function getCapabilitySignature(capabilities, future, options) {
@@ -160,6 +179,29 @@ function getCapabilitySignature(capabilities, future, options) {
     installedIds.sort().join('|'),
     conflictIds.sort().join('|'),
   ].join(';');
+}
+
+function getHardRequirementKey(capabilities, options, requiredIds = capabilities.requiredIds) {
+  return [
+    [...requiredIds].sort().join('|'),
+    options.requireSuppressor === true ? capabilities.suppressorKind : '',
+    capabilities.deviceMask,
+  ].join(';');
+}
+
+// Keeps the best few identity-distinct variants of every hard-requirement
+// state, so conflict-avoiding alternatives survive without an unbounded set.
+function limitProtectedVariants(variants, getKey, compare) {
+  const byRequirement = new Map();
+  variants.forEach(variant => {
+    const key = getKey(variant);
+    const group = byRequirement.get(key) || [];
+    group.push(variant);
+    byRequirement.set(key, group);
+  });
+  return [...byRequirement.values()].flatMap(group => (
+    group.sort(compare).slice(0, CONSTRAINT_PROTECTED_VARIANTS_PER_REQUIREMENT)
+  ));
 }
 
 function combineDependencies(...dependencies) {
@@ -215,10 +257,7 @@ function dedupeCapabilityVariants(variants, future, options, tools, route) {
     recoilModifier: route.recoilModifier + variant.recoilModifier,
     weight: route.weight + variant.weight,
   });
-  const compare = (left, right) => compareRoutes(
-    asRoute(left), asRoute(right), tools.weapon, tools.targets,
-  );
-  const ranked = variants.sort(compare);
+  const ranked = sortByRoute(variants, asRoute, tools.weapon, tools.targets);
   if (!hasHardRouteConstraints(options)) return ranked.slice(0, CONSTRAINT_ROUTE_BEAM_WIDTH);
 
   const bySignature = new Map();
@@ -229,7 +268,12 @@ function dedupeCapabilityVariants(variants, future, options, tools, route) {
       bySignature.set(signature, variant);
     }
   });
-  const protectedVariants = new Set(bySignature.values());
+  const rankIndex = getRankIndex(ranked);
+  const protectedVariants = new Set(limitProtectedVariants(
+    [...bySignature.values()],
+    variant => getHardRequirementKey(variant, options),
+    (left, right) => left.price - right.price || rankIndex.get(left) - rankIndex.get(right),
+  ));
   return [
     ...protectedVariants,
     ...ranked.filter(variant => !protectedVariants.has(variant))
@@ -254,6 +298,7 @@ function combineCapabilities(left, right, nestedSuppressor = false) {
 }
 
 function getRouteCapabilityVariants(item, modMap, options, tools, route, branchPath, future, visitedIds = new Set()) {
+  tools.spendExpansion();
   if (!item || visitedIds.has(item.id) || route.installedIds.has(item.id) || route.conflictIds.has(item.id)) return [];
   if ((item.conflictingItems || []).some(conflict => route.installedIds.has(conflict.id))) return [];
   if (options.forbidSuppressor === true && tools.isSuppressor(item)) return [];
@@ -281,7 +326,7 @@ function getRouteCapabilityVariants(item, modMap, options, tools, route, branchP
   const slots = item.properties?.slots || [];
   for (const [slotIndex, slot] of slots.entries()) {
     const slotPath = getNestedSlotRouteKey(branchPath, item, slot, slots);
-    const remaining = combineDependencies(future, tools.getFutureDependencies(slots.slice(slotIndex + 1)));
+    const remaining = tools.getRemainingDependencies(future, item, slots, slotIndex);
     const nextVariants = [];
     for (const variant of variants) {
       const activeRoute = {
@@ -358,11 +403,11 @@ function getRouteHardKey(route, options, future) {
   return getCapabilitySignature({ ...route, requiredIds: route.requiredCoverage }, future, options);
 }
 
-function compareHardRoutes(left, right, remainingRequiredRootsPrice, weapon, targets) {
+function compareHardRoutes(left, right, remainingRequiredRootsPrice, rankIndex) {
   const leftPrice = left.price + remainingRequiredRootsPrice;
   const rightPrice = right.price + remainingRequiredRootsPrice;
   if (leftPrice !== rightPrice) return leftPrice - rightPrice;
-  return compareRoutes(left, right, weapon, targets);
+  return rankIndex.get(left) - rankIndex.get(right);
 }
 
 function pruneConstraintRoutes(
@@ -375,31 +420,35 @@ function pruneConstraintRoutes(
   future,
 ) {
   const maxPrice = Number(options.maxPrice) || 0;
-  const rankedRoutes = routes.filter(route => !(maxPrice > 0) || (
+  const rankedRoutes = sortByRoute(routes.filter(route => !(maxPrice > 0) || (
     Number.isFinite(basePrice + route.price + remainingRequiredRootsPrice)
     && basePrice + route.price + remainingRequiredRootsPrice <= maxPrice
-  )).sort((left, right) => (
-    compareRoutes(left, right, weapon, targets)
-  ));
+  )), route => route, weapon, targets);
   if (!hasHardRouteConstraints(options)) return rankedRoutes.slice(0, CONSTRAINT_ROUTE_BEAM_WIDTH);
 
+  const rankIndex = getRankIndex(rankedRoutes);
+  const compareProtected = (left, right) => (
+    compareHardRoutes(left, right, remainingRequiredRootsPrice, rankIndex)
+  );
   const hardFrontier = new Map();
   rankedRoutes.forEach(route => {
     const hardKey = getRouteHardKey(route, options, future);
     const current = hardFrontier.get(hardKey);
-    if (!current || compareHardRoutes(route, current, remainingRequiredRootsPrice, weapon, targets) < 0) {
+    if (!current || compareProtected(route, current) < 0) {
       hardFrontier.set(hardKey, route);
     }
   });
 
-  const protectedRoutes = [...hardFrontier.values()].sort((left, right) => (
-    compareHardRoutes(left, right, remainingRequiredRootsPrice, weapon, targets)
-  ));
+  const protectedRoutes = limitProtectedVariants(
+    [...hardFrontier.values()],
+    route => getHardRequirementKey(route, options, route.requiredCoverage),
+    compareProtected,
+  ).sort(compareProtected);
   const getRouteStateKey = route => getRouteTieKey(route);
   const protectedRouteKeys = new Set(protectedRoutes.map(getRouteStateKey));
   const remainingRoutes = rankedRoutes.filter(route => !protectedRouteKeys.has(getRouteStateKey(route)));
 
-  // The hard frontier remains intact even when it exceeds the normal beam width.
+  // The capped hard frontier stays intact even when it exceeds the normal beam width.
   return [
     ...protectedRoutes,
     ...remainingRoutes.slice(0, Math.max(0, CONSTRAINT_ROUTE_BEAM_WIDTH - protectedRoutes.length)),
@@ -412,6 +461,7 @@ export function createConstraintSearchRoutes(
   targets,
   options = {},
   calculationCache = createCalculationCache(),
+  expansionBudget = CONSTRAINT_ROUTE_EXPANSION_BUDGET,
 ) {
   let routes = [{
     choices: {},
@@ -446,14 +496,43 @@ export function createConstraintSearchRoutes(
     if (mode === 'scope') return hasCategory(item, 'Scope') || hasCategory(item, 'Assault scope');
     return isNaN(Number(mode)) || scopeSupportsZoom(item, Number(mode));
   };
-  const slotProvidesRequirement = slot => [...getFutureDependencies([slot]).installedIds].some(itemId => (
-    requiredItemIds.has(itemId)
-    || (options.requireSuppressor === true && isSuppressor(modMap[itemId]))
-    || getRequiredDeviceMask(modMap[itemId]) > 0
-  ));
+  // Both helpers depend only on the catalog and slot position, but the route
+  // search asks for them once per variant, so they are cached.
+  const providesRequirementBySlot = new WeakMap();
+  const slotProvidesRequirement = slot => {
+    if (providesRequirementBySlot.has(slot)) return providesRequirementBySlot.get(slot);
+    const provides = [...getFutureDependencies([slot]).installedIds].some(itemId => (
+      requiredItemIds.has(itemId)
+      || (options.requireSuppressor === true && isSuppressor(modMap[itemId]))
+      || getRequiredDeviceMask(modMap[itemId]) > 0
+    ));
+    providesRequirementBySlot.set(slot, provides);
+    return provides;
+  };
+  const remainingByFuture = new WeakMap();
+  const getRemainingDependencies = (future, item, slots, slotIndex) => {
+    let byPosition = remainingByFuture.get(future);
+    if (!byPosition) {
+      byPosition = new Map();
+      remainingByFuture.set(future, byPosition);
+    }
+    const positionKey = `${item.id}#${slotIndex}`;
+    if (!byPosition.has(positionKey)) {
+      byPosition.set(positionKey, combineDependencies(
+        future,
+        getFutureDependencies(slots.slice(slotIndex + 1)),
+      ));
+    }
+    return byPosition.get(positionKey);
+  };
+  let remainingExpansions = expansionBudget;
+  const spendExpansion = () => {
+    remainingExpansions -= 1;
+    if (remainingExpansions < 0) throw ROUTE_EXPANSION_BUDGET_EXCEEDED;
+  };
   const tools = {
-    getItemPrice, isSuppressor, getFutureDependencies, getRequiredDeviceMask, slotProvidesRequirement, isAllowedSight,
-    weapon, targets,
+    getItemPrice, isSuppressor, getRemainingDependencies, getRequiredDeviceMask, slotProvidesRequirement, isAllowedSight,
+    spendExpansion, weapon, targets,
   };
 
   for (const [slotIndex, slot] of slots.entries()) {
@@ -465,7 +544,7 @@ export function createConstraintSearchRoutes(
     const future = getFutureDependencies(slots.filter((otherSlot, otherIndex) => (
       otherIndex > slotIndex || otherSlot.required !== true
     )));
-    routes = routes.flatMap(route => {
+    const expandRoute = route => {
       const allowed = selectConstraintRouteOptions(
         slot,
         slots,
@@ -495,7 +574,14 @@ export function createConstraintSearchRoutes(
           conflictIds: combinedRouteState.conflictIds,
         };
       });
-    });
+    };
+    try {
+      routes = routes.flatMap(expandRoute);
+    } catch (error) {
+      if (error !== ROUTE_EXPANSION_BUDGET_EXCEEDED) throw error;
+      // Routes for the earlier required roots stay; the ordinary search fills the rest.
+      break;
+    }
     const remainingRequiredRootsPrice = getRemainingRequiredRootsPrice(
       slots,
       slots.indexOf(slot),
