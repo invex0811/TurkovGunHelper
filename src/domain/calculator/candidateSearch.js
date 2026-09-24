@@ -803,7 +803,10 @@ export function _calculateWeighted(
         && (rootItem.ergonomicsModifier || 0) > 0
         && (rootItem.recoilModifier || 0) >= 0
         && !hasCategory(rootItem, 'Magazine');
+      // A weapon needs its magazine even when the slot is optional and the
+      // magazine costs weight or ergonomics; its capacity is chosen explicitly.
       const isUnrequiredNonImprovement = slot.required !== true
+        && !hasCategory(rootItem, 'Magazine')
         && (constraintGuidance
           ? (bestCandidate.branchEval.violationImprovement < 0
             || (bestCandidate.branchEval.violationImprovement === 0 && bestCandidate.score <= 0))

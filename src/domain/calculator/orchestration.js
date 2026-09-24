@@ -816,12 +816,18 @@ export function calculateBestBuild(
     baselineResult = calculateRoute();
     candidates.push(baselineResult);
   }
-  // Only hard-valid builds compete; soft violations only rank them.
+  // Only hard-valid builds compete; soft violations only rank them. A build
+  // without a magazine is not hard-valid while another candidate fits one:
+  // the lighter magazine-less build would otherwise always rank closer.
+  const { hasCategory } = createCompatibilityTools(calculationCache);
+  const hasMagazine = result => (result.build || []).some(part => hasCategory(part.item, 'Magazine'));
   const selectCandidate = results => {
     let selectedCandidate = null;
     const successfulBuildKeys = new Set();
+    const magazineReachable = results.some(result => !result.error && hasMagazine(result));
     results.forEach(result => {
       if (result.error) return;
+      if (magazineReachable && !hasMagazine(result)) return;
       const tieKey = getBuildTieKey(result);
       if (successfulBuildKeys.has(tieKey)) return;
       successfulBuildKeys.add(tieKey);
