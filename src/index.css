@@ -378,7 +378,6 @@ body {
   gap: 0.875rem;
   max-width: calc(100vw - 2rem);
   min-width: min(360px, calc(100vw - 2rem));
-  overflow: hidden;
   padding: 1.125rem;
   position: fixed;
   right: 1.25rem;
@@ -386,18 +385,11 @@ body {
   z-index: 1000;
 }
 
-.pwa-update::before {
-  background: var(--color-accent-gold);
-  content: '';
-  height: 3px;
-  inset: 0 0 auto;
-  position: absolute;
-}
-
+/* Centered on the 21px title line (14px × 1.5 line-height). */
 .pwa-update__icon {
   color: var(--color-accent-gold);
-  margin-top: 0.1rem;
-  font-size: 24px;
+  margin-top: -3.5px;
+  font-size: 28px;
 }
 
 .pwa-update__content {
