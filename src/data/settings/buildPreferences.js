@@ -11,6 +11,8 @@ const LAST_SELECTED_FLASHLIGHT_ID_STORAGE_KEY = 'tarkovGunHelper.lastSelectedFla
 const LAST_SELECTED_TBL_ID_STORAGE_KEY = 'tarkovGunHelper.lastSelectedTblId';
 const REMEMBER_TACTICAL_DEVICE_SELECTION_STORAGE_KEY = 'tarkovGunHelper.rememberTacticalDeviceSelection';
 const NO_TACTICAL_DEVICE_STORAGE_VALUE = '__none__';
+const REMEMBER_REQUIRED_MODULES_STORAGE_KEY = 'tarkovGunHelper.rememberRequiredModules';
+const REMEMBERED_REQUIRED_MODULES_STORAGE_KEY = 'tarkovGunHelper.rememberedRequiredModules';
 const BUILD_GOAL_MODE_STORAGE_KEY = 'tarkovGunHelper.buildGoalMode';
 const TARGET_TYPE_STORAGE_KEY = 'tarkovGunHelper.targetType';
 const SUPPORTED_TARGET_TYPES = ['meta', 'custom'];
@@ -19,6 +21,7 @@ export const DEFAULT_INCLUDE_TRADER_PRICES = true;
 export const DEFAULT_STRICT_TRADER_LEVELS = false;
 export const DEFAULT_INCLUDE_REF_OFFERS = true;
 export const DEFAULT_REMEMBER_TACTICAL_DEVICE_SELECTION = false;
+export const DEFAULT_REMEMBER_REQUIRED_MODULES = false;
 export const BUILD_GOAL_MODES = Object.freeze({
   META: 'meta',
   CONSTRAINTS: 'constraints',
@@ -272,4 +275,64 @@ export function loadLastSelectedTblId() {
 
 export function saveLastSelectedTblId(itemId) {
   saveTacticalDevicePreference(LAST_SELECTED_TBL_ID_STORAGE_KEY, itemId);
+}
+
+export function loadRememberRequiredModulesPreference() {
+  if (typeof window === 'undefined') return DEFAULT_REMEMBER_REQUIRED_MODULES;
+
+  try {
+    return window.localStorage.getItem(REMEMBER_REQUIRED_MODULES_STORAGE_KEY) === 'true';
+  } catch {
+    return DEFAULT_REMEMBER_REQUIRED_MODULES;
+  }
+}
+
+// Turning the preference off also forgets every remembered list, so turning
+// it back on starts from empty lists instead of reviving old ones.
+export function saveRememberRequiredModulesPreference(rememberModules) {
+  if (typeof window === 'undefined' || typeof rememberModules !== 'boolean') return;
+
+  try {
+    window.localStorage.setItem(REMEMBER_REQUIRED_MODULES_STORAGE_KEY, String(rememberModules));
+    if (!rememberModules) window.localStorage.removeItem(REMEMBERED_REQUIRED_MODULES_STORAGE_KEY);
+  } catch {
+    // Storage is optional.
+  }
+}
+
+function loadRememberedRequiredModulesByWeapon() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(REMEMBERED_REQUIRED_MODULES_STORAGE_KEY));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+// Required modules are remembered per weapon, since a module picked for one
+// weapon usually does not fit another.
+export function loadRememberedRequiredModuleIds(weaponId) {
+  if (typeof window === 'undefined' || !weaponId) return [];
+
+  const itemIds = loadRememberedRequiredModulesByWeapon()[weaponId];
+  return Array.isArray(itemIds)
+    ? [...new Set(itemIds.filter(itemId => typeof itemId === 'string' && itemId))]
+    : [];
+}
+
+export function saveRememberedRequiredModuleIds(weaponId, itemIds) {
+  if (typeof window === 'undefined' || !weaponId || !Array.isArray(itemIds)) return;
+
+  try {
+    const byWeapon = loadRememberedRequiredModulesByWeapon();
+    const nextItemIds = [...new Set(itemIds.filter(itemId => typeof itemId === 'string' && itemId))];
+    if (nextItemIds.length > 0) {
+      byWeapon[weaponId] = nextItemIds;
+    } else {
+      delete byWeapon[weaponId];
+    }
+    window.localStorage.setItem(REMEMBERED_REQUIRED_MODULES_STORAGE_KEY, JSON.stringify(byWeapon));
+  } catch {
+    // Storage is optional.
+  }
 }

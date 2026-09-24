@@ -19,10 +19,13 @@ import {
   loadIncludeTraderPricesPreference,
   loadLastSelectedFlashlightId,
   loadLastSelectedTblId,
+  loadRememberRequiredModulesPreference,
+  loadRememberedRequiredModuleIds,
   loadRememberTacticalDeviceSelectionPreference,
   saveIncludeTraderPricesPreference,
   saveLastSelectedFlashlightId,
   saveLastSelectedTblId,
+  saveRememberedRequiredModuleIds,
   saveBuildGoalModePreference,
 } from '../../data/settings/buildPreferences.js';
 import { useI18n } from '../../i18n/useI18n.js';
@@ -1091,6 +1094,10 @@ function Configurator() {
   const [partsFilter, setPartsFilter] = useState('');
   const [requiredModuleSearch, setRequiredModuleSearch] = useState('');
   const [requiredModuleIds, setRequiredModuleIds] = useState([]);
+  const [rememberRequiredModules] = useState(loadRememberRequiredModulesPreference);
+  // The weapon whose remembered list tracks requiredModuleIds; null while a
+  // saved build is open, so its modules never overwrite the remembered list.
+  const [rememberedModulesWeaponId, setRememberedModulesWeaponId] = useState(null);
   const requiredItemIds = useMemo(() => getUniqueItemIds([
     ...requiredModuleIds,
     ...(includeFlashlight && flashlightItemId ? [flashlightItemId] : []),
@@ -1171,6 +1178,11 @@ function Configurator() {
   useEffect(() => {
     saveBuildGoalModePreference(buildGoalMode);
   }, [buildGoalMode]);
+
+  useEffect(() => {
+    if (!rememberRequiredModules || !rememberedModulesWeaponId) return;
+    saveRememberedRequiredModuleIds(rememberedModulesWeaponId, requiredModuleIds);
+  }, [rememberRequiredModules, rememberedModulesWeaponId, requiredModuleIds]);
 
   useConfiguratorCatalog({
     weaponId,
@@ -1320,12 +1332,22 @@ function Configurator() {
             ? restoredScopeSelection.itemId
             : null,
         ]));
+        setRememberedModulesWeaponId(null);
         setActiveSavedBuildId(requestedSavedBuild.id);
         setSaveName(requestedSavedBuild.name);
       } else {
         setBuildResult(null);
         setOwnedItems([]);
-        setRequiredModuleIds([]);
+        const rememberedModuleItems = rememberRequiredModules
+          ? loadRememberedRequiredModuleIds(weaponData.id)
+            .map(itemId => modsData[itemId])
+            .filter(Boolean)
+          : [];
+        const getRememberedModuleId = moduleType => rememberedModuleItems
+          .find(item => getPrimaryManualModuleType(item) === moduleType)?.id ?? null;
+        const rememberedScopeItemId = getRememberedModuleId(PRIMARY_MANUAL_MODULE_TYPES.SCOPE);
+        const rememberedFlashlightItemId = getRememberedModuleId(PRIMARY_MANUAL_MODULE_TYPES.FLASHLIGHT);
+        const rememberedTblItemId = getRememberedModuleId(PRIMARY_MANUAL_MODULE_TYPES.TBL);
         const savedFlashlightItemId = rememberTacticalDeviceSelection
           ? loadLastSelectedFlashlightId()
           : undefined;
@@ -1340,19 +1362,29 @@ function Configurator() {
           && isTacticalDeviceReachable(weaponData, modsData, savedTblItemId)
           ? savedTblItemId
           : null;
-        setIncludeFlashlight(savedFlashlightItemId === null
+        // A module remembered for this weapon wins over the last device
+        // picked on any weapon.
+        const nextFlashlightItemId = rememberedFlashlightItemId ?? restoredFlashlightItemId;
+        const nextTblItemId = rememberedTblItemId ?? restoredTblItemId;
+        setIncludeFlashlight(Boolean(rememberedFlashlightItemId) || (savedFlashlightItemId === null
           ? false
-          : savedFlashlightItemId !== undefined);
-        setIncludeLaser(savedTblItemId === null ? false : savedTblItemId !== undefined);
-        setFlashlightItemId(restoredFlashlightItemId);
-        setTblItemId(restoredTblItemId);
+          : savedFlashlightItemId !== undefined));
+        setIncludeLaser(Boolean(rememberedTblItemId)
+          || (savedTblItemId === null ? false : savedTblItemId !== undefined));
+        setFlashlightItemId(nextFlashlightItemId);
+        setTblItemId(nextTblItemId);
         setRequiredModuleIds(getUniqueItemIds([
-          restoredFlashlightItemId,
-          restoredTblItemId,
+          ...rememberedModuleItems
+            .filter(item => getPrimaryManualModuleType(item) === null)
+            .map(item => item.id),
+          nextFlashlightItemId,
+          nextTblItemId,
+          rememberedScopeItemId,
         ]));
-        setScopeMode(SCOPE_MODES.NONE);
-        setScopeItemId(null);
+        setScopeMode(rememberedScopeItemId ? SCOPE_MODES.MANUAL : SCOPE_MODES.NONE);
+        setScopeItemId(rememberedScopeItemId);
         setScopeZoom(null);
+        setRememberedModulesWeaponId(weaponData.id);
         setActiveSavedBuildId(null);
         setSaveName(t('config.defaultBuildName', { weapon: weaponData.shortName || weaponData.name }));
       }
@@ -1375,6 +1407,7 @@ function Configurator() {
       }
       setWeapon(null);
       setAllMods(null);
+      setRememberedModulesWeaponId(null);
       setLoadError(t('config.error'));
       setBuildResult(null);
       setGenerationError(null);
