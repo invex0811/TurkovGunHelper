@@ -1074,7 +1074,7 @@ a {
   transform: translateY(-50%);
 }
 
-.config .custom-constraints__control input {
+.config .custom-constraints__control input[type="number"] {
   padding-inline-start: 28px;
   padding-inline-end: 38px;
   font-family: var(--font-mono);
