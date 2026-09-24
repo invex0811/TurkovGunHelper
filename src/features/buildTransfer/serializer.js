@@ -34,6 +34,7 @@ const EXPORTED_SETTING_KEYS = [
   'suppressorMode',
   'includeTraderPrices',
   'strictTraderLevels',
+  'includeRefOffers',
   'traderLevelsSnapshot',
   'maxWeight',
   'maxPrice',

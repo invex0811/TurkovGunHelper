@@ -19,7 +19,7 @@ import {
 import { evaluateCustomConstraints } from '../customConstraints.js';
 import { getNestedSlotRouteKey, getRootSlotRouteKey } from './constraints.js';
 import { createCompatibilityTools } from './compatibility.js';
-import { createPricingTools } from './pricing.js';
+import { createPricingTools, excludeRefOnlyItems } from './pricing.js';
 import { scopeSupportsZoom } from '../scopeZoom.js';
 import {
   normalizeCustomCharacteristicMode,
@@ -637,6 +637,7 @@ export function calculateBestBuild(
   prioritySelectionMode = 'ordered',
   priorityWeights = undefined,
 ) {
+  modMap = excludeRefOnlyItems(modMap, options);
   const calculationCache = createCalculationCache();
   const effectiveTargetType = targetType === 'custom'
     ? 'custom'

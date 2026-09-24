@@ -151,6 +151,23 @@ test('saved builds preserve strictTraderLevels and default legacy snapshots to f
   assert.equal(getSavedBuild('legacy-levels', oldStorage).settings.strictTraderLevels, false);
 });
 
+test('saved builds preserve includeRefOffers and default legacy snapshots to true', () => {
+  const storage = createStorage();
+  saveBuildSnapshot(createSnapshot({
+    settings: {
+      targetType: 'meta',
+      priceMode: 'pvp',
+      includeRefOffers: false,
+    },
+  }), storage, { id: 'no-ref' });
+
+  assert.equal(getSavedBuild('no-ref', storage).settings.includeRefOffers, false);
+
+  const oldStorage = createStorage();
+  saveBuildSnapshot(createSnapshot(), oldStorage, { id: 'legacy-ref' });
+  assert.equal(getSavedBuild('legacy-ref', oldStorage).settings.includeRefOffers, true);
+});
+
 test('saved builds keep their own price mode', () => {
   const storage = createStorage();
   saveBuildSnapshot(createSnapshot({

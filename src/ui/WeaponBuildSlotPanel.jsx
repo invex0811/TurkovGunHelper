@@ -14,11 +14,12 @@ function formatPrice(
   includeTraderPrices,
   traderLevels,
   strictTraderLevels,
+  includeRefOffers,
   t,
 ) {
   const price = getPurchasePriceValue(
     item,
-    { priceMode, includeTraderPrices, traderLevels, strictTraderLevels },
+    { priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers },
     Number.POSITIVE_INFINITY,
   );
   return Number.isFinite(price)
@@ -38,6 +39,7 @@ export default function WeaponBuildSlotPanel({
   includeTraderPrices,
   traderLevels,
   strictTraderLevels,
+  includeRefOffers,
   onChoose,
   onRemove,
   onConfirmPlan,
@@ -76,7 +78,7 @@ export default function WeaponBuildSlotPanel({
           <section className="weapon-slot-panel__current" aria-label={t('ui.slot.currentModule')}>
             <span>{t('ui.slot.installed')}</span>
             <strong>{getItemName(currentItem, t)}</strong>
-            <small>{formatPrice(currentItem, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, t)}</small>
+            <small>{formatPrice(currentItem, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers, t)}</small>
           </section>
         )}
 
@@ -121,6 +123,7 @@ export default function WeaponBuildSlotPanel({
               includeTraderPrices,
               traderLevels,
               strictTraderLevels,
+              includeRefOffers,
             });
             return (
               <button
@@ -152,7 +155,7 @@ export default function WeaponBuildSlotPanel({
                   </span>
                 </span>
                 <span className="weapon-slot-option__meta">
-                  <small>{formatPrice(item, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, t)}</small>
+                  <small>{formatPrice(item, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers, t)}</small>
                   <em className={`is-${comparison.priceTone}`}>{comparison.priceDiff === null ? t('ui.slot.differenceUnavailable') : comparison.priceDiffText}</em>
                   {isCurrent && <span className="weapon-slot-option__badge">{t('ui.slot.current')}</span>}
                 </span>
