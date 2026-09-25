@@ -56,6 +56,18 @@ export function calculateAccuracyMoa(weapon, buildParts = []) {
   return Math.round(accuracyMoa * 100) / 100;
 }
 
+// The weapon aims as far as its best installed sight allows (EFT shows the
+// largest sighting range among the weapon and its sights).
+export function calculateSightingRange(weapon, buildParts = []) {
+  const ranges = [
+    weapon?.properties?.sightingRange,
+    ...(Array.isArray(buildParts) ? buildParts : []).map(part => part?.item?.properties?.sightingRange),
+  ]
+    .map(toFiniteNumber)
+    .filter(range => range !== null && range > 0);
+  return ranges.length > 0 ? Math.max(...ranges) : null;
+}
+
 export function recalculateBuildStats(weapon, buildParts, options = {}) {
   let totalErgo = weapon.properties.ergonomics || 0;
   let totalRecoilMod = 0;
@@ -90,6 +102,7 @@ export function recalculateBuildStats(weapon, buildParts, options = {}) {
       weight: totalWeight.toFixed(2),
       price: Number.isFinite(totalPrice) ? Math.round(totalPrice) : null,
       accuracyMoa: calculateAccuracyMoa(weapon, buildParts),
+      sightingRange: calculateSightingRange(weapon, buildParts),
     }
   };
 }

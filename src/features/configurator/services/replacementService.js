@@ -1,6 +1,8 @@
 import { getPurchasePriceValue, isRefOnlyItem } from '../../../data/price/priceMapper.js';
 import { hasItemCategory } from '../../../domain/itemCategories.js';
-import { scopeSupportsZoom } from '../../../domain/scopeZoom.js';
+import { isValidSightForMode } from '../../../domain/sightModes.js';
+
+export { isValidSightForMode };
 
 const MISSING_PRICE_COMPARISON_VALUE = 1_000_000_000_000;
 
@@ -110,35 +112,6 @@ function getSimilarityDistance(
     + (Math.abs(referenceMetrics.recoil - candidateMetrics.recoil) * 4)
     + (Math.abs(referenceMetrics.weight - candidateMetrics.weight) * 2)
     + (Math.abs(referenceMetrics.price - candidateMetrics.price) * 0.0001);
-}
-
-export function isValidSightForMode(item, sightMode) {
-  if (hasItemCategory(item, 'Ironsight')) return false;
-  if (
-    hasItemCategory(item, 'Thermal Vision')
-    || hasItemCategory(item, 'Night Vision')
-    || hasItemCategory(item, 'Special scope')
-  ) {
-    return false;
-  }
-
-  const mode = sightMode || 'any';
-  if (mode === 'none') return false;
-  if (mode === 'any') return true;
-
-  const isReflex = hasItemCategory(item, 'Reflex sight')
-    || hasItemCategory(item, 'Compact reflex sight');
-  const isMagnified = hasItemCategory(item, 'Scope')
-    || hasItemCategory(item, 'Assault scope');
-
-  if (mode === 'reflex') return isReflex;
-  if (mode === 'scope') return isMagnified;
-
-  const parsedMode = Number(mode);
-  if (!Number.isNaN(parsedMode)) {
-    return scopeSupportsZoom(item, parsedMode);
-  }
-  return true;
 }
 
 export function scoreScope(item, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers) {

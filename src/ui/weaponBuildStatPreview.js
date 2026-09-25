@@ -1,10 +1,11 @@
 import { recalculateBuildStats } from '../domain/calculator.js';
 import { planBuildSlotChange } from '../domain/weaponBuildEditor.js';
-import { formatAccuracyMoa } from './weaponStatMeters.js';
+import { formatAccuracyMoa, formatSightingRange } from './weaponStatMeters.js';
 
 const STAT_KEYS = Object.freeze({
   ergonomics: 'ergonomics',
   accuracyMoa: 'accuracy-moa',
+  sightingRange: 'sighting-range',
   verticalRecoil: 'vertical-recoil',
   horizontalRecoil: 'horizontal-recoil',
   weight: 'weight',
@@ -66,6 +67,13 @@ export function getProjectedBuildMeters({
           ...meter,
           value: projectedStats.accuracyMoa,
           displayValue: formatAccuracyMoa(projectedStats.accuracyMoa, locale)
+            ?? meter.displayValue,
+        };
+      case STAT_KEYS.sightingRange:
+        return {
+          ...meter,
+          value: projectedStats.sightingRange,
+          displayValue: formatSightingRange(projectedStats.sightingRange, locale, meter.unit)
             ?? meter.displayValue,
         };
       case STAT_KEYS.verticalRecoil:

@@ -19,7 +19,7 @@ export default function BuildParts({
   return (
     <>
       {!generating && canShowBuildDetails && groups.map(group => (
-        <div key={`${group.displayRank}:${group.rootSlotName}`} className="parts-group">
+        <div key={group.key} className="parts-group">
           <div className="parts-group__head">
             <h3>{group.rootSlotName}</h3>
             <span>{t('config.parts', { count: group.parts.length })}</span>
@@ -79,6 +79,9 @@ export default function BuildParts({
                           <span className="part-card__slot-context">
                             {part.item.name || t('ownedItems.baseWeapon')}
                           </span>
+                        )}
+                        {!part.isWeapon && part.slotLabel && (
+                          <span className="part-card__slot-context">{part.slotLabel}</span>
                         )}
                       </div>
                       <div className="part-card__price-wrap">

@@ -670,7 +670,7 @@ export function _calculateWeighted(
     });
   }
 
-  function processSlots(slots) {
+  function processSlots(slots, onBranchApplied = null) {
     const sortedSlots = getSortedSlots(slots);
 
     for (let slotIndex = 0; slotIndex < sortedSlots.length; slotIndex += 1) {
@@ -823,6 +823,7 @@ export function _calculateWeighted(
         continue;
       }
 
+      onBranchApplied?.(slot, bestCandidate.branchEval.items);
       applyBranchPlan(bestCandidate.branchEval);
     }
   }
@@ -868,11 +869,25 @@ export function _calculateWeighted(
     get withBranchEvaluatorSuppressorOverride() { return withBranchEvaluatorSuppressorOverride; },
   });
 
-  processSlots(weapon.properties.slots);
-  if (!forcedNestedChoices || Object.keys(forcedNestedChoices).length === 0) {
-    optimizeFinalBarrelBlock();
-    optimizeFinalMuzzleBlock();
-    optimizeBudgetAwareLeafRecoilUpgrades();
+  // Slot filling keeps a fixed build and only completes the listed empty slots,
+  // so replacement chains are scored exactly like generated builds.
+  const slotFill = searchCapabilities?.slotFill ?? null;
+  const filledSlots = [];
+  if (slotFill) {
+    build.push(...(slotFill.fixedBuild || []));
+    rebuildBuildState();
+    (slotFill.slotGroups || []).forEach((group, groupIndex) => {
+      processSlots(group.slots, (slot, items) => {
+        filledSlots.push({ groupIndex, slot, items: [...items] });
+      });
+    });
+  } else {
+    processSlots(weapon.properties.slots);
+    if (!forcedNestedChoices || Object.keys(forcedNestedChoices).length === 0) {
+      optimizeFinalBarrelBlock();
+      optimizeFinalMuzzleBlock();
+      optimizeBudgetAwareLeafRecoilUpgrades();
+    }
   }
   rebuildBuildState();
 
@@ -890,6 +905,7 @@ export function _calculateWeighted(
       price: Number.isFinite(totalPrice) ? Math.round(totalPrice) : null,
     },
   };
+  if (slotFill) result.filledSlots = filledSlots;
 
   const warnings = [];
   const errors = [];

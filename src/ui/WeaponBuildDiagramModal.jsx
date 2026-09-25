@@ -7,6 +7,11 @@ import {
   getCompatibleItemsForSlot,
   planBuildSlotChange,
 } from '../domain/weaponBuildEditor.js';
+import {
+  createReplacementChainPlanner,
+  resolveChainSlotContext,
+  slotSupportsChains,
+} from '../domain/replacementChain.js';
 import WeaponBuildDiagram from './WeaponBuildDiagram.jsx';
 import WeaponBuildSlotPanel from './WeaponBuildSlotPanel.jsx';
 import {
@@ -18,19 +23,7 @@ import {
   layoutWeaponDiagramGraph,
 } from './weaponBuildDiagram.js';
 import { MaterialSymbol } from './MaterialSymbol.js';
-
-function getSlotPlanErrorMessage(error, t) {
-  if (error === 'The selected slot no longer exists in the current build.') return t('ui.slot.errorSlotUnavailable');
-  if (error === 'A required module cannot be removed without a replacement.') return t('ui.slot.requiredReplace');
-  if (error === 'The selected module is incompatible with this slot instance.') return t('ui.slot.errorIncompatible');
-  if (error === 'This module is already installed in the build.') return t('ui.slot.errorDuplicate');
-  if (error === 'After this change, one or more modules will lose their compatible parent slot.') return t('ui.slot.errorUnattached');
-
-  const conflictMatch = /^(.+) conflicts with (.+)\.$/.exec(error);
-  if (conflictMatch) return t('ui.slot.errorConflict', { first: conflictMatch[1], second: conflictMatch[2] });
-
-  return t('ui.slot.errorGeneric');
-}
+import { getSlotPlanErrorMessage } from './slotPlanErrors.js';
 
 export default function WeaponBuildDiagramModal({
   weapon,
@@ -44,6 +37,9 @@ export default function WeaponBuildDiagramModal({
   includeRefOffers,
   onBuildChange,
   onClose,
+  chainGoal,
+  chainOptions,
+  validateBuild,
 }) {
   const { language, t } = useI18n();
   const closeButtonRef = useRef(null);
@@ -88,6 +84,24 @@ export default function WeaponBuildDiagramModal({
       includeRefOffers,
     }) : [],
     [allMods, buildParts, includeTraderPrices, priceMode, slotContext, strictTraderLevels, includeRefOffers, traderLevels, weapon],
+  );
+  const supportsChains = useMemo(
+    () => Boolean(chainOptions && selectedSlotId) && slotSupportsChains(
+      resolveChainSlotContext(weapon, buildParts, selectedSlotId),
+      allMods,
+    ),
+    [allMods, buildParts, chainOptions, selectedSlotId, weapon],
+  );
+  const createChainPlanner = useCallback(
+    () => createReplacementChainPlanner({
+      weapon,
+      buildParts,
+      allMods,
+      slotInstanceId: selectedSlotId,
+      goal: chainGoal,
+      options: chainOptions,
+    }),
+    [allMods, buildParts, chainGoal, chainOptions, selectedSlotId, weapon],
   );
   const moduleCount = graph.nodes.filter(node => node.nodeType === 'module').length;
   const activePreviewCandidate = getActivePreviewCandidate(hoveredCandidate, focusedCandidate);
@@ -199,6 +213,17 @@ export default function WeaponBuildDiagramModal({
     setFeedback(t(plan.nextItem ? 'ui.slot.installedFeedback' : 'ui.slot.removedFeedback'));
   }, [onBuildChange, t]);
 
+  const applyChain = useCallback(plan => {
+    setHoveredCandidate(null);
+    setFocusedCandidate(null);
+    const errors = onBuildChange?.(plan.buildParts) || [];
+    if (errors.length > 0) return errors;
+    setPendingPlan(null);
+    setPanelError(null);
+    setFeedback(t('ui.chain.appliedFeedback'));
+    return [];
+  }, [onBuildChange, t]);
+
   const requestChange = useCallback(nextItem => {
     setHoveredCandidate(null);
     setFocusedCandidate(null);
@@ -297,6 +322,9 @@ export default function WeaponBuildDiagramModal({
               onHoverCandidate={setHoveredCandidate}
               onFocusCandidate={setFocusedCandidate}
               onClose={closePanel}
+              createChainPlanner={supportsChains ? createChainPlanner : null}
+              validateBuild={validateBuild}
+              onApplyChain={applyChain}
             />
           )}
         </div>
