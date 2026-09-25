@@ -30,9 +30,23 @@ function formatRecoilDiff(percent, weapon) {
   return `${formatSigned(verticalRounded, 0)} / ${formatSigned(horizontalRounded, 0)} (${percentText})`;
 }
 
-export function getSlotOptionComparison({
-  item,
-  currentItem,
+function sumItems(items, key) {
+  return items.reduce((sum, item) => sum + toFiniteNumber(item?.[key]), 0);
+}
+
+function sumPrices(items, priceOptions) {
+  return items.reduce((sum, item) => {
+    if (sum === null) return null;
+    const price = getPurchasePriceValue(item, priceOptions, null);
+    return Number.isFinite(price) ? sum + price : null;
+  }, 0);
+}
+
+// Compares a set of modules with the set it replaces (one module, or a whole
+// replacement chain with everything attached to it).
+export function getPackageComparison({
+  items = [],
+  currentItems = [],
   weapon,
   priceMode,
   includeTraderPrices,
@@ -40,25 +54,14 @@ export function getSlotOptionComparison({
   strictTraderLevels,
   includeRefOffers,
 }) {
-  const ergonomicsDiff = toFiniteNumber(item?.ergonomicsModifier)
-    - toFiniteNumber(currentItem?.ergonomicsModifier);
-  const recoilDiff = toFiniteNumber(item?.recoilModifier)
-    - toFiniteNumber(currentItem?.recoilModifier);
-  const weightDiff = toFiniteNumber(item?.weight) - toFiniteNumber(currentItem?.weight);
-  const itemPrice = getPurchasePriceValue(
-    item,
-    { priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers },
-    null,
-  );
-  const currentPrice = currentItem
-    ? getPurchasePriceValue(
-      currentItem,
-      { priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers },
-      null,
-    )
-    : 0;
-  const priceDiff = Number.isFinite(itemPrice) && Number.isFinite(currentPrice)
-    ? itemPrice - currentPrice
+  const priceOptions = { priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers };
+  const ergonomicsDiff = sumItems(items, 'ergonomicsModifier') - sumItems(currentItems, 'ergonomicsModifier');
+  const recoilDiff = sumItems(items, 'recoilModifier') - sumItems(currentItems, 'recoilModifier');
+  const weightDiff = sumItems(items, 'weight') - sumItems(currentItems, 'weight');
+  const itemsPrice = sumPrices(items, priceOptions);
+  const currentPrice = sumPrices(currentItems, priceOptions);
+  const priceDiff = itemsPrice !== null && currentPrice !== null
+    ? itemsPrice - currentPrice
     : null;
 
   return {
@@ -82,10 +85,19 @@ export function getSlotOptionComparison({
         tone: getTone(weightDiff, false),
       },
     ],
+    price: itemsPrice,
     priceDiff,
     priceDiffText: priceDiff === null
       ? 'Difference unavailable'
       : `${formatSigned(Math.round(priceDiff), 0)} ₽`,
     priceTone: priceDiff === null ? 'neutral' : getTone(priceDiff, false),
   };
+}
+
+export function getSlotOptionComparison({ item, currentItem, ...options }) {
+  return getPackageComparison({
+    ...options,
+    items: item ? [item] : [],
+    currentItems: currentItem ? [currentItem] : [],
+  });
 }

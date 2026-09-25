@@ -9,6 +9,9 @@ export const WEAPON_STAT_UI_RANGES = Object.freeze({
     direction: 'lower-is-better',
     invertFill: true,
   }),
+  // The longest sighting range in the game data is 2000 m. A longer range is
+  // not a better build, so the meter is a neutral single color.
+  sightingRange: Object.freeze({ min: 0, max: 2000, direction: 'neutral' }),
   verticalRecoil: Object.freeze({ min: 0, max: 350, direction: 'lower-is-better' }),
   horizontalRecoil: Object.freeze({ min: 0, max: 600, direction: 'lower-is-better' }),
   // Shared fixed ceiling for the radar and the numeric Max Budget fallback.
@@ -46,6 +49,13 @@ export function formatAccuracyMoa(value, locale = 'en') {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(numericValue)} MOA`;
+}
+
+export function formatSightingRange(value, locale = 'en', unit = 'm') {
+  const numericValue = toFiniteStatNumber(value);
+  if (!Number.isFinite(numericValue)) return null;
+
+  return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(numericValue)} ${unit}`;
 }
 
 export function normalizeStatPercent(value, min, max) {

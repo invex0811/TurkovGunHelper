@@ -4,6 +4,7 @@ import { useI18n } from '../i18n/useI18n.js';
 import { getPurchasePriceValue } from '../data/price/priceMapper.js';
 import { getSlotOptionComparison } from './weaponBuildSlotStats.js';
 import { MaterialSymbol } from './MaterialSymbol.js';
+import ReplacementChainPanel from './ReplacementChainPanel.jsx';
 
 function getItemName(item, t) {
   return item?.name || item?.shortName || t('ui.slot.unknownModule');
@@ -48,9 +49,22 @@ export default function WeaponBuildSlotPanel({
   onHoverCandidate,
   onFocusCandidate,
   onClose,
+  createChainPlanner,
+  validateBuild,
+  onApplyChain,
 }) {
   const { t } = useI18n();
   const [query, setQuery] = useState('');
+  const [tab, setTab] = useState('alternatives');
+  const isChainTab = Boolean(createChainPlanner) && tab === 'chain';
+  const chainPlanner = useMemo(
+    () => (isChainTab ? createChainPlanner() : null),
+    [createChainPlanner, isChainTab],
+  );
+  const priceOptions = useMemo(
+    () => ({ priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers }),
+    [includeRefOffers, includeTraderPrices, priceMode, strictTraderLevels, traderLevels],
+  );
   const currentItem = slotContext?.installedNode?.item || null;
   const parentItem = slotContext?.parent?.item || null;
   const filteredItems = useMemo(() => {
@@ -83,101 +97,129 @@ export default function WeaponBuildSlotPanel({
           </section>
         )}
 
-        <label className="weapon-slot-panel__search">
-          <span>{t('ui.slot.searchByName')}</span>
-          <input
-            type="search"
-            value={query}
-            onChange={event => setQuery(event.target.value)}
-            placeholder={t('ui.slot.searchPlaceholder')}
-          />
-        </label>
+        {createChainPlanner && (
+          <div className="segmented segmented--tabs" role="group" aria-label={t('ui.chain.tabsLabel')}>
+            {['alternatives', 'chain'].map(tabId => (
+              <button
+                key={tabId}
+                className={`segmented__btn${tab === tabId ? ' is-active' : ''}`}
+                type="button"
+                aria-pressed={tab === tabId}
+                onClick={() => setTab(tabId)}
+              >
+                {t(tabId === 'chain' ? 'ui.chain.tabChain' : 'ui.chain.tabAlternatives')}
+              </button>
+            ))}
+          </div>
+        )}
 
         {error && <div className="weapon-slot-panel__notice is-error" role="alert">{error}</div>}
         {feedback && <div className="weapon-slot-panel__notice is-success" role="status">{feedback}</div>}
 
-        {pendingPlan && (
-          <div className="weapon-slot-panel__warning" role="alert">
-            <strong>{t('ui.slot.incompatibleRemoved')}</strong>
-            <span>{pendingPlan.removedItems.map(item => getItemName(item, t)).join(', ')}</span>
-            <div>
-              <button className="btn btn--primary" type="button" onClick={onConfirmPlan}>{t('ui.slot.continue')}</button>
-              <button className="btn btn--ghost" type="button" onClick={onCancelPlan}>{t('ui.slot.cancel')}</button>
-            </div>
-          </div>
-        )}
+        {isChainTab ? (
+          <ReplacementChainPanel
+            planner={chainPlanner}
+            weapon={weapon}
+            priceOptions={priceOptions}
+            validateBuild={validateBuild}
+            onApply={onApplyChain}
+          />
+        ) : (
+          <>
+            <label className="weapon-slot-panel__search">
+              <span>{t('ui.slot.searchByName')}</span>
+              <input
+                type="search"
+                value={query}
+                onChange={event => setQuery(event.target.value)}
+                placeholder={t('ui.slot.searchPlaceholder')}
+              />
+            </label>
 
-        <div className="weapon-slot-panel__list" aria-live="polite">
-          {isLoading && <div className="weapon-slot-panel__empty">{t('ui.slot.loading')}</div>}
-          {!isLoading && filteredItems.length === 0 && (
-            <div className="weapon-slot-panel__empty">
-              {compatibleItems.length === 0 ? t('ui.slot.noCompatible') : t('ui.slot.noSearchResults')}
-            </div>
-          )}
-          {!isLoading && filteredItems.map(item => {
-            const isCurrent = item.id === currentItem?.id;
-            const comparison = getSlotOptionComparison({
-              item,
-              currentItem,
-              weapon,
-              priceMode,
-              includeTraderPrices,
-              traderLevels,
-              strictTraderLevels,
-              includeRefOffers,
-            });
-            return (
-              <button
-                className={`weapon-slot-option${isCurrent ? ' is-current' : ''}`}
-                type="button"
-                key={item.id}
-                onClick={() => onChoose(item)}
-                onPointerEnter={() => onHoverCandidate?.(item)}
-                onPointerLeave={() => onHoverCandidate?.(null)}
-                onFocus={() => onFocusCandidate?.(item)}
-                onBlur={() => onFocusCandidate?.(null)}
-                disabled={isCurrent || Boolean(pendingPlan)}
-                aria-label={isCurrent
-                  ? t('ui.slot.currentModuleLabel', { name: getItemName(item, t) })
-                  : t('ui.slot.install', { name: getItemName(item, t) })}
-              >
-                <span className="weapon-slot-option__image" aria-hidden="true">
-                  {item.image512pxLink || item.iconLink ? <img src={item.image512pxLink || item.iconLink} alt="" loading="lazy" /> : '—'}
-                </span>
-                <span className="weapon-slot-option__body">
-                  <strong>{getItemName(item, t)}</strong>
-                  <span className="weapon-slot-option__stats">
-                    {comparison.stats.map(stat => (
-                      <span className="weapon-slot-option__stat" key={stat.key}>
-                        {t(`ui.slot.stat.${stat.key}`)}:{' '}
-                        <strong className={`is-${stat.tone}`}>{stat.text}</strong>
+            {pendingPlan && (
+              <div className="weapon-slot-panel__warning" role="alert">
+                <strong>{t('ui.slot.incompatibleRemoved')}</strong>
+                <span>{pendingPlan.removedItems.map(item => getItemName(item, t)).join(', ')}</span>
+                <div>
+                  <button className="btn btn--primary" type="button" onClick={onConfirmPlan}>{t('ui.slot.continue')}</button>
+                  <button className="btn btn--ghost" type="button" onClick={onCancelPlan}>{t('ui.slot.cancel')}</button>
+                </div>
+              </div>
+            )}
+
+            <div className="weapon-slot-panel__list" aria-live="polite">
+              {isLoading && <div className="weapon-slot-panel__empty">{t('ui.slot.loading')}</div>}
+              {!isLoading && filteredItems.length === 0 && (
+                <div className="weapon-slot-panel__empty">
+                  {compatibleItems.length === 0 ? t('ui.slot.noCompatible') : t('ui.slot.noSearchResults')}
+                </div>
+              )}
+              {!isLoading && filteredItems.map(item => {
+                const isCurrent = item.id === currentItem?.id;
+                const comparison = getSlotOptionComparison({
+                  item,
+                  currentItem,
+                  weapon,
+                  priceMode,
+                  includeTraderPrices,
+                  traderLevels,
+                  strictTraderLevels,
+                  includeRefOffers,
+                });
+                return (
+                  <button
+                    className={`weapon-slot-option${isCurrent ? ' is-current' : ''}`}
+                    type="button"
+                    key={item.id}
+                    onClick={() => onChoose(item)}
+                    onPointerEnter={() => onHoverCandidate?.(item)}
+                    onPointerLeave={() => onHoverCandidate?.(null)}
+                    onFocus={() => onFocusCandidate?.(item)}
+                    onBlur={() => onFocusCandidate?.(null)}
+                    disabled={isCurrent || Boolean(pendingPlan)}
+                    aria-label={isCurrent
+                      ? t('ui.slot.currentModuleLabel', { name: getItemName(item, t) })
+                      : t('ui.slot.install', { name: getItemName(item, t) })}
+                  >
+                    <span className="weapon-slot-option__image" aria-hidden="true">
+                      {item.image512pxLink || item.iconLink ? <img src={item.image512pxLink || item.iconLink} alt="" loading="lazy" /> : '—'}
+                    </span>
+                    <span className="weapon-slot-option__body">
+                      <strong>{getItemName(item, t)}</strong>
+                      <span className="weapon-slot-option__stats">
+                        {comparison.stats.map(stat => (
+                          <span className="weapon-slot-option__stat" key={stat.key}>
+                            {t(`ui.slot.stat.${stat.key}`)}:{' '}
+                            <strong className={`is-${stat.tone}`}>{stat.text}</strong>
+                          </span>
+                        ))}
                       </span>
-                    ))}
-                  </span>
-                </span>
-                <span className="weapon-slot-option__meta">
-                  <small>{formatPrice(item, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers, t)}</small>
-                  <em className={`is-${comparison.priceTone}`}>{comparison.priceDiff === null ? t('ui.slot.differenceUnavailable') : comparison.priceDiffText}</em>
-                  {isCurrent && <span className="weapon-slot-option__badge">{t('ui.slot.current')}</span>}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+                    </span>
+                    <span className="weapon-slot-option__meta">
+                      <small>{formatPrice(item, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers, t)}</small>
+                      <em className={`is-${comparison.priceTone}`}>{comparison.priceDiff === null ? t('ui.slot.differenceUnavailable') : comparison.priceDiffText}</em>
+                      {isCurrent && <span className="weapon-slot-option__badge">{t('ui.slot.current')}</span>}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
 
-        {currentItem && (
-          <div className="weapon-slot-panel__remove">
-            <button
-              className="btn btn--ghost"
-              type="button"
-              onClick={onRemove}
-              disabled={slotContext.slot.required === true || Boolean(pendingPlan)}
-              title={slotContext.slot.required === true ? t('ui.slot.requiredReplace') : undefined}
-            >
-              {t('ui.slot.remove')}
-            </button>
-            {slotContext.slot.required === true && <small>{t('ui.slot.requiredEmpty')}</small>}
-          </div>
+            {currentItem && (
+              <div className="weapon-slot-panel__remove">
+                <button
+                  className="btn btn--ghost"
+                  type="button"
+                  onClick={onRemove}
+                  disabled={slotContext.slot.required === true || Boolean(pendingPlan)}
+                  title={slotContext.slot.required === true ? t('ui.slot.requiredReplace') : undefined}
+                >
+                  {t('ui.slot.remove')}
+                </button>
+                {slotContext.slot.required === true && <small>{t('ui.slot.requiredEmpty')}</small>}
+              </div>
+            )}
+          </>
         )}
       </div>
     </aside>

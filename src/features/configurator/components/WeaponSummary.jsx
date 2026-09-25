@@ -15,7 +15,6 @@ export default function WeaponSummary({
   onSave,
   onSaveNameChange,
   priceMode,
-  requiredModuleCount,
   saveFeedback,
   saveName,
   statMeters,
@@ -82,13 +81,6 @@ export default function WeaponSummary({
             })}</small>
           )}
         </div>
-        {requiredModuleCount > 0 && (
-          <div className="chip">
-            {t('config.required')}
-            <strong>{t('config.modulesCount', { count: requiredModuleCount })}</strong>
-          </div>
-        )}
-
         {canSave && (
           <div className="save-build-bar">
             <label htmlFor="saveBuildName">

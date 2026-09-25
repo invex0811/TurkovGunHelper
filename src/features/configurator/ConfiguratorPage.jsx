@@ -33,7 +33,7 @@ import {
   getSavedBuild,
   restoreBuildParts,
 } from '../../data/savedBuilds.js';
-import { recalculateBuildStats } from '../../domain/calculator.js';
+import { calculateSightingRange, recalculateBuildStats } from '../../domain/calculator.js';
 import {
   calculateBuildCostSummary,
   createBuildAssemblySnapshot,
@@ -60,6 +60,12 @@ import {
   resolveSharedMaxPrice,
 } from '../../domain/buildMaxPrice.js';
 import WeaponBuildDiagramModal from '../../ui/WeaponBuildDiagramModal.jsx';
+import ReplacementChainPanel from '../../ui/ReplacementChainPanel.jsx';
+import {
+  createReplacementChainPlanner,
+  resolveChainSlotContext,
+  slotSupportsChains,
+} from '../../domain/replacementChain.js';
 import {
   CUSTOM_BUILD_DEFAULT_PROFILE,
   createCustomBuildProfileFromSettings,
@@ -68,14 +74,13 @@ import {
 import {
   WEAPON_STAT_UI_RANGES,
   formatAccuracyMoa,
+  formatSightingRange,
   toFiniteStatNumber,
   withBaseStatMaximum,
 } from '../../ui/weaponStatMeters.js';
 import {
-  getModuleDisplayRank,
   getModuleDisplayState,
   isCriticalSlot,
-  sortModuleDisplayItems,
 } from '../../ui/criticalModules.js';
 import AsyncImage from '../../ui/AsyncImage.jsx';
 import ModalDialog from '../../ui/ModalDialog.jsx';
@@ -143,6 +148,7 @@ import {
   selectReplacementCandidates,
   subtreeHasSight,
 } from './services/replacementService.js';
+import { getSlotGroupLabel, groupBuildModuleDisplayItems } from './partGroups.js';
 
 function getBuildModuleDisplayItems(weapon, buildParts, assemblyTree = null) {
   const tree = assemblyTree || buildAssemblyTree(weapon, buildParts);
@@ -167,6 +173,7 @@ function getBuildModuleDisplayItems(weapon, buildParts, assemblyTree = null) {
         key: `empty:${parentNode.item.id}:${slot.id || slot.name}:${slotIndex}`,
         item: null,
         parentItem: parentNode.item,
+        parentNode,
         slot,
         slotName: slot.name,
       });
@@ -185,6 +192,7 @@ function getBuildModuleDisplayItems(weapon, buildParts, assemblyTree = null) {
       key: `installed:${part.item.id}:${part.slotName}:${originalIndex}`,
       ownershipKey: node?.instanceId || null,
       parentItem: node?.parent?.item || weapon,
+      assemblyNode: node || null,
       slot,
     };
   });
@@ -933,80 +941,6 @@ function getRequiredModuleSearchResults(allMods, query, selectedIds) {
     .slice(0, 12);
 }
 
-const SLOT_GROUP_NAME_MAPPINGS = {
-  'reciever': 'config.slotGroup.receiver',
-  'receiver': 'config.slotGroup.receiver',
-  'ств кор': 'config.slotGroup.receiver',
-  'ствольная коробка': 'config.slotGroup.receiver',
-  'pistolgrip': 'config.slotGroup.pistolGrip',
-  'pistol grip': 'config.slotGroup.pistolGrip',
-  'grip': 'config.slotGroup.pistolGrip',
-  'gasblock': 'config.slotGroup.gasBlock',
-  'gas block': 'config.slotGroup.gasBlock',
-  'газ кам': 'config.slotGroup.gasBlock',
-  'газовая камера': 'config.slotGroup.gasBlock',
-  'front sight': 'config.slotGroup.frontSight',
-  'rear sight': 'config.slotGroup.rearSight',
-  'ubgl': 'config.slotGroup.underbarrelLauncher',
-  'tactical': 'config.slotGroup.tacticalDevice',
-  'foregrip': 'config.slotGroup.foregrip',
-  'front grip': 'config.slotGroup.foregrip',
-  'перед рук': 'config.slotGroup.foregrip',
-  'передняя рукоятка': 'config.slotGroup.foregrip',
-  'bipod': 'config.slotGroup.bipod',
-  'launcher': 'config.slotGroup.launcher',
-  'scope': 'config.slotGroup.scope',
-  'mount': 'config.slotGroup.mount',
-  'charge': 'config.slotGroup.chargingHandle',
-  'charging handle': 'config.slotGroup.chargingHandle',
-  'рук затв': 'config.slotGroup.chargingHandle',
-  'рукоятка затвора': 'config.slotGroup.chargingHandle',
-  'рукоятка взведения': 'config.slotGroup.chargingHandle',
-  'dustcover': 'config.slotGroup.dustCover',
-  'dust cover': 'config.slotGroup.dustCover',
-  'barrel': 'config.slotGroup.barrel',
-  'handguard': 'config.slotGroup.handguard',
-  'muzzle': 'config.slotGroup.muzzle',
-  'stock': 'config.slotGroup.stock',
-  'magazine': 'config.slotGroup.magazine'
-};
-
-function getReadableSlotGroupName(slotName, t) {
-  if (!slotName) return t('config.other');
-  let name = slotName.trim().toLowerCase();
-  if (name.startsWith('mod_')) {
-    name = name.substring(4);
-  }
-  name = name.replace(/[.\s_-]+/g, ' ').trim();
-  if (SLOT_GROUP_NAME_MAPPINGS[name]) {
-    return t(SLOT_GROUP_NAME_MAPPINGS[name]);
-  }
-  return name.split(' ')
-             .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-             .join(' ');
-}
-
-const GROUP_ORDER = [
-  'Receiver',
-  'Charging Handle',
-  'Dust Cover',
-  'Barrel',
-  'Gas Block',
-  'Handguard',
-  'Foregrip',
-  'Muzzle Device',
-  'Mount / Adapter',
-  'Scope / Sight',
-  'Front Sight',
-  'Rear Sight',
-  'Stock',
-  'Pistol Grip',
-  'Magazine',
-  'Tactical Device',
-  'Bipod',
-  'Underbarrel Launcher'
-];
-
 function getBuildResultErrorMessage(buildResult, language, t) {
   return language === 'ru' ? t('config.constraintMessage') : buildResult.error;
 }
@@ -1049,6 +983,7 @@ function Configurator() {
   const [activeReplacePartId, setActiveReplacePartId] = useState(null);
   const replacementTriggerRef = useRef(null);
   const [replaceMode, setReplaceMode] = useState('EXACT_ITEM');
+  const [replaceTab, setReplaceTab] = useState('alternatives');
   const [magazineCapacity, setMagazineCapacity] = useState(30);
   const [allMods, setAllMods] = useState(null);
   const [buildResult, setBuildResult] = useState(null);
@@ -1462,6 +1397,7 @@ function Configurator() {
       setActiveReplacePartId(null);
     } else {
       replacementTriggerRef.current = trigger;
+      setReplaceTab('alternatives');
       if (isSightItem(part.item)) {
         setReplaceMode('SIGHT_ITEM');
       } else if (isMountItem(part.item)) {
@@ -1477,11 +1413,9 @@ function Configurator() {
     setIsBuildDiagramOpen(false);
   }, []);
 
-  const handleDiagramBuildChange = useCallback((nextBuildParts) => {
-    if (!weapon || !buildResult) return [t('config.currentBuildUnavailable')];
-
+  const validateBuildChange = useCallback((nextBuildParts) => {
     const attachmentError = getUnattachedBuildPartError(weapon, nextBuildParts, t);
-    const { errors, stats: recalculatedResult } = getReplacementConstraintErrors({
+    const { errors, stats } = getReplacementConstraintErrors({
       weapon,
       buildParts: nextBuildParts,
       priceMode,
@@ -1498,19 +1432,9 @@ function Configurator() {
       t,
     });
     if (attachmentError) errors.unshift(attachmentError);
-    if (errors.length > 0) return errors;
-
-    setReplacementError(null);
-    setOwnedItems(current => reconcileOwnedItems(current, weapon, nextBuildParts));
-    setBuildResult(current => current ? {
-      ...current,
-      ...recalculatedResult,
-      error: null,
-    } : current);
-    return [];
+    return { errors, stats };
   }, [
     activeTraderLevels,
-    buildResult,
     includeTraderPrices,
     strictTraderLevels,
     includeRefOffers,
@@ -1524,6 +1448,33 @@ function Configurator() {
     weapon,
     t,
   ]);
+
+  const getBuildChangeErrors = useCallback(
+    nextBuildParts => validateBuildChange(nextBuildParts).errors,
+    [validateBuildChange],
+  );
+
+  const handleDiagramBuildChange = useCallback((nextBuildParts) => {
+    if (!weapon || !buildResult) return [t('config.currentBuildUnavailable')];
+
+    const { errors, stats: recalculatedResult } = validateBuildChange(nextBuildParts);
+    if (errors.length > 0) return errors;
+
+    setReplacementError(null);
+    setOwnedItems(current => reconcileOwnedItems(current, weapon, nextBuildParts));
+    setBuildResult(current => current ? {
+      ...current,
+      ...recalculatedResult,
+      error: null,
+    } : current);
+    return [];
+  }, [buildResult, t, validateBuildChange, weapon]);
+
+  const handleApplyReplacementChain = useCallback((plan) => {
+    const errors = handleDiagramBuildChange(plan.buildParts);
+    if (errors.length === 0) setActiveReplacePartId(null);
+    return errors;
+  }, [handleDiagramBuildChange]);
 
   const handleScopeSelection = (itemId) => {
     const nextItemId = itemId === SCOPE_NONE_OPTION_ID || itemId === null ? null : itemId;
@@ -1637,6 +1588,50 @@ function Configurator() {
     );
   };
 
+  const calculationOptions = useMemo(() => ({
+    ...getSuppressorOptions(suppressorMode),
+    maxWeight: Number(effectiveHardMaxWeight) || 0,
+    maxPrice,
+    magazineCapacity: Number(magazineCapacity) || 30,
+    priceMode,
+    includeTraderPrices,
+    traderLevels: activeTraderLevels,
+    strictTraderLevels,
+    includeRefOffers,
+    includeLaser,
+    includeFlashlight,
+    sightMode,
+    requireSight: sightMode !== 'none',
+    requiredItemIds,
+  }), [
+    activeTraderLevels,
+    effectiveHardMaxWeight,
+    includeFlashlight,
+    includeLaser,
+    includeRefOffers,
+    includeTraderPrices,
+    magazineCapacity,
+    maxPrice,
+    priceMode,
+    requiredItemIds,
+    sightMode,
+    strictTraderLevels,
+    suppressorMode,
+  ]);
+  // Replacement chains fill empty slots with the same goal the build uses.
+  const chainGoal = useMemo(() => ({
+    mode: buildGoalMode,
+    customLimits: {
+      ergonomics: customProfile.ergonomics,
+      verticalRecoil: customProfile.verticalRecoil,
+      horizontalRecoil: customProfile.horizontalRecoil,
+      weight: customProfile.weight,
+    },
+    priorityAttributes,
+    prioritySelectionMode,
+    priorityWeights: normalizePriorityWeights(priorityWeights),
+  }), [buildGoalMode, customProfile, priorityAttributes, prioritySelectionMode, priorityWeights]);
+
   const handleGenerate = useCallback(async () => {
     if (!allMods) return;
     const canonicalPriorityWeights = normalizePriorityWeights(priorityWeights);
@@ -1661,23 +1656,6 @@ function Configurator() {
     let requestId = null;
 
     try {
-      const options = {
-        ...getSuppressorOptions(suppressorMode),
-        maxWeight: Number(effectiveHardMaxWeight) || 0,
-        maxPrice,
-        magazineCapacity: Number(magazineCapacity) || 30,
-        priceMode,
-        includeTraderPrices,
-        traderLevels: activeTraderLevels,
-        strictTraderLevels,
-        includeRefOffers,
-        includeLaser,
-        includeFlashlight,
-        sightMode,
-        requireSight: sightMode !== 'none',
-        requiredItemIds,
-      };
-
       const calculation = runBuildCalculation({
         weapon,
         targetType,
@@ -1690,7 +1668,7 @@ function Configurator() {
         prioritySelectionMode,
         priorityWeights: canonicalPriorityWeights,
         allMods,
-        options,
+        options: calculationOptions,
       });
       requestId = calculation.requestId;
       const result = await calculation.promise;
@@ -1707,27 +1685,16 @@ function Configurator() {
       }
     }
   }, [
-    activeTraderLevels,
     allMods,
+    calculationOptions,
     characteristicMode,
-    effectiveHardMaxWeight,
     customProfile,
     priorityAttributes,
     prioritySelectionMode,
     priorityWeights,
     maxPrice,
-    includeFlashlight,
-    includeLaser,
-    includeTraderPrices,
     latestCalculationRequestIdRef,
-    magazineCapacity,
-    priceMode,
-    requiredItemIds,
     runBuildCalculation,
-    sightMode,
-    strictTraderLevels,
-    includeRefOffers,
-    suppressorMode,
     t,
     targetType,
     weapon,
@@ -1849,11 +1816,18 @@ function Configurator() {
       }
     }
 
+    const chainSlotContext = resolveChainSlotContext(
+      weapon,
+      buildResult.build,
+      targetNode.sourceSlotInstanceId,
+    );
+
     return {
       activePart,
       targetNode,
       hasSightChain,
       hasMountInChain,
+      supportsChains: slotSupportsChains(chainSlotContext, allMods),
       alternatives: findCompatibleAlternatives(
         targetNode,
         allMods,
@@ -1868,6 +1842,25 @@ function Configurator() {
       ),
     };
   }, [weapon, buildResult, currentBuildSnapshot, hasBuildParts, activeReplacePartId, allMods, priceMode, includeTraderPrices, activeTraderLevels, strictTraderLevels, includeRefOffers, sightMode, t, replaceMode]);
+
+  const replacementChainPlanner = useMemo(() => {
+    if (!replacementContext?.supportsChains || replaceTab !== 'chain') return null;
+    return createReplacementChainPlanner({
+      weapon,
+      buildParts: buildResult.build,
+      allMods,
+      slotInstanceId: replacementContext.targetNode.sourceSlotInstanceId,
+      goal: chainGoal,
+      options: calculationOptions,
+    });
+  }, [allMods, buildResult, calculationOptions, chainGoal, replaceTab, replacementContext, weapon]);
+  const replacementPriceOptions = useMemo(() => ({
+    priceMode,
+    includeTraderPrices,
+    traderLevels: activeTraderLevels,
+    strictTraderLevels,
+    includeRefOffers,
+  }), [activeTraderLevels, includeRefOffers, includeTraderPrices, priceMode, strictTraderLevels]);
 
   const isLoading = loading || (weapon && weapon.id !== weaponId);
 
@@ -1918,6 +1911,12 @@ function Configurator() {
     canShowBuildDetails ? buildResult.stats.accuracyMoa : null,
   );
   const currentAccuracy = formatAccuracyMoa(currentAccuracyMoa, language);
+  const currentSightingRangeValue = calculateSightingRange(
+    weapon,
+    canShowBuildDetails ? buildResult.build : [],
+  );
+  const sightingRangeUnit = t('config.stat.metersUnit');
+  const currentSightingRange = formatSightingRange(currentSightingRangeValue, language, sightingRangeUnit);
   const currentPrice = canShowBuildDetails
     ? buildCostSummary?.remainingTotal === 0
       ? t('ownedItems.allPurchased')
@@ -1974,49 +1973,29 @@ function Configurator() {
         weapon.properties?.recoilHorizontal,
       ),
     },
+    ...(currentSightingRange ? [{
+      key: 'sighting-range',
+      label: t('config.stat.sightingRange'),
+      value: currentSightingRangeValue,
+      displayValue: currentSightingRange,
+      unit: sightingRangeUnit,
+      range: WEAPON_STAT_UI_RANGES.sightingRange,
+    }] : []),
   ];
 
-  // Группировка деталей сборки
-  const partsGroups = [];
-  if (canShowBuildDetails) {
-    const groupMap = new Map();
-    getBuildModuleDisplayItems(weapon, buildResult.build, currentBuildSnapshot?.tree).forEach(part => {
-      const slotGroup = getReadableSlotGroupName(part.slotName, t);
-      const displayRank = getModuleDisplayRank(part);
-      const groupKey = `${displayRank}:${slotGroup}`;
-      let group = groupMap.get(groupKey);
-      if (!group) {
-        group = {
-          displayRank,
-          rootSlotName: slotGroup,
-          parts: []
-        };
-        groupMap.set(groupKey, group);
-        partsGroups.push(group);
-      }
-      group.parts.push(part);
-    });
-
-    partsGroups.sort((a, b) => {
-      if (a.displayRank !== b.displayRank) {
-        return a.displayRank - b.displayRank;
-      }
-
-      let indexA = GROUP_ORDER.indexOf(a.rootSlotName);
-      let indexB = GROUP_ORDER.indexOf(b.rootSlotName);
-      if (indexA === -1) indexA = 999;
-      if (indexB === -1) indexB = 999;
-      if (indexA !== indexB) {
-        return indexA - indexB;
-      }
-      return a.rootSlotName.localeCompare(b.rootSlotName);
-    });
-  }
+  // Группировка деталей сборки по узлам оружия
+  const partsGroups = canShowBuildDetails
+    ? groupBuildModuleDisplayItems(
+      getBuildModuleDisplayItems(weapon, buildResult.build, currentBuildSnapshot?.tree),
+      currentBuildSnapshot?.tree,
+      t,
+    )
+    : [];
 
   // Фильтрация групп деталей для рендеринга
   const weaponInstance = buildCostSummary?.instances.find(instance => instance.isWeapon) || null;
   const renderedGroups = partsGroups.map(group => {
-    const filteredParts = sortModuleDisplayItems(group.parts)
+    const filteredParts = group.parts
       .filter(part => {
         if (!partsFilter.trim()) return true;
         const q = partsFilter.trim().toLowerCase();
@@ -2025,12 +2004,14 @@ function Configurator() {
         const slot = (part.slotName || '').toLowerCase();
         const parentName = (part.parentItem?.name || part.parentItem?.shortName || '').toLowerCase();
         const groupName = group.rootSlotName.toLowerCase();
+        const slotLabel = (part.slotLabel || '').toLowerCase();
         const itemId = (part.item?.id || '').toLowerCase();
         return name.includes(q)
           || shortName.includes(q)
           || itemId.includes(q)
           || slot.includes(q)
           || parentName.includes(q)
+          || slotLabel.includes(q)
           || groupName.includes(q);
       })
       .map(part => ({
@@ -2062,7 +2043,7 @@ function Configurator() {
     ].some(value => value?.toLowerCase().includes(partsFilter.trim().toLowerCase()))
   )
     ? {
-      displayRank: -1,
+      key: 'weapon',
       rootSlotName: t('ownedItems.baseWeapon'),
       parts: [{
         key: weaponInstance.key,
@@ -2192,7 +2173,6 @@ function Configurator() {
               setSaveFeedback(null);
             }}
             priceMode={priceMode}
-            requiredModuleCount={selectedRequiredModules.length}
             saveFeedback={saveFeedback}
             saveName={saveName}
             statMeters={statMeters}
@@ -2295,6 +2275,9 @@ function Configurator() {
           includeRefOffers={includeRefOffers}
           onBuildChange={handleDiagramBuildChange}
           onClose={handleCloseBuildDiagram}
+          chainGoal={chainGoal}
+          chainOptions={calculationOptions}
+          validateBuild={getBuildChangeErrors}
         />
       )}
 
@@ -2305,8 +2288,10 @@ function Configurator() {
           targetNode,
           hasSightChain,
           hasMountInChain,
+          supportsChains,
           alternatives,
         } = replacementContext;
+        const isChainTab = supportsChains && replaceTab === 'chain';
         const priceInfo = getSelectedPriceInfo(
           activePart.item,
           priceMode,
@@ -2329,7 +2314,23 @@ function Configurator() {
                 <button className="btn btn--ghost" type="button" onClick={() => setActiveReplacePartId(null)}>{t('common.close')}</button>
               </div>
               <div className="drawer__body" style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 100px)', paddingRight: '4px' }}>
-                {hasSightChain && (
+                {supportsChains && (
+                  <div className="segmented segmented--tabs drawer__tabs" role="group" aria-label={t('ui.chain.tabsLabel')}>
+                    {['alternatives', 'chain'].map(tabId => (
+                      <button
+                        key={tabId}
+                        className={`segmented__btn${replaceTab === tabId ? ' is-active' : ''}`}
+                        type="button"
+                        aria-pressed={replaceTab === tabId}
+                        onClick={() => setReplaceTab(tabId)}
+                      >
+                        {t(tabId === 'chain' ? 'ui.chain.tabChain' : 'ui.chain.tabAlternatives')}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {hasSightChain && !isChainTab && (
                   <div className="segmented" style={{ marginBottom: '1.25rem', display: 'flex', width: '100%' }}>
                     <button
                       className={`segmented__btn ${replaceMode === 'SIGHT_ITEM' ? 'is-active' : ''}`}
@@ -2368,182 +2369,194 @@ function Configurator() {
                     containerStyle={{ width: '70px', height: '70px', minWidth: 0, minHeight: 0, padding: '6px', background: '#101310', border: '1px solid rgba(204, 194, 158, 0.1)', borderRadius: '6px', boxSizing: 'border-box' }}
                   />
                   <div>
-                    <div className="generated-meta">{getReadableSlotGroupName(activePart.slotName, t)} · {t('config.slot', { slot: activePart.slotName })}</div>
+                    <div className="generated-meta">{getSlotGroupLabel(activePart.slotName, t, targetNode.sourceSlot?.nameId)} · {t('config.slot', { slot: activePart.slotName })}</div>
                     <h3 style={{ margin: '8px 0 6px', fontSize: '1.1rem' }}>{formatPartName(activePart.item.shortName, activePart.item)}</h3>
                     <ItemPrice priceInfo={priceInfo} />
                   </div>
                 </div>
 
-                <div style={{ marginTop: '1.5rem' }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--color-accent-gold)', marginBottom: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    {t('config.compatibleAlternatives', { count: alternatives.length })}
+                {isChainTab ? (
+                  <div style={{ marginTop: '1.5rem' }}>
+                    <ReplacementChainPanel
+                      planner={replacementChainPlanner}
+                      weapon={weapon}
+                      priceOptions={replacementPriceOptions}
+                      validateBuild={getBuildChangeErrors}
+                      onApply={handleApplyReplacementChain}
+                    />
                   </div>
-                  {alternatives.length === 0 ? (
-                    <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '1rem 0' }}>
-                      {targetNode && targetNode.children.length > 0
-                        ? t('config.noCompatibleAttachments')
-                        : t('config.noCompatibleModules')}
+                ) : (
+                  <div style={{ marginTop: '1.5rem' }}>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--color-accent-gold)', marginBottom: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      {t('config.compatibleAlternatives', { count: alternatives.length })}
                     </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      {alternatives.map(alt => {
-                        const altPackageItems = getAlternativePackageItems(alt);
-                        const altPriceInfo = getPackagePriceInfo(
-                          altPackageItems,
-                          priceMode,
-                          includeTraderPrices,
-                          activeTraderLevels,
-                          strictTraderLevels,
-                          includeRefOffers,
-                          t,
-                        );
-                        const altPriceValue = altPriceInfo.value;
-                        const effectiveReplaceMode = alt.replacementMode || replaceMode;
-                        const actualReplaceTarget = getReplaceTarget(targetNode, effectiveReplaceMode);
-                        const baselineParts = [];
-                        if (actualReplaceTarget) {
-                          baselineParts.push(actualReplaceTarget.item);
-                          if (alt.attachedScope || (Array.isArray(alt.attachedParts) && alt.attachedParts.length > 0)) {
-                            function collectChildren(n) {
-                              n.children.forEach(c => {
-                                baselineParts.push(c.item);
-                                collectChildren(c);
-                              });
-                            }
-                            collectChildren(actualReplaceTarget);
-                          }
-                        }
-
-                        const baselinePriceInfo = getPackagePriceInfo(
-                          baselineParts,
-                          priceMode,
-                          includeTraderPrices,
-                          activeTraderLevels,
-                          strictTraderLevels,
-                          includeRefOffers,
-                          t,
-                        );
-                        const baselinePrice = baselinePriceInfo.value;
-                        const baselineErgo = baselineParts.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
-                        const baselineRecoil = baselineParts.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
-                        const baselineWeight = baselineParts.reduce((sum, item) => sum + (item.weight || 0), 0);
-
-                        const altErgo = altPackageItems.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
-                        const altRecoil = altPackageItems.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
-                        const altWeight = altPackageItems.reduce((sum, item) => sum + (item.weight || 0), 0);
-                        const ergoDiff = altErgo - baselineErgo;
-                        const recoilDiff = altRecoil - baselineRecoil;
-                        const priceDiff = isPositivePrice(altPriceValue)
-                          && isPositivePrice(baselinePrice)
-                          ? altPriceValue - baselinePrice
-                          : null;
-                        const weightDiff = altWeight - baselineWeight;
-                        const baseRecoilV = weapon.properties?.recoilVertical || 0;
-                        const baseRecoilH = weapon.properties?.recoilHorizontal || 0;
-                        const recoilDiffV = baseRecoilV * (recoilDiff / 100);
-                        const recoilDiffH = baseRecoilH * (recoilDiff / 100);
-
-                        const ergoDiffText = ergoDiff === 0 ? '0' : ergoDiff > 0 ? `+${parseFloat(ergoDiff.toFixed(2))}` : `${parseFloat(ergoDiff.toFixed(2))}`;
-                        function formatRecoilDiff(v, h, pct) {
-                          const formatNum = (num) => {
-                            const rounded = Math.round(num);
-                            return rounded > 0 ? `+${rounded}` : `${rounded}`;
-                          };
-                          const pctText = pct === 0 ? '0%' : pct > 0 ? `+${parseFloat(pct.toFixed(2))}%` : `${parseFloat(pct.toFixed(2))}%`;
-                          if (Math.round(v) === 0 && Math.round(h) === 0) return `0 (${pctText})`;
-                          return `${formatNum(v)} / ${formatNum(h)} (${pctText})`;
-                        }
-                        const recoilDiffText = formatRecoilDiff(recoilDiffV, recoilDiffH, recoilDiff);
-                        const weightDiffText = weightDiff === 0 ? '0 kg' : weightDiff > 0 ? `+${parseFloat(weightDiff.toFixed(3))} kg` : `${parseFloat(weightDiff.toFixed(3))} kg`;
-
-                        return (
-                          <button
-                            key={getAlternativeListKey(alt)}
-                            type="button"
-                            aria-label={`${t('config.replace')}: ${getAlternativeDisplayName(alt)}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const effectiveMode = alt.replacementMode || replaceMode;
-                              handleReplacePart(targetNode, alt, effectiveMode);
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              padding: '0.6rem 0.75rem',
-                              background: 'rgba(255,255,255,0.02)',
-                              border: '1px solid rgba(204, 194, 158, 0.12)',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              transition: 'all 0.16s ease',
-                              boxSizing: 'border-box',
-                              width: '100%',
-                              font: 'inherit',
-                              color: 'inherit',
-                              textAlign: 'left'
-                            }}
-                            onMouseEnter={e => {
-                              e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-                              e.currentTarget.style.borderColor = 'rgba(204, 194, 158, 0.42)';
-                            }}
-                            onMouseLeave={e => {
-                              e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
-                              e.currentTarget.style.borderColor = 'rgba(204, 194, 158, 0.12)';
-                            }}
-                          >
-                            <AsyncImage
-                              src={
-                                (getAlternativeSight(alt) && (getAlternativeSight(alt).image512pxLink || getAlternativeSight(alt).iconLink))
-                                || alt.image512pxLink
-                                || alt.iconLink
-                                || 'https://via.placeholder.com/30'
+                    {alternatives.length === 0 ? (
+                      <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', fontStyle: 'italic', padding: '1rem 0' }}>
+                        {targetNode && targetNode.children.length > 0
+                          ? t('config.noCompatibleAttachments')
+                          : t('config.noCompatibleModules')}
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {alternatives.map(alt => {
+                          const altPackageItems = getAlternativePackageItems(alt);
+                          const altPriceInfo = getPackagePriceInfo(
+                            altPackageItems,
+                            priceMode,
+                            includeTraderPrices,
+                            activeTraderLevels,
+                            strictTraderLevels,
+                            includeRefOffers,
+                            t,
+                          );
+                          const altPriceValue = altPriceInfo.value;
+                          const effectiveReplaceMode = alt.replacementMode || replaceMode;
+                          const actualReplaceTarget = getReplaceTarget(targetNode, effectiveReplaceMode);
+                          const baselineParts = [];
+                          if (actualReplaceTarget) {
+                            baselineParts.push(actualReplaceTarget.item);
+                            if (alt.attachedScope || (Array.isArray(alt.attachedParts) && alt.attachedParts.length > 0)) {
+                              function collectChildren(n) {
+                                n.children.forEach(c => {
+                                  baselineParts.push(c.item);
+                                  collectChildren(c);
+                                });
                               }
-                              alt=""
-                              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                              containerStyle={{ width: '40px', height: '40px', minWidth: 0, minHeight: 0, padding: '4px', marginRight: '0.75rem', background: '#101310', border: '1px solid rgba(204, 194, 158, 0.1)', borderRadius: '6px', boxSizing: 'border-box' }}
-                            />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: '0.85rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }}>
-                                {getAlternativeDisplayName(alt)}
+                              collectChildren(actualReplaceTarget);
+                            }
+                          }
+
+                          const baselinePriceInfo = getPackagePriceInfo(
+                            baselineParts,
+                            priceMode,
+                            includeTraderPrices,
+                            activeTraderLevels,
+                            strictTraderLevels,
+                            includeRefOffers,
+                            t,
+                          );
+                          const baselinePrice = baselinePriceInfo.value;
+                          const baselineErgo = baselineParts.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
+                          const baselineRecoil = baselineParts.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
+                          const baselineWeight = baselineParts.reduce((sum, item) => sum + (item.weight || 0), 0);
+
+                          const altErgo = altPackageItems.reduce((sum, item) => sum + (item.ergonomicsModifier || 0), 0);
+                          const altRecoil = altPackageItems.reduce((sum, item) => sum + (item.recoilModifier || 0), 0);
+                          const altWeight = altPackageItems.reduce((sum, item) => sum + (item.weight || 0), 0);
+                          const ergoDiff = altErgo - baselineErgo;
+                          const recoilDiff = altRecoil - baselineRecoil;
+                          const priceDiff = isPositivePrice(altPriceValue)
+                            && isPositivePrice(baselinePrice)
+                            ? altPriceValue - baselinePrice
+                            : null;
+                          const weightDiff = altWeight - baselineWeight;
+                          const baseRecoilV = weapon.properties?.recoilVertical || 0;
+                          const baseRecoilH = weapon.properties?.recoilHorizontal || 0;
+                          const recoilDiffV = baseRecoilV * (recoilDiff / 100);
+                          const recoilDiffH = baseRecoilH * (recoilDiff / 100);
+
+                          const ergoDiffText = ergoDiff === 0 ? '0' : ergoDiff > 0 ? `+${parseFloat(ergoDiff.toFixed(2))}` : `${parseFloat(ergoDiff.toFixed(2))}`;
+                          function formatRecoilDiff(v, h, pct) {
+                            const formatNum = (num) => {
+                              const rounded = Math.round(num);
+                              return rounded > 0 ? `+${rounded}` : `${rounded}`;
+                            };
+                            const pctText = pct === 0 ? '0%' : pct > 0 ? `+${parseFloat(pct.toFixed(2))}%` : `${parseFloat(pct.toFixed(2))}%`;
+                            if (Math.round(v) === 0 && Math.round(h) === 0) return `0 (${pctText})`;
+                            return `${formatNum(v)} / ${formatNum(h)} (${pctText})`;
+                          }
+                          const recoilDiffText = formatRecoilDiff(recoilDiffV, recoilDiffH, recoilDiff);
+                          const weightDiffText = weightDiff === 0 ? '0 kg' : weightDiff > 0 ? `+${parseFloat(weightDiff.toFixed(3))} kg` : `${parseFloat(weightDiff.toFixed(3))} kg`;
+
+                          return (
+                            <button
+                              key={getAlternativeListKey(alt)}
+                              type="button"
+                              aria-label={`${t('config.replace')}: ${getAlternativeDisplayName(alt)}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const effectiveMode = alt.replacementMode || replaceMode;
+                                handleReplacePart(targetNode, alt, effectiveMode);
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '0.6rem 0.75rem',
+                                background: 'rgba(255,255,255,0.02)',
+                                border: '1px solid rgba(204, 194, 158, 0.12)',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                transition: 'all 0.16s ease',
+                                boxSizing: 'border-box',
+                                width: '100%',
+                                font: 'inherit',
+                                color: 'inherit',
+                                textAlign: 'left'
+                              }}
+                              onMouseEnter={e => {
+                                e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                                e.currentTarget.style.borderColor = 'rgba(204, 194, 158, 0.42)';
+                              }}
+                              onMouseLeave={e => {
+                                e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
+                                e.currentTarget.style.borderColor = 'rgba(204, 194, 158, 0.12)';
+                              }}
+                            >
+                              <AsyncImage
+                                src={
+                                  (getAlternativeSight(alt) && (getAlternativeSight(alt).image512pxLink || getAlternativeSight(alt).iconLink))
+                                  || alt.image512pxLink
+                                  || alt.iconLink
+                                  || 'https://via.placeholder.com/30'
+                                }
+                                alt=""
+                                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                                containerStyle={{ width: '40px', height: '40px', minWidth: 0, minHeight: 0, padding: '4px', marginRight: '0.75rem', background: '#101310', border: '1px solid rgba(204, 194, 158, 0.1)', borderRadius: '6px', boxSizing: 'border-box' }}
+                              />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: '0.85rem', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }}>
+                                  {getAlternativeDisplayName(alt)}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', color: 'var(--muted)' }}>
+                                  <span>
+                                    {t('config.ergo')}:{' '}
+                                    <strong style={{ color: ergoDiff > 0 ? 'var(--green)' : ergoDiff < 0 ? 'var(--red)' : 'var(--muted)' }}>
+                                      {ergoDiffText}
+                                    </strong>
+                                  </span>
+                                  <span>
+                                    {t('config.recoil')}:{' '}
+                                    <strong style={{ color: recoilDiff < 0 ? 'var(--green)' : recoilDiff > 0 ? 'var(--red)' : 'var(--muted)' }}>
+                                      {recoilDiffText}
+                                    </strong>
+                                  </span>
+                                  <span>
+                                    {t('config.weight')}:{' '}
+                                    <strong style={{ color: weightDiff < 0 ? 'var(--green)' : weightDiff > 0 ? 'var(--red)' : 'var(--muted)' }}>
+                                      {weightDiffText}
+                                    </strong>
+                                  </span>
+                                </div>
                               </div>
-                              <div style={{ fontSize: '0.72rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', color: 'var(--muted)' }}>
-                                <span>
-                                  {t('config.ergo')}:{' '}
-                                  <strong style={{ color: ergoDiff > 0 ? 'var(--green)' : ergoDiff < 0 ? 'var(--red)' : 'var(--muted)' }}>
-                                    {ergoDiffText}
-                                  </strong>
-                                </span>
-                                <span>
-                                  {t('config.recoil')}:{' '}
-                                  <strong style={{ color: recoilDiff < 0 ? 'var(--green)' : recoilDiff > 0 ? 'var(--red)' : 'var(--muted)' }}>
-                                    {recoilDiffText}
-                                  </strong>
-                                </span>
-                                <span>
-                                  {t('config.weight')}:{' '}
-                                  <strong style={{ color: weightDiff < 0 ? 'var(--green)' : weightDiff > 0 ? 'var(--red)' : 'var(--muted)' }}>
-                                    {weightDiffText}
-                                  </strong>
-                                </span>
+                              <div style={{ textAlign: 'right', marginLeft: '0.5rem' }}>
+                                <ItemPrice priceInfo={altPriceInfo} className="item-price--drawer" />
+                                <div style={{ fontSize: '0.7rem', color: priceDiff < 0 ? 'var(--green)' : priceDiff > 0 ? 'var(--red)' : 'var(--muted)' }}>
+                                  {priceDiff === null
+                                    ? t('config.priceDifferenceUnavailable')
+                                    : priceDiff > 0
+                                      ? `+${formatCurrency(priceDiff, altPriceInfo.currency, t('config.notAvailable'))}`
+                                      : priceDiff < 0
+                                        ? formatCurrency(priceDiff, altPriceInfo.currency, t('config.notAvailable'))
+                                        : '0 RUB'}
+                                </div>
                               </div>
-                            </div>
-                            <div style={{ textAlign: 'right', marginLeft: '0.5rem' }}>
-                              <ItemPrice priceInfo={altPriceInfo} className="item-price--drawer" />
-                              <div style={{ fontSize: '0.7rem', color: priceDiff < 0 ? 'var(--green)' : priceDiff > 0 ? 'var(--red)' : 'var(--muted)' }}>
-                                {priceDiff === null
-                                  ? t('config.priceDifferenceUnavailable')
-                                  : priceDiff > 0
-                                    ? `+${formatCurrency(priceDiff, altPriceInfo.currency, t('config.notAvailable'))}`
-                                    : priceDiff < 0
-                                      ? formatCurrency(priceDiff, altPriceInfo.currency, t('config.notAvailable'))
-                                      : '0 RUB'}
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
           </ModalDialog>
         );
