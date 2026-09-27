@@ -1,28 +1,111 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getCatalogStatus, getWeapons, isAbortError, subscribeToCatalogStatus } from '../data/tarkovApi';
-import { formatWeaponFireModes } from '../domain/fireModes.js';
-import { filterHomeWeapons, getHomeWeaponFilterOptions } from './homeWeaponFilters.js';
+import { getWeapons, isAbortError } from '../data/tarkovApi';
+import { selectWeaponPurchasePrice } from '../data/price/priceMapper.js';
+import {
+  filterHomeWeapons,
+  formatCaliberLabel,
+  getHomeWeaponFilterOptions,
+  getWeaponTypeLabel,
+  HOME_WEAPON_SORTS,
+  sortHomeWeapons,
+} from './homeWeaponFilters.js';
 import HomeFilterModal from '../ui/HomeFilterModal.jsx';
 import { useI18n } from '../i18n/useI18n.js';
 import AsyncImage from '../ui/AsyncImage.jsx';
 import { MaterialSymbol } from '../ui/MaterialSymbol.js';
-import CatalogStatus from '../features/dataStatus/CatalogStatus.jsx';
+import { useCatalogStatus } from '../features/dataStatus/useCatalogStatus.js';
+import { usePriceMode } from '../features/priceMode/usePriceMode.js';
+import { useTraderLevels } from '../features/traderLevels/useTraderLevels.js';
+
+function formatRubles(value, language) {
+  return `${new Intl.NumberFormat(language, { maximumFractionDigits: 0 }).format(value)} ₽`;
+}
+
+function isEditableTarget(target) {
+  return target instanceof HTMLElement
+    && (target.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName));
+}
+
+function WeaponStat({ abbreviation, label, value }) {
+  return (
+    <span className="weapon-card__stat">
+      <span className="weapon-card__stat-label" aria-hidden="true">{abbreviation}</span>
+      <span className="visually-hidden">{label}</span>
+      {' '}{value}
+    </span>
+  );
+}
+
+function WeaponCard({ language, price, t, weapon }) {
+  const type = getWeaponTypeLabel(weapon);
+  const caliber = weapon.properties?.caliber;
+  const ergonomics = weapon.properties?.ergonomics;
+  const recoil = weapon.properties?.recoilVertical;
+  const image = weapon.properties?.defaultPreset?.image512pxLink || weapon.image512pxLink;
+
+  return (
+    <Link to={`/configure/${weapon.id}`} className="weapon-card">
+      <div className="weapon-card__plate reticle">
+        {type && <span className="weapon-card__type">{type}</span>}
+        <AsyncImage
+          key={image || `${weapon.id}-missing-image`}
+          src={image}
+          alt=""
+          unavailableLabel={t('image.unavailable')}
+          unavailableStyle={{ fontSize: '0.75rem' }}
+          shimmerBorderRadius="var(--radius-sm)"
+          className="weapon-card__image"
+          containerStyle={{ width: '100%', height: '100%' }}
+        />
+      </div>
+      <div className="weapon-card__body">
+        <div className="weapon-card__title">
+          <h3>{weapon.shortName}</h3>
+          {caliber && <span className="tag tag--gold">{formatCaliberLabel(caliber)}</span>}
+        </div>
+        <p className="weapon-card__name">{weapon.name}</p>
+        <div className="weapon-card__footer">
+          <span className="weapon-card__stats">
+            {Number.isFinite(ergonomics) && (
+              <WeaponStat abbreviation={t('home.card.ergonomicsShort')} label={t('config.stat.ergonomics')} value={ergonomics} />
+            )}
+            {Number.isFinite(recoil) && (
+              <WeaponStat abbreviation={t('home.card.recoilShort')} label={t('config.stat.verticalRecoil')} value={recoil} />
+            )}
+          </span>
+          {Number.isFinite(price) && (
+            <span className="weapon-card__price">
+              <span className="visually-hidden">{t('home.card.basePrice')} </span>
+              {formatRubles(price, language)}
+            </span>
+          )}
+          <span className="weapon-card__cta" aria-hidden="true">
+            {t('home.card.build')}
+            <MaterialSymbol name="arrow_forward" />
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
+}
 
 function Home() {
   const { language, t } = useI18n();
+  const { priceMode } = usePriceMode();
+  const { traderLevels, strictTraderLevels, includeRefOffers } = useTraderLevels();
+  const { refreshVersion } = useCatalogStatus();
   const [weapons, setWeapons] = useState([]);
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState('name');
   const [selectedType, setSelectedType] = useState('All');
   const [selectedCaliber, setSelectedCaliber] = useState('All');
+  const [selectedTrader, setSelectedTrader] = useState('All');
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [catalogStatus, setCatalogStatus] = useState(null);
-
-  useEffect(() => subscribeToCatalogStatus(status => {
-    if (status.cacheKey.includes(`:${language}:`)) setCatalogStatus(status);
-  }), [language]);
+  const loadedLanguageRef = useRef(null);
+  const searchRef = useRef(null);
 
   const loadWeapons = useCallback(async ({ signal, forceRefresh = false } = {}) => {
     setLoading(true);
@@ -32,11 +115,10 @@ function Home() {
     if (!forceRefresh) setWeapons([]);
 
     try {
-      const data = await getWeapons({ signal, forceRefresh, language });
+      const data = await getWeapons({ signal, forceRefresh, language, priceMode });
 
       if (!signal?.aborted) {
         setWeapons(data);
-        setCatalogStatus(getCatalogStatus('regular', { language, priceMode: 'pvp' }));
       }
     } catch (loadError) {
       if (!signal?.aborted && !isAbortError(loadError)) {
@@ -47,29 +129,32 @@ function Home() {
         setLoading(false);
       }
     }
-  }, [language, t]);
+  }, [language, priceMode, t]);
 
+  // A new language replaces the list; a price mode switch or a header refresh
+  // only swaps the prices, so filters and the visible list stay in place.
   useEffect(() => {
     const controller = new AbortController();
+    const languageChanged = loadedLanguageRef.current !== language;
 
     void Promise.resolve()
       .then(() => {
         if (controller.signal.aborted) return null;
-        setLoading(true);
         setError(null);
-        // A catalog is localized as a whole. Do not keep the previous locale visible
-        // while the replacement request is in flight or after it fails.
-        setWeapons([]);
-        // Category labels are supplied by Tarkov.dev and change with the locale.
-        // Keep raw caliber keys and the search intact, but discard a label-based type
-        // selection so it cannot become an invalid, stale filter after a language switch.
-        setSelectedType('All');
-        return getWeapons({ signal: controller.signal, language });
+        if (languageChanged) {
+          setLoading(true);
+          setWeapons([]);
+          // Category labels are supplied by Tarkov.dev and change with the locale.
+          // Keep raw caliber keys and the search intact, but discard a label-based type
+          // selection so it cannot become an invalid, stale filter after a language switch.
+          setSelectedType('All');
+        }
+        return getWeapons({ signal: controller.signal, language, priceMode });
       })
       .then(data => {
         if (data && !controller.signal.aborted) {
+          loadedLanguageRef.current = language;
           setWeapons(data);
-          setCatalogStatus(getCatalogStatus('regular', { language, priceMode: 'pvp' }));
         }
       })
       .catch(loadError => {
@@ -82,17 +167,52 @@ function Home() {
       });
 
     return () => controller.abort();
-  }, [language, t]);
+  }, [language, priceMode, refreshVersion, t]);
 
-  const { types: weaponTypes, calibers } = useMemo(() => getHomeWeaponFilterOptions(weapons), [weapons]);
+  // "/" jumps to the search field, as the hint in the field says.
+  useEffect(() => {
+    const handleKeyDown = event => {
+      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (isEditableTarget(event.target) || document.querySelector('[role="dialog"]')) return;
+      event.preventDefault();
+      searchRef.current?.focus();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
-  const filteredWeapons = useMemo(
-    () => filterHomeWeapons(weapons, { search, type: selectedType, caliber: selectedCaliber }),
-    [search, selectedCaliber, selectedType, weapons],
+  const { types: weaponTypes, calibers, traders } = useMemo(() => getHomeWeaponFilterOptions(weapons), [weapons]);
+
+  const prices = useMemo(() => {
+    const options = {
+      priceMode,
+      includeTraderPrices: true,
+      traderLevels: traderLevels.profiles?.[priceMode] || {},
+      strictTraderLevels,
+      includeRefOffers,
+    };
+    return new Map(weapons.map(weapon => {
+      const value = selectWeaponPurchasePrice(weapon, options).value;
+      return [weapon.id, typeof value === 'number' && value > 0 ? value : Number.NaN];
+    }));
+  }, [includeRefOffers, priceMode, strictTraderLevels, traderLevels, weapons]);
+
+  const visibleWeapons = useMemo(
+    () => sortHomeWeapons(
+      filterHomeWeapons(weapons, {
+        search,
+        type: selectedType,
+        caliber: selectedCaliber,
+        trader: selectedTrader,
+      }),
+      sort,
+      weapon => prices.get(weapon.id),
+    ),
+    [prices, search, selectedCaliber, selectedTrader, selectedType, sort, weapons],
   );
 
-  const activeFacetFilterCount = Number(selectedType !== 'All') + Number(selectedCaliber !== 'All');
-  const hasActiveFilters = search.trim().length > 0 || activeFacetFilterCount > 0;
+  const activeFacetFilterCount = Number(selectedCaliber !== 'All') + Number(selectedTrader !== 'All');
+  const hasActiveFilters = search.trim().length > 0 || selectedType !== 'All' || activeFacetFilterCount > 0;
   const showInitialLoading = loading && weapons.length === 0;
   const showInitialError = error && weapons.length === 0;
 
@@ -100,64 +220,98 @@ function Home() {
     setSearch('');
     setSelectedType('All');
     setSelectedCaliber('All');
+    setSelectedTrader('All');
   };
 
   const closeFilterModal = useCallback(() => setIsFilterModalOpen(false), []);
 
   return (
-    <div className="glass-panel home-page-panel" style={{ marginTop: '18px', padding: '2rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <h2>{t('home.selectWeapon')}</h2>
-        <div className="home-filter-toolbar">
-          <button
-            className={`btn btn--ghost home-filter-trigger${activeFacetFilterCount ? ' is-active' : ''}`}
-            type="button"
-            aria-haspopup="dialog"
-            aria-expanded={isFilterModalOpen}
-            aria-controls="homeFilterModal"
-            onClick={() => setIsFilterModalOpen(true)}
-          >
-            <MaterialSymbol name="filter_alt" />
-            <span>{t('home.filters')}</span>
-            {activeFacetFilterCount > 0 && <span className="home-filter-trigger__badge" aria-label={t('home.activeFilters', { count: activeFacetFilterCount })}>{activeFacetFilterCount}</span>}
-          </button>
-          <input
-            type="search"
-            className="input-field home-search-input"
-            placeholder={t('home.searchPlaceholder')}
-            aria-label={t('home.searchLabel')}
-            value={search}
-            onChange={event => setSearch(event.target.value)}
-          />
+    <section className="catalog" aria-labelledby="catalogTitle">
+      <div className="catalog__head">
+        <div className="catalog__heading">
+          <p className="eyebrow-mono">
+            {t('home.eyebrow', { mode: t(`priceMode.${priceMode}`), count: weapons.length })}
+          </p>
+          <h1 id="catalogTitle" className="page-title">{t('home.selectWeapon')}</h1>
         </div>
+        <div className="catalog__tools">
+          <label className="search-field">
+            <MaterialSymbol name="search" className="search-field__icon" />
+            <input
+              ref={searchRef}
+              type="search"
+              placeholder={t('home.searchPlaceholder')}
+              aria-label={t('home.searchLabel')}
+              aria-keyshortcuts="/"
+              value={search}
+              onChange={event => setSearch(event.target.value)}
+            />
+            <kbd className="search-field__kbd" aria-hidden="true">/</kbd>
+          </label>
+          <label className="select-button">
+            <span className="select-button__label">{t('home.sort.label')}</span>
+            <select value={sort} onChange={event => setSort(event.target.value)}>
+              {HOME_WEAPON_SORTS.map(option => (
+                <option key={option} value={option}>{t(`home.sort.${option}`)}</option>
+              ))}
+            </select>
+            <MaterialSymbol name="expand_more" className="select-button__chevron" />
+          </label>
+        </div>
+      </div>
+
+      <div className="catalog__filters">
+        <div className="chip-row" role="group" aria-label={t('filter.weaponType')}>
+          {['All', ...weaponTypes].map(type => (
+            <button
+              key={type}
+              className="chip"
+              type="button"
+              aria-pressed={selectedType === type}
+              onClick={() => setSelectedType(type)}
+            >
+              {type === 'All' ? t('filter.allTypes') : type}
+            </button>
+          ))}
+        </div>
+        <button
+          className={`text-btn catalog__filter-trigger${activeFacetFilterCount ? ' is-active' : ''}`}
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={isFilterModalOpen}
+          aria-controls="homeFilterModal"
+          onClick={() => setIsFilterModalOpen(true)}
+        >
+          <MaterialSymbol name="filter_alt" />
+          <span className="catalog__filter-label">{t('home.filters')}</span>
+          {activeFacetFilterCount > 0 && (
+            <span className="count-badge" aria-label={t('home.activeFilters', { count: activeFacetFilterCount })}>
+              {activeFacetFilterCount}
+            </span>
+          )}
+        </button>
       </div>
 
       {isFilterModalOpen && (
         <HomeFilterModal
-          types={weaponTypes}
           calibers={calibers}
-          selectedType={selectedType}
+          traders={traders}
           selectedCaliber={selectedCaliber}
+          selectedTrader={selectedTrader}
           onClose={closeFilterModal}
-          onApply={({ type, caliber }) => {
-            setSelectedType(type);
+          onApply={({ caliber, trader }) => {
             setSelectedCaliber(caliber);
+            setSelectedTrader(trader);
             closeFilterModal();
           }}
         />
       )}
 
-      <CatalogStatus
-        status={catalogStatus}
-        isRefreshing={loading && weapons.length > 0}
-        onRefresh={() => loadWeapons({ forceRefresh: true })}
-      />
-
       {showInitialLoading ? (
-        <p aria-live="polite" style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '3rem 0' }}>{t('home.loading')}</p>
+        <p className="catalog__message" aria-live="polite">{t('home.loading')}</p>
       ) : showInitialError ? (
-        <section aria-live="assertive" style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '3rem 0' }}>
-          <p style={{ margin: '0 0 1rem' }}>{error}</p>
+        <section className="catalog__message" aria-live="assertive">
+          <p>{error}</p>
           <button className="btn btn--primary" type="button" onClick={() => loadWeapons({ forceRefresh: true })} disabled={loading}>
             {t('common.tryAgain')}
           </button>
@@ -165,7 +319,7 @@ function Home() {
       ) : (
         <>
           {error && (
-            <div role="alert" style={{ border: '1px solid var(--color-accent-red)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-main)', display: 'flex', gap: '1rem', justifyContent: 'space-between', marginBottom: '1rem', padding: '0.75rem 1rem' }}>
+            <div className="catalog__alert" role="alert">
               <span>{error}</span>
               <button className="btn btn--ghost" type="button" onClick={() => loadWeapons({ forceRefresh: true })} disabled={loading}>
                 {t('common.retry')}
@@ -173,8 +327,8 @@ function Home() {
             </div>
           )}
 
-          {filteredWeapons.length === 0 ? (
-            <section aria-live="polite" style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '3rem 0' }}>
+          {visibleWeapons.length === 0 ? (
+            <section className="catalog__message" aria-live="polite">
               <p>{hasActiveFilters ? t('home.emptyFiltered') : t('home.empty')}</p>
               {hasActiveFilters && (
                 <button className="btn btn--ghost" type="button" onClick={resetFilters}>
@@ -183,69 +337,29 @@ function Home() {
               )}
             </section>
           ) : (
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
-              gap: '1rem',
-            }}>
-              {filteredWeapons.map(weapon => {
-                const fireModes = formatWeaponFireModes(weapon);
-
-                return (
-                  <Link to={`/configure/${weapon.id}`} key={weapon.id} style={{ textDecoration: 'none' }}>
-                    <div className="glass-panel weapon-card" style={{
-                      padding: '1rem',
-                      textAlign: 'center',
-                      height: '100%',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between',
-                    }}>
-                      <div>
-                        <AsyncImage
-                          key={weapon.properties?.defaultPreset?.image512pxLink || weapon.image512pxLink || `${weapon.id}-missing-image`}
-                          src={weapon.properties?.defaultPreset?.image512pxLink || weapon.image512pxLink}
-                          alt={weapon.shortName}
-                          unavailableLabel={t('image.unavailable')}
-                          unavailableStyle={{ fontSize: '0.8rem' }}
-                          shimmerBorderRadius="var(--radius-sm)"
-                          style={{ maxWidth: '100%', maxHeight: '100px', objectFit: 'contain' }}
-                          containerStyle={{ height: '100px' }}
-                        />
-                        <h3 style={{ fontSize: '1.2rem', margin: '1rem 0 0.5rem 0', color: 'var(--color-accent-gold)' }}>{weapon.shortName}</h3>
-                      </div>
-                      <div>
-                        <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', margin: 0 }}>{weapon.name}</p>
-                        {fireModes && (
-                          <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', lineHeight: 1.3, margin: '0.25rem 0 0' }}>
-                            {fireModes}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
+            <div className="weapon-grid">
+              {visibleWeapons.map(weapon => (
+                <WeaponCard
+                  key={weapon.id}
+                  language={language}
+                  price={prices.get(weapon.id)}
+                  t={t}
+                  weapon={weapon}
+                />
+              ))}
             </div>
           )}
         </>
       )}
-      <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
-        <span style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          width: '18px',
-          height: '18px',
-          borderRadius: '50%',
-          border: '1px solid var(--color-text-muted)',
-          fontSize: '0.75rem',
-          fontWeight: 'bold',
-          fontFamily: 'monospace',
-        }}>i</span>
-        <span>{t('home.source')} <a href="https://tarkov.dev" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent-gold)', textDecoration: 'none', borderBottom: '1px dotted var(--color-accent-gold)' }}>tarkov.dev</a></span>
-      </div>
-    </div>
+      <footer className="catalog__footer">
+        <span>
+          {t('home.source')}{' '}
+          <a href="https://tarkov.dev" target="_blank" rel="noopener noreferrer">tarkov.dev</a>
+          {'. '}{t('home.pricesApproximate')}
+        </span>
+        <span>{t('home.unofficial')}</span>
+      </footer>
+    </section>
   );
 }
 

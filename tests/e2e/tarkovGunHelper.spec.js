@@ -98,20 +98,24 @@ async function expectEscapeRestoresModal(page, dialog, trigger, bodyOverflowBefo
 test('creates a weapon build from the catalog', async ({ page }) => {
   await createBuild(page);
 
-  await expect(page.locator('.weapon').getByRole('heading', { name: 'TW', exact: true })).toBeVisible();
+  await expect(page.locator('.config-hero').getByRole('heading', { level: 1, name: 'TW', exact: true })).toBeVisible();
   await expect(page.getByText(/^Remaining to buy/)).toBeVisible();
   await expect(page.locator('.stat-compare').getByText('Accuracy', { exact: true })).toBeVisible();
-  await expect(page.locator('.stat-compare').getByText('2.17 MOA', { exact: true })).toBeVisible();
   const accuracyRow = page.locator('.stat-compare .stat-row--lower-is-better.stat-row--inverted-fill').filter({
     hasText: 'Accuracy',
   });
   await expect(accuracyRow).toBeVisible();
-  await expect(accuracyRow.locator('.bar__gradient')).toHaveAttribute(
+  await expect(accuracyRow.locator('.stat-tile__value')).toHaveText('2.17MOA');
+  // The value and its unit stay on one line.
+  await expect(accuracyRow.locator('.stat-tile__value')).toHaveCSS('white-space', 'nowrap');
+  await expect(accuracyRow.locator('.bar__fill')).toHaveAttribute(
     'style',
     /--meter-value: 91\.32%/,
   );
   await expect(page.locator('.stat-compare [role="meter"][aria-label="Accuracy"]'))
     .toHaveAttribute('aria-valuenow', '2.17');
+  await expect(page.locator('.stat-compare [role="meter"][aria-label="Accuracy"]'))
+    .toHaveAttribute('aria-valuetext', '2.17 MOA');
 });
 
 test('build goal modes preserve their state and calculator settings', async ({ page }) => {
@@ -125,11 +129,11 @@ test('build goal modes preserve their state and calculator settings', async ({ p
   const metaButton = goalGroup.getByRole('button', { name: 'Meta', exact: true });
   const constraintsButton = goalGroup.getByRole('button', { name: 'By constraints', exact: true });
   const prioritiesButton = goalGroup.getByRole('button', { name: 'By priorities', exact: true });
-  const expectGenerateButtonGreen = async () => {
+  const expectGenerateButtonGold = async () => {
     const generateButton = config.getByRole('button', { name: 'Generate Build', exact: true });
-    await expect(generateButton).toHaveCSS('background-color', 'rgb(92, 214, 138)');
+    await expect(generateButton).toHaveCSS('background-color', 'rgb(199, 192, 154)');
     await generateButton.hover();
-    await expect(generateButton).toHaveCSS('background-color', 'rgb(92, 214, 138)');
+    await expect(generateButton).toHaveCSS('background-color', 'rgb(224, 216, 180)');
     await page.mouse.move(0, 0);
   };
   await expect(metaButton).toHaveAttribute('aria-pressed', 'true');
@@ -137,7 +141,7 @@ test('build goal modes preserve their state and calculator settings', async ({ p
   await expect(config.getByRole('button', { name: 'Advanced', exact: true })).toHaveCount(0);
   await expect(config.getByRole('button', { name: 'Custom', exact: true })).toHaveCount(0);
   await expect(config.getByRole('searchbox', { name: 'Must Include Modules' })).toBeVisible();
-  await expectGenerateButtonGreen();
+  await expectGenerateButtonGold();
 
   const metaWeightFields = config.locator('[data-build-goal="meta"] .limit-fields--single');
   const metaMaxWeight = metaWeightFields.getByRole('spinbutton', {
@@ -161,7 +165,7 @@ test('build goal modes preserve their state and calculator settings', async ({ p
   await metaMaxPrice.fill('250000');
   await metaMaxPrice.press('Enter');
 
-  const includeTraderPrices = config.getByRole('checkbox', { name: 'Include trader prices', exact: true });
+  const includeTraderPrices = config.getByRole('switch', { name: 'Include trader prices', exact: true });
   await includeTraderPrices.uncheck();
   await expect(metaMaxPrice).toHaveValue('250000');
   await includeTraderPrices.check();
@@ -176,7 +180,7 @@ test('build goal modes preserve their state and calculator settings', async ({ p
   await constraintsButton.click();
   await expect(constraintsButton).toHaveAttribute('aria-pressed', 'true');
   await expect(config.getByText('0 = no limit', { exact: true })).toBeVisible();
-  await expectGenerateButtonGreen();
+  await expectGenerateButtonGold();
   const characteristicSettings = page.locator('.custom-characteristic-settings');
   await expect(characteristicSettings).toBeVisible();
   await expect(characteristicSettings.locator('svg')).toHaveCount(0);
@@ -222,7 +226,7 @@ test('build goal modes preserve their state and calculator settings', async ({ p
   await prioritiesButton.click();
   await expect(prioritiesButton).toHaveAttribute('aria-pressed', 'true');
   await expect(config.getByText('0 = no limit', { exact: true })).toBeVisible();
-  await expectGenerateButtonGreen();
+  await expectGenerateButtonGold();
   await expect(characteristicSettings).toHaveCount(0);
   const prioritiesPanel = config.locator('[data-build-goal="priorities"]');
   await expect(prioritiesPanel.locator('.custom-priority-attributes__count')).toHaveText('0/3');
@@ -654,14 +658,14 @@ test('owned items update costs, support mass actions, and persist with a saved b
   const initialRemainingPrice = await remainingPrice.innerText();
 
   await expect(page.getByText(/^Remaining to buy/)).toBeVisible();
-  await expect(page.getByText(/^Market value:/)).toBeVisible();
+  await expect(page.locator('.price-box').getByText('Whole build', { exact: true })).toBeVisible();
   await expect(baseWeaponGroup).toBeVisible();
   await expect(baseWeaponCard.getByText('TW', { exact: true })).toBeVisible();
   await expect(baseWeaponCard.locator('.item-price')).toBeVisible();
   await expect(page.locator('.weapon').getByRole('checkbox', {
     name: 'Mark Test weapon as owned',
   })).toHaveCount(0);
-  await expect(page.getByText(/^Owned total:/)).toHaveCount(0);
+  await expect(page.locator('.price-box').getByText('Already owned', { exact: true })).toBeVisible();
   await expect(partOwned).not.toBeChecked();
   await expect(weaponOwned).not.toBeChecked();
 
@@ -669,7 +673,7 @@ test('owned items update costs, support mass actions, and persist with a saved b
   await expect(weaponOwned).toBeChecked();
   await expect(baseWeaponCard).toHaveClass(/part-card--owned/);
   await expect(remainingPrice).not.toHaveText(initialRemainingPrice);
-  await expect(page.getByText(/^Market value:/)).toBeVisible();
+  await expect(page.locator('.price-box').getByText('Whole build', { exact: true })).toBeVisible();
 
   await partOwned.check();
   await expect(partOwned).toBeChecked();
@@ -889,7 +893,7 @@ test('provides an installable manifest and restores the catalog offline', async 
   await context.setOffline(true);
   await page.reload();
   await expect(page.getByRole('heading', { name: 'TW', exact: true })).toBeVisible();
-  await expect(page.getByText(/Previously saved data is in use|Data may be outdated|Saved data is in use/)).toBeVisible();
+  await expect(page.getByText(/Offline · saved data|Data may be outdated|Saved data is in use/)).toBeVisible();
   await context.setOffline(false);
 });
 

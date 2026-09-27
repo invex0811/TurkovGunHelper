@@ -6,6 +6,41 @@ function getItemLabel(item) {
   return item?.name || item?.shortName || item?.id || '';
 }
 
+const PANEL_GAP = 6;
+const PANEL_MIN_HEIGHT = 140;
+const PANEL_PREFERRED_HEIGHT = 290;
+
+// The sticky header and the phone tab bar sit above the page, so the panel
+// must fit between them or its search field ends up hidden underneath.
+function getVisibleArea() {
+  const header = document.querySelector('.topbar')?.getBoundingClientRect();
+  const tabBar = document.querySelector('.topnav');
+  const tabBarBounds = tabBar && getComputedStyle(tabBar).position === 'fixed'
+    ? tabBar.getBoundingClientRect()
+    : null;
+  return {
+    top: Math.max(8, (header?.bottom ?? 0) + 8),
+    bottom: Math.min(window.innerHeight - 8, (tabBarBounds?.top ?? window.innerHeight) - 8),
+  };
+}
+
+function getPanelPosition(bounds) {
+  const area = getVisibleArea();
+  const spaceBelow = area.bottom - bounds.bottom - PANEL_GAP;
+  const spaceAbove = bounds.top - area.top - PANEL_GAP;
+  const openUpward = spaceBelow < PANEL_PREFERRED_HEIGHT && spaceAbove > spaceBelow;
+  const maxHeight = Math.max(PANEL_MIN_HEIGHT, openUpward ? spaceAbove : spaceBelow);
+
+  return {
+    left: Math.max(8, Math.min(bounds.left, window.innerWidth - bounds.width - 8)),
+    width: Math.min(bounds.width, window.innerWidth - 16),
+    maxHeight,
+    ...(openUpward
+      ? { bottom: Math.max(8, window.innerHeight - bounds.top + PANEL_GAP) }
+      : { top: Math.min(window.innerHeight - 8, bounds.bottom + PANEL_GAP) }),
+  };
+}
+
 export default function TacticalDevicePicker({
   id,
   items,
@@ -63,19 +98,7 @@ export default function TacticalDevicePicker({
     };
     const updatePanelPosition = () => {
       const bounds = rootRef.current?.getBoundingClientRect();
-      if (!bounds) return;
-      const spaceBelow = window.innerHeight - bounds.bottom;
-      const spaceAbove = bounds.top;
-      const openUpward = spaceBelow < 290 && spaceAbove > spaceBelow;
-      const availableHeight = Math.max(140, (openUpward ? spaceAbove : spaceBelow) - 8);
-      setPanelPosition({
-        left: Math.max(8, Math.min(bounds.left, window.innerWidth - bounds.width - 8)),
-        width: Math.min(bounds.width, window.innerWidth - 16),
-        maxHeight: availableHeight,
-        ...(openUpward
-          ? { bottom: Math.max(8, window.innerHeight - bounds.top + 6) }
-          : { top: Math.min(window.innerHeight - 8, bounds.bottom + 6) }),
-      });
+      if (bounds) setPanelPosition(getPanelPosition(bounds));
     };
     document.addEventListener('pointerdown', closeOnOutsidePointer);
     window.addEventListener('resize', updatePanelPosition);
@@ -94,18 +117,7 @@ export default function TacticalDevicePicker({
 
   const openPanel = () => {
     const bounds = rootRef.current?.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - (bounds?.bottom || 0);
-    const spaceAbove = bounds?.top || 0;
-    const openUpward = spaceBelow < 290 && spaceAbove > spaceBelow;
-    const availableHeight = Math.max(140, (openUpward ? spaceAbove : spaceBelow) - 8);
-    setPanelPosition({
-      left: Math.max(8, Math.min(bounds?.left || 8, window.innerWidth - (bounds?.width || 0) - 8)),
-      width: Math.min(bounds?.width || 0, window.innerWidth - 16),
-      maxHeight: availableHeight,
-      ...(openUpward
-        ? { bottom: Math.max(8, window.innerHeight - (bounds?.top || 0) + 6) }
-        : { top: Math.min(window.innerHeight - 8, (bounds?.bottom || 0) + 6) }),
-    });
+    if (bounds) setPanelPosition(getPanelPosition(bounds));
     setQuery('');
     setActiveIndex(0);
     setIsOpen(true);

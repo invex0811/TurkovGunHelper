@@ -95,7 +95,7 @@ export default function Settings({ theme, setTheme }) {
   return (
     <div className="settings-page page-shell">
       <header className="settings-page__header">
-        <p className="eyebrow">{t('settings.open')}</p>
+        <p className="eyebrow">{t('settings.eyebrow')}</p>
         <h2>{t('settings.title')}</h2>
       </header>
 

@@ -111,16 +111,49 @@ export function InlineMessage({
   );
 }
 
-export function StatMeterRow({ label, value, displayValue = value, range, t }) {
+// One stat of the build: value, change against the bare weapon, and a
+// single-color bar with a thin mark at the base value.
+export function StatTile({
+  baseValue,
+  delta,
+  label,
+  range,
+  t,
+  unit,
+  value,
+  valueText,
+}) {
   const hasNumericValue = typeof value === 'number' && Number.isFinite(value);
   const percent = normalizeStatFillPercent(value, range);
+  const hasBase = typeof baseValue === 'number' && Number.isFinite(baseValue);
+  const basePercent = hasBase ? normalizeStatFillPercent(baseValue, range) : null;
   const accessibleValue = hasNumericValue
     ? Math.min(range.max, Math.max(range.min, value))
     : undefined;
+  const tone = delta?.tone ?? 'neutral';
+  const shownValue = hasNumericValue ? valueText : t('config.notAvailable');
 
   return (
-    <div className={`stat-row stat-row--${range.direction}${range.invertFill ? ' stat-row--inverted-fill' : ''}`}>
-      <span>{label}</span>
+    <div
+      className={[
+        'stat-row',
+        'stat-tile',
+        `stat-row--${range.direction}`,
+        range.invertFill ? 'stat-row--inverted-fill' : '',
+        `is-${tone}`,
+      ].filter(Boolean).join(' ')}
+    >
+      <span className="stat-tile__label">{label}</span>
+      <div className="stat-tile__value">
+        <strong>{shownValue}</strong>
+        {hasNumericValue && unit && <span className="stat-tile__unit">{unit}</span>}
+        {delta && (
+          <span className={`stat-tile__delta is-${tone}`}>
+            <span className="visually-hidden">{t('config.stat.deltaFromBase')} </span>
+            {delta.text}
+          </span>
+        )}
+      </div>
       <div
         className="bar"
         role="meter"
@@ -128,15 +161,13 @@ export function StatMeterRow({ label, value, displayValue = value, range, t }) {
         aria-valuemin={range.min}
         aria-valuemax={range.max}
         aria-valuenow={accessibleValue}
-        aria-valuetext={hasNumericValue ? undefined : t('config.notAvailable')}
+        aria-valuetext={hasNumericValue ? [valueText, unit].filter(Boolean).join(' ') : t('config.notAvailable')}
       >
-        <span
-          className="bar__gradient"
-          style={{ '--meter-value': `${percent}%` }}
-          aria-hidden="true"
-        />
+        <span className="bar__fill" style={{ '--meter-value': `${percent}%` }} aria-hidden="true" />
+        {basePercent !== null && (
+          <span className="bar__base" style={{ '--meter-base': `${basePercent}%` }} aria-hidden="true" />
+        )}
       </div>
-      <strong>{displayValue}</strong>
     </div>
   );
 }

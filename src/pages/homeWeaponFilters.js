@@ -3,8 +3,9 @@ const EXCLUDED_WEAPON_TYPE_IDENTIFIERS = new Set([
   'item',
   'weapon-category',
   'item-category',
+  'compound-item',
 ]);
-const EXCLUDED_WEAPON_TYPE_NAMES = new Set(['weapon', 'item', 'оружие', 'предмет']);
+const EXCLUDED_WEAPON_TYPE_NAMES = new Set(['weapon', 'item', 'compound item', 'оружие', 'предмет', 'составной предмет']);
 const CALIBER_LABEL_OVERRIDES = new Map([
   ['725', '72.5mm'],
 ]);
@@ -46,9 +47,22 @@ function isExcludedWeaponType(category) {
   return EXCLUDED_WEAPON_TYPE_NAMES.has(normalizeCategoryIdentifier(category?.name));
 }
 
+export function getWeaponTypeLabel(weapon) {
+  const category = weapon?.categories?.find(item => item?.name?.trim() && !isExcludedWeaponType(item));
+  return category ? category.name.trim() : '';
+}
+
+function getWeaponTraders(weapon) {
+  return (weapon?.buyFor || []).flatMap(offer => {
+    const id = offer?.vendor?.normalizedName || offer?.vendor?.id;
+    return id ? [{ id, name: offer.vendor.name || id }] : [];
+  });
+}
+
 export function getHomeWeaponFilterOptions(weapons) {
   const types = new Set();
   const calibers = new Set();
+  const traders = new Map();
 
   weapons.forEach(weapon => {
     weapon.categories?.forEach(category => {
@@ -57,28 +71,74 @@ export function getHomeWeaponFilterOptions(weapons) {
     });
     const caliber = getWeaponCaliber(weapon);
     if (caliber) calibers.add(caliber);
+    getWeaponTraders(weapon).forEach(trader => {
+      if (!traders.has(trader.id)) traders.set(trader.id, trader);
+    });
   });
 
   return {
     types: [...types].sort((left, right) => left.localeCompare(right)),
     calibers: [...calibers].sort((left, right) => left.localeCompare(right)),
+    traders: [...traders.values()].sort((left, right) => left.name.localeCompare(right.name)),
   };
 }
 
-export function filterHomeWeapons(weapons, { search = '', type = 'All', caliber = 'All' } = {}) {
+export function filterHomeWeapons(weapons, {
+  search = '',
+  type = 'All',
+  caliber = 'All',
+  trader = 'All',
+} = {}) {
   const normalizedSearch = search.trim().toLowerCase();
 
   return weapons.filter(weapon => {
     const name = typeof weapon.name === 'string' ? weapon.name : '';
     const shortName = typeof weapon.shortName === 'string' ? weapon.shortName : '';
+    const weaponCaliber = getWeaponCaliber(weapon);
     const matchesSearch = !normalizedSearch
       || name.toLowerCase().includes(normalizedSearch)
-      || shortName.toLowerCase().includes(normalizedSearch);
+      || shortName.toLowerCase().includes(normalizedSearch)
+      || (weaponCaliber && (
+        weaponCaliber.toLowerCase().includes(normalizedSearch)
+        || formatCaliberLabel(weaponCaliber).toLowerCase().includes(normalizedSearch)
+      ));
     const matchesType = type === 'All' || weapon.categories?.some(category => category?.name === type);
-    const matchesCaliber = caliber === 'All' || getWeaponCaliber(weapon) === caliber;
+    const matchesCaliber = caliber === 'All' || weaponCaliber === caliber;
+    const matchesTrader = trader === 'All' || getWeaponTraders(weapon).some(item => item.id === trader);
 
-    return matchesSearch && matchesType && matchesCaliber;
+    return matchesSearch && matchesType && matchesCaliber && matchesTrader;
   });
+}
+
+export const HOME_WEAPON_SORTS = Object.freeze(['name', 'price', 'ergonomics', 'recoil']);
+
+function compareNumbers(left, right, direction) {
+  const leftValid = Number.isFinite(left);
+  const rightValid = Number.isFinite(right);
+  // Missing values always go last.
+  if (!leftValid || !rightValid) return Number(!leftValid) - Number(!rightValid);
+  return direction * (left - right);
+}
+
+// getPrice(weapon) returns the displayed base price, or NaN when unknown.
+export function sortHomeWeapons(weapons, sort = 'name', getPrice = () => Number.NaN) {
+  const byName = (left, right) => String(left.shortName || left.name || '')
+    .localeCompare(String(right.shortName || right.name || ''));
+  const compare = {
+    price: (left, right) => compareNumbers(getPrice(left), getPrice(right), 1),
+    ergonomics: (left, right) => compareNumbers(
+      Number(left.properties?.ergonomics),
+      Number(right.properties?.ergonomics),
+      -1,
+    ),
+    recoil: (left, right) => compareNumbers(
+      Number(left.properties?.recoilVertical),
+      Number(right.properties?.recoilVertical),
+      1,
+    ),
+  }[sort];
+
+  return [...weapons].sort((left, right) => (compare?.(left, right) || 0) || byName(left, right));
 }
 
 export function formatCaliberLabel(caliber) {

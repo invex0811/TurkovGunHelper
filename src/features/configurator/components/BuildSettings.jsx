@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import AsyncImage from '../../../ui/AsyncImage.jsx';
 import {
@@ -7,6 +7,7 @@ import {
   PRIORITY_SELECTION_MODES,
 } from '../../../domain/customPriorityAttributes.js';
 import {
+  BUILD_GOAL_LABEL_KEYS,
   BUILD_GOAL_MODES,
 } from '../buildGoalModes.js';
 import { getPriorityWeightMax } from '../priorityWeightControls.js';
@@ -24,10 +25,23 @@ import TacticalDevicePicker from './TacticalDevicePicker.jsx';
 import { MaterialSymbol } from '../../../ui/MaterialSymbol.js';
 
 const BUILD_GOAL_OPTIONS = [
-  { id: BUILD_GOAL_MODES.META, labelKey: 'config.meta' },
-  { id: BUILD_GOAL_MODES.CONSTRAINTS, labelKey: 'config.characteristicConstraints' },
-  { id: BUILD_GOAL_MODES.PRIORITIES, labelKey: 'config.characteristicPriorities' },
-];
+  BUILD_GOAL_MODES.META,
+  BUILD_GOAL_MODES.CONSTRAINTS,
+  BUILD_GOAL_MODES.PRIORITIES,
+].map(id => ({ id, labelKey: BUILD_GOAL_LABEL_KEYS[id] }));
+
+// A numbered block of the settings panel: "01 Goal", "02 Suppressor"...
+function ConfigSection({ children, className = '', index, title }) {
+  return (
+    <section className={`config__section ${className}`.trim()}>
+      <h3 className="config__section-title">
+        <span className="config__section-index" aria-hidden="true">{index}</span>
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+}
 
 function ModuleRow({ view, action, actionLabel, onAction }) {
   const media = (
@@ -280,8 +294,7 @@ function PrioritySelectionSettings({
 
 function SuppressorSection({ suppressorMode, suppressorOptions, setters, t }) {
   return (
-    <section className="config__section">
-      <span className="field-label">{t('config.suppressor')}</span>
+    <ConfigSection index="02" title={t('config.section.suppressor')}>
       <div className="segmented segmented--three" role="group" aria-label={t('config.suppressor')}>
         {suppressorOptions.map(option => (
           <button
@@ -295,7 +308,7 @@ function SuppressorSection({ suppressorMode, suppressorOptions, setters, t }) {
           </button>
         ))}
       </div>
-    </section>
+    </ConfigSection>
   );
 }
 
@@ -306,26 +319,29 @@ function TraderPricesSection({
   t,
 }) {
   return (
-    <section className="config__section">
-      <div className="checks price-source-checks">
-        <label className="check" htmlFor="includeTraderPrices">
-          <input
-            id="includeTraderPrices"
-            type="checkbox"
-            checked={includeTraderPrices}
-            onChange={event => onIncludeTraderPricesChange(event.target.checked)}
-            aria-describedby="includeTraderPricesHelp"
-          />
-          <span>{t('config.includeTraders')}</span>
+    <section className="config__section config__section--switch">
+      <div className="switch-row">
+        <label className="switch-row__text" htmlFor="includeTraderPrices">
+          <span id="includeTraderPricesLabel">{t('config.includeTraders')}</span>
+          <span id="includeTraderPricesHelp" className="field-help">{t('config.helpPrices')}</span>
         </label>
-        <span id="includeTraderPricesHelp" className="field-help">{t('config.helpPrices')}</span>
-        {includeTraderPrices && strictTraderLevels && (
-          <Link className="strict-trader-badge" to="/settings#traders">
-            <span>{t('traders.strictLevelsActive')}</span>
-            <small>{t('traders.manageLevels')}</small>
-          </Link>
-        )}
+        <input
+          id="includeTraderPrices"
+          className="switch"
+          type="checkbox"
+          role="switch"
+          checked={includeTraderPrices}
+          onChange={event => onIncludeTraderPricesChange(event.target.checked)}
+          aria-labelledby="includeTraderPricesLabel"
+          aria-describedby="includeTraderPricesHelp"
+        />
       </div>
+      {includeTraderPrices && strictTraderLevels && (
+        <Link className="strict-trader-badge" to="/settings#traders">
+          <span>{t('traders.strictLevelsActive')}</span>
+          <small>{t('traders.manageLevels')}</small>
+        </Link>
+      )}
     </section>
   );
 }
@@ -337,7 +353,7 @@ function MetaWeightSection({
   t,
 }) {
   return (
-    <section className="config__section">
+    <div className="limit-fields-wrap">
       <div className="limit-fields limit-fields--single">
         <label className="limit-field" htmlFor="maxWeight">
           <span className="field-label limit-field__label">{t('config.maxWeight')}</span>
@@ -354,7 +370,7 @@ function MetaWeightSection({
           />
         </label>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -370,7 +386,7 @@ function BudgetSection({
   const id = 'maxPrice';
   const helpId = 'maxPriceHelp';
   return (
-    <section className="config__section build-budget">
+    <div className="build-budget">
       <label className="field-label" htmlFor={id}>{t('config.maxPrice')}</label>
       <span className="build-budget__control">
         <input
@@ -389,17 +405,16 @@ function BudgetSection({
           }}
           aria-describedby={helpId}
         />
-        <span aria-hidden="true">RUB</span>
+        <span aria-hidden="true">₽</span>
       </span>
       <span id={helpId} className="field-help">{t('config.maxPriceHelp')}</span>
-    </section>
+    </div>
   );
 }
 
 function MagazineSection({ availableCapacities, magazineCapacity, setters, t }) {
   return (
-    <section className="config__section">
-      <span className="field-label">{t('config.magazine')}</span>
+    <ConfigSection index="04" title={t('config.section.magazine')}>
       <div className="segmented segmented--capacity" role="group" aria-label={t('config.magazine')}>
         {availableCapacities.map(capacity => (
           <button
@@ -413,7 +428,7 @@ function MagazineSection({ availableCapacities, magazineCapacity, setters, t }) 
           </button>
         ))}
       </div>
-    </section>
+    </ConfigSection>
   );
 }
 
@@ -430,7 +445,7 @@ function SightSection({
   setZoomFiltersExpanded,
 }) {
   return (
-    <section className="config__section">
+    <div className="config__subsection">
       <span className="field-label">{t('config.sight')}</span>
       <TacticalDevicePicker
         id="scopeItem"
@@ -495,7 +510,7 @@ function SightSection({
         )}
         t={t}
       />
-    </section>
+    </div>
   );
 }
 
@@ -510,7 +525,7 @@ function AccessoriesSection({
   tblItems,
 }) {
   return (
-    <section className="config__section">
+    <div className="config__subsection">
       <span className="field-label">{t('config.accessories')}</span>
       <div className="checks">
         <label className="check">
@@ -552,7 +567,7 @@ function AccessoriesSection({
           />
         )}
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -566,8 +581,8 @@ function RequiredModulesSection({
   t,
 }) {
   return (
-    <section className="config__section advanced-builder">
-      <label className="field-label" htmlFor="requiredModuleSearch">{t('config.modules')}</label>
+    <ConfigSection className="advanced-builder" index="06" title={t('config.section.modules')}>
+      <label className="visually-hidden" htmlFor="requiredModuleSearch">{t('config.modules')}</label>
       <input
         id="requiredModuleSearch"
         type="search"
@@ -601,24 +616,43 @@ function RequiredModulesSection({
           />
         ))}
       </div>
-    </section>
+    </ConfigSection>
   );
 }
 
 function GenerateSection({ disabled = false, generating, onGenerate, t }) {
   return (
-    <section className="config__section">
+    <div className="config__footer">
       <button
-        className="btn btn--primary"
+        className="btn btn--primary btn--generate"
         type="button"
-        style={{ width: '100%' }}
         onClick={onGenerate}
         disabled={generating || disabled}
+        aria-keyshortcuts="Control+Enter Meta+Enter"
       >
         {generating ? t('config.calculating') : t('config.generateBuild')}
       </button>
-    </section>
+      <span className="config__shortcut" aria-hidden="true">Ctrl + Enter</span>
+    </div>
   );
+}
+
+// Ctrl+Enter (Cmd+Enter on macOS) starts a generation from anywhere on the page.
+function useGenerateShortcut(onGenerate, enabled) {
+  const latest = useRef({ onGenerate, enabled });
+  useEffect(() => {
+    latest.current = { onGenerate, enabled };
+  });
+  useEffect(() => {
+    const handleKeyDown = event => {
+      if (event.key !== 'Enter' || !(event.ctrlKey || event.metaKey) || event.repeat) return;
+      if (!latest.current.enabled || document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      event.preventDefault();
+      latest.current.onGenerate();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 }
 
 export default function BuildSettings(props) {
@@ -751,15 +785,32 @@ export default function BuildSettings(props) {
   const priorityWeightsInvalid = buildGoalMode === BUILD_GOAL_MODES.PRIORITIES
     && prioritySelectionMode === PRIORITY_SELECTION_MODES.WEIGHTED
     && (priorityWeightTotal !== 100 || !hasPriorityWeightsInRange(priorityWeights));
+  useGenerateShortcut(onGenerate, !generating && !priorityWeightsInvalid);
   const generateSection = (
     <GenerateSection disabled={priorityWeightsInvalid} generating={generating} onGenerate={onGenerate} t={t} />
   );
+  const budgetField = (
+    <BudgetSection
+      draft={maxPriceDraft}
+      max={props.maxPriceLimit}
+      onBlur={onMaxPriceBlur}
+      onChange={onMaxPriceChange}
+      onFocus={onMaxPriceFocus}
+      t={t}
+      value={maxPrice}
+    />
+  );
+  const opticsSection = (
+    <ConfigSection index="05" title={t('config.section.optics')}>
+      {sightSection}
+      {accessoriesSection}
+    </ConfigSection>
+  );
+  const goalHintKey = `config.goalHint.${buildGoalMode}`;
 
-  return (
-    <aside className="config" aria-label={t('config.buildConfiguration')}>
-      <div className="config__head"><h2>{t('config.buildConfiguration')}</h2></div>
-      <section className="config__section config__section--goals">
-        <span className="field-label">{t('config.goal')}</span>
+  const renderMode = (goalContent, limitsContent) => (
+    <div className="config__mode" data-build-goal={buildGoalMode}>
+      <ConfigSection className="config__section--goals" index="01" title={t('config.section.goal')}>
         <div className="segmented segmented--goals" role="group" aria-label={t('config.goal')}>
           {BUILD_GOAL_OPTIONS.map(option => {
             const selected = buildGoalMode === option.id;
@@ -776,40 +827,45 @@ export default function BuildSettings(props) {
             );
           })}
         </div>
-      </section>
+        <p className="field-help config__goal-hint">{t(goalHintKey)}</p>
+        {goalContent}
+      </ConfigSection>
+      {suppressorSection}
+      <ConfigSection index="03" title={t('config.section.limits')}>
+        {limitsContent}
+      </ConfigSection>
+      {magazineSection}
+      {opticsSection}
+      {requiredModulesSection}
+      {traderPricesSection}
+      {generateSection}
+    </div>
+  );
 
-      {buildGoalMode === BUILD_GOAL_MODES.META && (
-        <div className="config__mode" data-build-goal="meta">
-          {suppressorSection}
-          {traderPricesSection}
-          <MetaWeightSection
-            maxWeight={maxWeight}
-            maxWeightLimit={props.maxWeightLimit}
-            onMaxWeightChange={onMaxWeightChange}
-            t={t}
-          />
-          <BudgetSection
-            draft={maxPriceDraft}
-            max={props.maxPriceLimit}
-            onBlur={onMaxPriceBlur}
-            onChange={onMaxPriceChange}
-            onFocus={onMaxPriceFocus}
-            t={t}
-            value={maxPrice}
-          />
-          {magazineSection}
-          {sightSection}
-          {accessoriesSection}
-          {requiredModulesSection}
-          {generateSection}
-        </div>
+  return (
+    <aside className="config" aria-label={t('config.buildConfiguration')}>
+      <div className="config__head"><h2>{t('config.buildConfiguration')}</h2></div>
+
+      {buildGoalMode === BUILD_GOAL_MODES.META && renderMode(
+        null,
+        (
+          <div className="limit-grid">
+            <MetaWeightSection
+              maxWeight={maxWeight}
+              maxWeightLimit={props.maxWeightLimit}
+              onMaxWeightChange={onMaxWeightChange}
+              t={t}
+            />
+            {budgetField}
+          </div>
+        ),
       )}
 
-      {buildGoalMode === BUILD_GOAL_MODES.CONSTRAINTS && (
-        <div className="config__mode" data-build-goal="constraints">
-          <section className="custom-characteristic-settings" aria-labelledby="customCharacteristicSettingsTitle">
+      {buildGoalMode === BUILD_GOAL_MODES.CONSTRAINTS && renderMode(
+        (
+          <div className="custom-characteristic-settings" role="group" aria-labelledby="customCharacteristicSettingsTitle">
             <div className="custom-characteristic-settings__head">
-              <h3 id="customCharacteristicSettingsTitle">{t('config.characteristicSettings')}</h3>
+              <h4 id="customCharacteristicSettingsTitle">{t('config.characteristicSettings')}</h4>
               <InfoTooltip label={t('config.characteristicSettingsInfo')}>
                 {t('ui.radar.help')}
               </InfoTooltip>
@@ -820,57 +876,25 @@ export default function BuildSettings(props) {
               t={t}
               weapon={weapon}
             />
-          </section>
-          {suppressorSection}
-          {traderPricesSection}
-          <BudgetSection
-            draft={maxPriceDraft}
-            max={props.maxPriceLimit}
-            onBlur={onMaxPriceBlur}
-            onChange={onMaxPriceChange}
-            onFocus={onMaxPriceFocus}
-            t={t}
-            value={maxPrice}
-          />
-          {magazineSection}
-          {sightSection}
-          {accessoriesSection}
-          {requiredModulesSection}
-          {generateSection}
-        </div>
+          </div>
+        ),
+        budgetField,
       )}
 
-      {buildGoalMode === BUILD_GOAL_MODES.PRIORITIES && (
-        <div className="config__mode" data-build-goal="priorities">
-          <section className="config__section">
-            <PrioritySelectionSettings
-              priorityAttributes={priorityAttributes}
-              prioritySelectionMode={prioritySelectionMode}
-              priorityWeights={priorityWeights}
-              onPriorityAttributeMove={onPriorityAttributeMove}
-              onPriorityAttributeToggle={onPriorityAttributeToggle}
-              onPrioritySelectionModeChange={onPrioritySelectionModeChange}
-              onPriorityWeightChange={onPriorityWeightChange}
-              t={t}
-            />
-          </section>
-          {suppressorSection}
-          {traderPricesSection}
-          <BudgetSection
-            draft={maxPriceDraft}
-            max={props.maxPriceLimit}
-            onBlur={onMaxPriceBlur}
-            onChange={onMaxPriceChange}
-            onFocus={onMaxPriceFocus}
+      {buildGoalMode === BUILD_GOAL_MODES.PRIORITIES && renderMode(
+        (
+          <PrioritySelectionSettings
+            priorityAttributes={priorityAttributes}
+            prioritySelectionMode={prioritySelectionMode}
+            priorityWeights={priorityWeights}
+            onPriorityAttributeMove={onPriorityAttributeMove}
+            onPriorityAttributeToggle={onPriorityAttributeToggle}
+            onPrioritySelectionModeChange={onPrioritySelectionModeChange}
+            onPriorityWeightChange={onPriorityWeightChange}
             t={t}
-            value={maxPrice}
           />
-          {magazineSection}
-          {sightSection}
-          {accessoriesSection}
-          {requiredModulesSection}
-          {generateSection}
-        </div>
+        ),
+        budgetField,
       )}
     </aside>
   );

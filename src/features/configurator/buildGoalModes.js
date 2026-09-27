@@ -5,6 +5,12 @@ import {
 
 export { BUILD_GOAL_MODES };
 
+export const BUILD_GOAL_LABEL_KEYS = Object.freeze({
+  [BUILD_GOAL_MODES.META]: 'config.meta',
+  [BUILD_GOAL_MODES.CONSTRAINTS]: 'config.characteristicConstraints',
+  [BUILD_GOAL_MODES.PRIORITIES]: 'config.characteristicPriorities',
+});
+
 export function getBuildGoalMode(targetType, characteristicMode) {
   if (targetType !== 'custom') return BUILD_GOAL_MODES.META;
   return characteristicMode === BUILD_GOAL_MODES.PRIORITIES

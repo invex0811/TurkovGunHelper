@@ -75,6 +75,7 @@ import {
   WEAPON_STAT_UI_RANGES,
   formatAccuracyMoa,
   formatSightingRange,
+  getStatDelta,
   toFiniteStatNumber,
   withBaseStatMaximum,
 } from '../../ui/weaponStatMeters.js';
@@ -123,6 +124,7 @@ import {
 import BuildParts from './components/BuildParts.jsx';
 import BuildSettings from './components/BuildSettings.jsx';
 import {
+  BUILD_GOAL_LABEL_KEYS,
   getBuildGoalModeFromSettings,
   getCalculatorGoalState,
 } from './buildGoalModes.js';
@@ -132,6 +134,8 @@ import {
   ConfiguratorUnavailable,
 } from './components/ConfiguratorPageState.jsx';
 import WeaponSummary from './components/WeaponSummary.jsx';
+import ConfiguratorHero from './components/ConfiguratorHero.jsx';
+import { MaterialSymbol } from '../../ui/MaterialSymbol.js';
 import {
   applyReplacement,
   findTreeNodeByItemId,
@@ -1917,70 +1921,97 @@ function Configurator() {
   );
   const sightingRangeUnit = t('config.stat.metersUnit');
   const currentSightingRange = formatSightingRange(currentSightingRangeValue, language, sightingRangeUnit);
-  const currentPrice = canShowBuildDetails
-    ? buildCostSummary?.remainingTotal === 0
-      ? t('ownedItems.allPurchased')
-      : formatCurrency(buildCostSummary?.remainingTotal, 'RUB', t('config.notAvailable'))
-    : formatCurrency(
-      getSelectedPriceInfo(
-        weapon,
-        priceMode,
-        includeTraderPrices,
-        activeTraderLevels,
-        strictTraderLevels,
-        includeRefOffers,
-        true,
-      ).value,
-      'RUB',
-      t('config.notAvailable'),
-    );
+  const remainingPrice = canShowBuildDetails
+    ? toFiniteStatNumber(buildCostSummary?.remainingTotal)
+    : toFiniteStatNumber(getSelectedPriceInfo(
+      weapon,
+      priceMode,
+      includeTraderPrices,
+      activeTraderLevels,
+      strictTraderLevels,
+      includeRefOffers,
+      true,
+    ).value);
+  const allPurchased = canShowBuildDetails && buildCostSummary?.remainingTotal === 0;
+  const formatStatNumber = (value, fractionDigits = 0, minimumFractionDigits = 0) => (
+    Number.isFinite(toFiniteStatNumber(value))
+      ? new Intl.NumberFormat(language, {
+        minimumFractionDigits,
+        maximumFractionDigits: fractionDigits,
+      }).format(toFiniteStatNumber(value))
+      : null
+  );
+  // Tiles compare the build with the bare weapon; before a build exists
+  // they show the weapon's own values without a change.
+  const withDelta = (meter, baseValue, deltaOptions = {}) => ({
+    ...meter,
+    baseValue: toFiniteStatNumber(baseValue),
+    delta: canShowBuildDetails
+      ? getStatDelta(meter.value, baseValue, {
+        direction: meter.range.direction,
+        locale: language,
+        ...deltaOptions,
+      })
+      : null,
+  });
   const statMeters = [
-    {
+    withDelta({
       key: 'weight',
       label: t('config.stat.weight'),
       value: currentWeightValue,
       displayValue: currentWeight,
+      valueText: formatStatNumber(currentWeightValue, 2, 2),
+      unit: t('config.stat.kgUnit'),
       range: WEAPON_STAT_UI_RANGES.weight,
-    },
-    {
+    }, weapon.weight, { maximumFractionDigits: 2 }),
+    withDelta({
       key: 'ergonomics',
       label: t('config.stat.ergonomics'),
-      value: currentErgo,
+      value: toFiniteStatNumber(currentErgo),
+      displayValue: currentErgo,
+      valueText: formatStatNumber(currentErgo, 1),
       range: WEAPON_STAT_UI_RANGES.ergonomics,
-    },
-    ...(currentAccuracy ? [{
+    }, weapon.properties?.ergonomics, { maximumFractionDigits: 1 }),
+    ...(currentAccuracy ? [withDelta({
       key: 'accuracy-moa',
       label: t('config.stat.accuracy'),
       value: currentAccuracyMoa,
       displayValue: currentAccuracy,
+      valueText: formatStatNumber(currentAccuracyMoa, 2, 2),
+      unit: 'MOA',
       range: WEAPON_STAT_UI_RANGES.accuracyMoa,
-    }] : []),
-    {
+    }, null)] : []),
+    withDelta({
       key: 'vertical-recoil',
       label: t('config.stat.verticalRecoil'),
-      value: currentRecoilV,
+      value: toFiniteStatNumber(currentRecoilV),
+      displayValue: currentRecoilV,
+      valueText: formatStatNumber(currentRecoilV),
       range: withBaseStatMaximum(
         WEAPON_STAT_UI_RANGES.verticalRecoil,
         weapon.properties?.recoilVertical,
       ),
-    },
-    {
+    }, weapon.properties?.recoilVertical, { percent: true }),
+    withDelta({
       key: 'horizontal-recoil',
       label: t('config.stat.horizontalRecoil'),
-      value: currentRecoilH,
+      value: toFiniteStatNumber(currentRecoilH),
+      displayValue: currentRecoilH,
+      valueText: formatStatNumber(currentRecoilH),
       range: withBaseStatMaximum(
         WEAPON_STAT_UI_RANGES.horizontalRecoil,
         weapon.properties?.recoilHorizontal,
       ),
-    },
-    ...(currentSightingRange ? [{
+    }, weapon.properties?.recoilHorizontal, { percent: true }),
+    ...(currentSightingRange ? [withDelta({
       key: 'sighting-range',
       label: t('config.stat.sightingRange'),
       value: currentSightingRangeValue,
       displayValue: currentSightingRange,
+      valueText: formatStatNumber(currentSightingRangeValue),
       unit: sightingRangeUnit,
       range: WEAPON_STAT_UI_RANGES.sightingRange,
-    }] : []),
+    }, calculateSightingRange(weapon, []))] : []),
   ];
 
   // Группировка деталей сборки по узлам оружия
@@ -2081,186 +2112,190 @@ function Configurator() {
     setPriorityWeights(current => rebalancePriorityWeights(current, attribute, value));
   };
 
+  const moduleCount = canShowBuildDetails ? buildResult.build.length : 0;
+  const markAllOwned = () => setOwnedItems(
+    buildCostSummary.instances.map(instance => ({
+      key: instance.key,
+      itemId: instance.itemId,
+    })),
+  );
+
   return (
-    <div className="layout">
-      {/* Левый сайдбар с конфигурацией сборки */}
-      <BuildSettings
-        availableCapacities={availableCapacities}
-        buildGoalMode={buildGoalMode}
-        customProfile={customProfile}
-        priorityAttributes={priorityAttributes}
-        prioritySelectionMode={prioritySelectionMode}
-        priorityWeights={priorityWeights}
-        generating={generating}
-        includeFlashlight={includeFlashlight}
-        includeLaser={includeLaser}
-        flashlightItems={flashlightItems}
-        flashlightItemId={flashlightItemId}
-        includeTraderPrices={includeTraderPrices}
-        strictTraderLevels={strictTraderLevels}
-        magazineCapacity={magazineCapacity}
-        maxPrice={maxPrice}
-        maxPriceDraft={maxPriceDraft}
-        maxPriceLimit={WEAPON_STAT_UI_RANGES.price.max}
-        maxWeight={maxWeight}
-        maxWeightLimit={WEAPON_STAT_UI_RANGES.weight.max}
-        moduleResults={requiredModuleResultViews}
-        onAddModule={handleAddRequiredModule}
-        onBuildGoalModeChange={setBuildGoalMode}
-        onPriorityAttributeToggle={attribute => setPriorityAttributes(current => (
-          togglePriorityAttribute(current, attribute)
-        ))}
-        onPriorityAttributeMove={(fromIndex, toIndex) => setPriorityAttributes(current => (
-          movePriorityAttribute(current, fromIndex, toIndex)
-        ))}
-        onPrioritySelectionModeChange={mode => setPrioritySelectionMode(normalizePrioritySelectionMode(mode))}
-        onPriorityWeightChange={handlePriorityWeightChange}
-        onGenerate={handleGenerate}
-        onIncludeTraderPricesChange={handleIncludeTraderPricesChange}
-        onMaxPriceBlur={value => {
-          setMaxPrice(normalizeBuildMaxPrice(value));
-          setMaxPriceDraft(null);
-        }}
-        onMaxPriceChange={value => {
-          setMaxPriceDraft(value);
-          setMaxPrice(normalizeBuildMaxPrice(value));
-        }}
-        onMaxPriceFocus={setMaxPriceDraft}
-        onMaxWeightChange={value => setCustomProfile(current => normalizeCustomBuildProfile({ ...current, weight: value === '' ? 0 : Number(value) }, weapon))}
-        onRemoveModule={handleRemoveRequiredModule}
-        onRequiredModuleSearchChange={setRequiredModuleSearch}
-        requiredModuleSearch={requiredModuleSearch}
-        selectedModules={selectedRequiredModuleViews}
-        setters={{
-          customProfile: setCustomProfile,
-          includeFlashlight: handleIncludeFlashlightChange,
-          includeLaser: handleIncludeLaserChange,
-          flashlightItemId: handleFlashlightSelection,
-          tblItemId: handleTblSelection,
-          scopeSelection: handleScopeSelection,
-          scopeZoom: setScopeZoom,
-          magazineCapacity: setMagazineCapacity,
-          suppressorMode: setSuppressorMode,
-        }}
-        sightMode={sightMode}
-        scopeItems={scopeItems}
-        scopeMode={scopeMode}
-        scopeItemId={scopeItemId}
-        scopeZoom={scopeZoom}
-        scopeZoomLevels={scopeZoomLevels}
-        suppressorMode={suppressorMode}
-        suppressorOptions={SUPPRESSOR_MODE_OPTIONS}
-        tblItems={tblItems}
-          tblItemId={tblItemId}
+    <div className="configurator">
+      <ConfiguratorHero
+        onOpenDiagram={() => setIsBuildDiagramOpen(true)}
         t={t}
         weapon={weapon}
       />
 
-      {/* Правая основная область */}
-      <main>
-        {/* Сетка: Карточка оружия и Сводка деталей */}
-        <div className="main-grid">
-          {/* Левая панель - Оружие */}
-          <WeaponSummary
-            activeSavedBuildId={activeSavedBuildId}
-            canSave={canShowBuildDetails}
-            currentPrice={currentPrice}
-            marketPrice={buildCostSummary?.marketTotal}
-            onOpenDiagram={() => setIsBuildDiagramOpen(true)}
-            onSave={handleSaveBuild}
-            onSaveNameChange={value => {
-              setSaveName(value);
-              setSaveFeedback(null);
-            }}
-            priceMode={priceMode}
-            saveFeedback={saveFeedback}
-            saveName={saveName}
-            statMeters={statMeters}
-            summaryStatus={priceDiagnostics.summaryStatus}
-            t={t}
-            weapon={weapon}
-          />
+      <div className="layout">
+        {/* Левая колонка: параметры сборки */}
+  <BuildSettings
+          availableCapacities={availableCapacities}
+          buildGoalMode={buildGoalMode}
+          customProfile={customProfile}
+          priorityAttributes={priorityAttributes}
+          prioritySelectionMode={prioritySelectionMode}
+          priorityWeights={priorityWeights}
+          generating={generating}
+          includeFlashlight={includeFlashlight}
+          includeLaser={includeLaser}
+          flashlightItems={flashlightItems}
+          flashlightItemId={flashlightItemId}
+          includeTraderPrices={includeTraderPrices}
+          strictTraderLevels={strictTraderLevels}
+          magazineCapacity={magazineCapacity}
+          maxPrice={maxPrice}
+          maxPriceDraft={maxPriceDraft}
+          maxPriceLimit={WEAPON_STAT_UI_RANGES.price.max}
+          maxWeight={maxWeight}
+          maxWeightLimit={WEAPON_STAT_UI_RANGES.weight.max}
+          moduleResults={requiredModuleResultViews}
+          onAddModule={handleAddRequiredModule}
+          onBuildGoalModeChange={setBuildGoalMode}
+          onPriorityAttributeToggle={attribute => setPriorityAttributes(current => (
+            togglePriorityAttribute(current, attribute)
+          ))}
+          onPriorityAttributeMove={(fromIndex, toIndex) => setPriorityAttributes(current => (
+            movePriorityAttribute(current, fromIndex, toIndex)
+          ))}
+          onPrioritySelectionModeChange={mode => setPrioritySelectionMode(normalizePrioritySelectionMode(mode))}
+          onPriorityWeightChange={handlePriorityWeightChange}
+          onGenerate={handleGenerate}
+          onIncludeTraderPricesChange={handleIncludeTraderPricesChange}
+          onMaxPriceBlur={value => {
+            setMaxPrice(normalizeBuildMaxPrice(value));
+            setMaxPriceDraft(null);
+          }}
+          onMaxPriceChange={value => {
+            setMaxPriceDraft(value);
+            setMaxPrice(normalizeBuildMaxPrice(value));
+          }}
+          onMaxPriceFocus={setMaxPriceDraft}
+          onMaxWeightChange={value => setCustomProfile(current => normalizeCustomBuildProfile({ ...current, weight: value === '' ? 0 : Number(value) }, weapon))}
+          onRemoveModule={handleRemoveRequiredModule}
+          onRequiredModuleSearchChange={setRequiredModuleSearch}
+          requiredModuleSearch={requiredModuleSearch}
+          selectedModules={selectedRequiredModuleViews}
+          setters={{
+            customProfile: setCustomProfile,
+            includeFlashlight: handleIncludeFlashlightChange,
+            includeLaser: handleIncludeLaserChange,
+            flashlightItemId: handleFlashlightSelection,
+            tblItemId: handleTblSelection,
+            scopeSelection: handleScopeSelection,
+            scopeZoom: setScopeZoom,
+            magazineCapacity: setMagazineCapacity,
+            suppressorMode: setSuppressorMode,
+          }}
+          sightMode={sightMode}
+          scopeItems={scopeItems}
+          scopeMode={scopeMode}
+          scopeItemId={scopeItemId}
+          scopeZoom={scopeZoom}
+          scopeZoomLevels={scopeZoomLevels}
+          suppressorMode={suppressorMode}
+          suppressorOptions={SUPPRESSOR_MODE_OPTIONS}
+          tblItems={tblItems}
+            tblItemId={tblItemId}
+          t={t}
+          weapon={weapon}
+        />
 
-          {/* Правая панель - Список деталей */}
-          <section className="panel parts-panel">
-            {/* Поле поиска */}
-            <div className="parts-toolbar">
+        {/* Центр: оружие, характеристики и цена */}
+        <WeaponSummary
+          activeSavedBuildId={activeSavedBuildId}
+          allPurchased={allPurchased}
+          canSave={canShowBuildDetails}
+          goalLabel={t(BUILD_GOAL_LABEL_KEYS[buildGoalMode])}
+          hasBuild={canShowBuildDetails}
+          language={language}
+          marketPrice={toFiniteStatNumber(buildCostSummary?.marketTotal)}
+          moduleCount={moduleCount}
+          onSave={handleSaveBuild}
+          priceSourceLabel={`${t(`config.price.${priceMode}Short`)} · ${priceDiagnostics.summaryStatus}`}
+          onSaveNameChange={value => {
+            setSaveName(value);
+            setSaveFeedback(null);
+          }}
+          remainingPrice={remainingPrice}
+          saveFeedback={saveFeedback}
+          saveName={saveName}
+          statMeters={statMeters}
+          t={t}
+          weapon={weapon}
+        />
+
+        {/* Правая колонка: модули */}
+        <section className="panel parts-panel" aria-labelledby="partsPanelTitle">
+          <div className="parts-panel__head">
+            <div className="parts-panel__title">
+              <h2 id="partsPanelTitle">{t('config.modulesTitle')}</h2>
+              {canShowBuildDetails && (
+                <span className="parts-panel__count">{t('config.moduleCount', { count: moduleCount })}</span>
+              )}
+            </div>
+            {canShowBuildDetails && (
+              <div className="parts-panel__actions">
+                <button className="text-btn text-btn--muted" type="button" onClick={markAllOwned}>
+                  {t('ownedItems.markAll')}
+                </button>
+                <button className="text-btn text-btn--muted" type="button" onClick={() => setOwnedItems([])}>
+                  {t('ownedItems.clearAll')}
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="parts-toolbar">
+            <label className="search-field search-field--compact">
+              <MaterialSymbol name="search" className="search-field__icon" />
               <input
                 type="search"
+                aria-label={t('config.filterPartsLabel')}
                 placeholder={t('config.filterParts')}
                 value={partsFilter}
                 onChange={e => setPartsFilter(e.target.value)}
               />
-              <button
-                className="btn btn--ghost"
-                type="button"
-                onClick={() => setPartsFilter('')}
-              >
-                {t('config.clear')}
-              </button>
-              {canShowBuildDetails && (
-                <>
-                  <button
-                    className="btn btn--ghost"
-                    type="button"
-                    onClick={() => setOwnedItems(
-                      buildCostSummary.instances.map(instance => ({
-                        key: instance.key,
-                        itemId: instance.itemId,
-                      })),
-                    )}
-                  >
-                    {t('ownedItems.markAll')}
-                  </button>
-                  <button
-                    className="btn btn--ghost"
-                    type="button"
-                    onClick={() => setOwnedItems([])}
-                  >
-                    {t('ownedItems.clearAll')}
-                  </button>
-                </>
-              )}
-            </div>
+            </label>
+          </div>
 
-            {/* Вывод ошибок при расчете сборки */}
-            <BuildWarnings
-              generationError={generationError}
-              pricePolicyWarning={pricePolicyWarning}
-              replacementError={replacementError}
-              calculationError={buildResult && hasCalculationError
-                ? getBuildResultErrorMessage(buildResult, language, t)
-                : null}
-              buildWarnings={buildResult
-                && !hasCalculationError
-                && (buildResult.warning || buildResult.warningCode || buildResult.warnings)
-                ? getLocalizedBuildWarnings(buildResult, t)
-                : []}
-              priceWarnings={canShowBuildDetails ? priceDiagnostics.warningMessages : []}
-              priceInfos={canShowBuildDetails ? priceDiagnostics.infoMessages : []}
-              hasFallbackPrice={priceDiagnostics.fallbackEntries?.length > 0}
-              priceModeNotice={priceModeNotice}
-              t={t}
-            />
+          {/* Вывод ошибок при расчете сборки */}
+          <BuildWarnings
+            generationError={generationError}
+            pricePolicyWarning={pricePolicyWarning}
+            replacementError={replacementError}
+            calculationError={buildResult && hasCalculationError
+              ? getBuildResultErrorMessage(buildResult, language, t)
+              : null}
+            buildWarnings={buildResult
+              && !hasCalculationError
+              && (buildResult.warning || buildResult.warningCode || buildResult.warnings)
+              ? getLocalizedBuildWarnings(buildResult, t)
+              : []}
+            priceWarnings={canShowBuildDetails ? priceDiagnostics.warningMessages : []}
+            priceInfos={canShowBuildDetails ? priceDiagnostics.infoMessages : []}
+            hasFallbackPrice={priceDiagnostics.fallbackEntries?.length > 0}
+            priceModeNotice={priceModeNotice}
+            t={t}
+          />
 
-            {/* Рендеринг сгруппированных деталей */}
-            <BuildParts
-              activeReplacePartId={activeReplacePartId}
-              buildExists={Boolean(buildResult)}
-              canShowBuildDetails={canShowBuildDetails}
-              generating={generating}
-              groups={displayGroups}
-              onOpenReplacement={handleOpenReplaceDrawer}
-              onToggleOwned={part => handleOwnedToggle({
-                key: part.ownershipKey,
-                itemId: part.item.id,
-              })}
-              formatPartName={formatPartName}
-              t={t}
-            />
-          </section>
-        </div>
-      </main>
+          <BuildParts
+            activeReplacePartId={activeReplacePartId}
+            buildExists={Boolean(buildResult)}
+            canShowBuildDetails={canShowBuildDetails}
+            generating={generating}
+            groups={displayGroups}
+            language={language}
+            onOpenReplacement={handleOpenReplaceDrawer}
+            onToggleOwned={part => handleOwnedToggle({
+              key: part.ownershipKey,
+              itemId: part.item.id,
+            })}
+            formatPartName={formatPartName}
+            t={t}
+          />
+        </section>
+      </div>
 
       {isBuildDiagramOpen && (
         <WeaponBuildDiagramModal

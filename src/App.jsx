@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useEffect } from 'react';
-import { HashRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Link, NavLink, useLocation } from 'react-router-dom';
 import Home from './pages/Home';
 import I18nProvider from './i18n/I18nProvider.jsx';
 import { useI18n } from './i18n/useI18n.js';
@@ -7,6 +7,8 @@ import PwaUpdatePrompt from './features/pwa/PwaUpdatePrompt.jsx';
 import PriceModeProvider from './features/priceMode/PriceModeProvider.jsx';
 import PriceModeSwitch from './features/priceMode/PriceModeSwitch.jsx';
 import TraderLevelsProvider from './features/traderLevels/TraderLevelsProvider.jsx';
+import CatalogStatusProvider from './features/dataStatus/CatalogStatusProvider.jsx';
+import CatalogStatus from './features/dataStatus/CatalogStatus.jsx';
 import { MaterialSymbol } from './ui/MaterialSymbol.js';
 
 const Configurator = lazy(() => import('./pages/Configurator'));
@@ -27,12 +29,57 @@ function useTheme() {
   return [theme, setTheme];
 }
 
+const NAV_ITEMS = [
+  // The configurator belongs to the weapons section.
+  { to: '/', end: true, icon: 'my_location', labelKey: 'app.weapons', activePrefix: '/configure/' },
+  { to: '/module-comparison', icon: 'view_column', labelKey: 'moduleComparison.nav', shortLabelKey: 'moduleComparison.navShort' },
+  { to: '/builds', icon: 'layers', labelKey: 'app.builds' },
+];
+
+function navLinkClassName({ isActive }) {
+  return `topnav__link${isActive ? ' is-active' : ''}`;
+}
+
+// Text tabs in the header; below 768px the same links become a bottom tab bar
+// with icons, and settings joins them there.
+function MainNav({ t }) {
+  const { pathname } = useLocation();
+  return (
+    <nav className="topnav" aria-label={t('app.sections')}>
+      {NAV_ITEMS.map(item => (
+        <NavLink
+          key={item.to}
+          to={item.to}
+          end={item.end}
+          className={({ isActive }) => navLinkClassName({
+            isActive: isActive || Boolean(item.activePrefix && pathname.startsWith(item.activePrefix)),
+          })}
+        >
+          <MaterialSymbol name={item.icon} className="topnav__icon" />
+          <span className="topnav__label">{t(item.labelKey)}</span>
+          {item.shortLabelKey && (
+            <span className="topnav__label topnav__label--short" aria-hidden="true">{t(item.shortLabelKey)}</span>
+          )}
+        </NavLink>
+      ))}
+      <NavLink to="/settings" className={args => `${navLinkClassName(args)} topnav__link--mobile-only`}>
+        <MaterialSymbol name="settings" className="topnav__icon" />
+        <span className="topnav__label">{t('settings.title')}</span>
+      </NavLink>
+    </nav>
+  );
+}
+
 function SettingsLink({ t }) {
   return (
-    <Link to="/settings" className="btn btn--ghost settings-trigger" aria-label={t('settings.open')}>
-        <MaterialSymbol name="settings" className="settings-trigger__icon" />
-        <span className="settings-trigger__text">{t('settings.title')}</span>
-    </Link>
+    <NavLink
+      to="/settings"
+      className={({ isActive }) => `icon-btn topbar__settings${isActive ? ' is-active' : ''}`}
+      aria-label={t('settings.open')}
+      title={t('settings.title')}
+    >
+      <MaterialSymbol name="settings" />
+    </NavLink>
   );
 }
 
@@ -57,30 +104,24 @@ function MainLayout() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="topbar__primary">
-          <Link to="/" className="brand" aria-label={t('app.openWeapons')}>
-            <img
-              className="brand__mark"
-              src={`${import.meta.env.BASE_URL}tgh-logo.png`}
-              alt=""
-              aria-hidden="true"
-            />
-            <div>
-              <h1>Tarkov Gun Helper</h1>
-              <p>{t('app.tagline')}</p>
-            </div>
-          </Link>
-          <PriceModeSwitch />
-        </div>
+        <Link to="/" className="brand" aria-label={t('app.openWeapons')}>
+          <img
+            className="brand__mark"
+            src={`${import.meta.env.BASE_URL}tgh-logo.png`}
+            alt=""
+            aria-hidden="true"
+          />
+          <span className="brand__name">Tarkov Gun Helper</span>
+        </Link>
+        <MainNav t={t} />
         <div className="topbar__actions">
-          <Link to="/" className="btn btn--ghost">{t('app.weapons')}</Link>
-          <Link to="/module-comparison" className="btn btn--ghost">{t('moduleComparison.nav')}</Link>
-          <Link to="/builds" className="btn btn--ghost">{t('app.builds')}</Link>
+          <CatalogStatus />
+          <PriceModeSwitch />
           <SettingsLink t={t} />
         </div>
       </header>
 
-      <main>
+      <main className="app__main">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route
@@ -127,7 +168,9 @@ function App() {
     <I18nProvider>
       <PriceModeProvider>
         <TraderLevelsProvider>
-          <Router><MainLayout /></Router>
+          <CatalogStatusProvider>
+            <Router><MainLayout /></Router>
+          </CatalogStatusProvider>
         </TraderLevelsProvider>
       </PriceModeProvider>
     </I18nProvider>
