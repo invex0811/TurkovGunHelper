@@ -5,6 +5,8 @@ import {
   filterHomeWeapons,
   formatCaliberLabel,
   getHomeWeaponFilterOptions,
+  getWeaponTypeLabel,
+  sortHomeWeapons,
 } from '../../src/pages/homeWeaponFilters.js';
 
 const weapons = [
@@ -44,6 +46,7 @@ test('builds deduplicated sorted type and caliber options', () => {
   assert.deepEqual(getHomeWeaponFilterOptions(weapons), {
     types: ['Assault rifle', 'Shotgun'],
     calibers: ['Caliber545x39', 'Caliber556x45NATO'],
+    traders: [],
   });
 });
 
@@ -62,6 +65,7 @@ test('excludes generic category labels using stable category metadata across loc
   assert.deepEqual(getHomeWeaponFilterOptions(localizedWeapons), {
     types: ['Штурмовая винтовка'],
     calibers: ['Caliber545x39'],
+    traders: [],
   });
 });
 
@@ -77,4 +81,46 @@ test('formats raw Tarkov caliber enum keys into readable labels without changing
   assert.equal(formatCaliberLabel('Caliber93x64'), '9.3x64');
   assert.equal(formatCaliberLabel('Caliber12g'), '12ga');
   assert.equal(formatCaliberLabel('Caliber20g'), '20ga');
+});
+
+test('search also matches the raw and readable caliber', () => {
+  assert.deepEqual(filterHomeWeapons(weapons, { search: '5.45' }), [weapons[0]]);
+  assert.deepEqual(filterHomeWeapons(weapons, { search: '556x45' }), [weapons[1]]);
+});
+
+test('returns the first specific weapon type label', () => {
+  assert.equal(getWeaponTypeLabel(weapons[0]), 'Assault rifle');
+  assert.equal(getWeaponTypeLabel(weapons[2]), 'Shotgun');
+  assert.equal(getWeaponTypeLabel({ categories: [{ name: 'Weapon' }] }), '');
+  assert.equal(getWeaponTypeLabel({
+    categories: [{ name: 'Compound item', normalizedName: 'compound-item' }, { name: 'Grenade launcher' }],
+  }), 'Grenade launcher');
+});
+
+test('lists traders once and filters weapons sold by a trader', () => {
+  const sold = [
+    { ...weapons[0], buyFor: [{ vendor: { normalizedName: 'prapor', name: 'Prapor' } }] },
+    { ...weapons[1], buyFor: [{ vendor: { normalizedName: 'peacekeeper', name: 'Peacekeeper' } }, { vendor: { normalizedName: 'prapor', name: 'Prapor' } }] },
+    weapons[2],
+  ];
+  assert.deepEqual(getHomeWeaponFilterOptions(sold).traders, [
+    { id: 'peacekeeper', name: 'Peacekeeper' },
+    { id: 'prapor', name: 'Prapor' },
+  ]);
+  assert.deepEqual(filterHomeWeapons(sold, { trader: 'peacekeeper' }), [sold[1]]);
+  assert.deepEqual(filterHomeWeapons(sold, { trader: 'prapor' }), [sold[0], sold[1]]);
+});
+
+test('sorts by name, price, ergonomics and recoil with missing values last', () => {
+  const list = [
+    { shortName: 'B', properties: { ergonomics: 40, recoilVertical: 90 }, price: 300 },
+    { shortName: 'A', properties: { ergonomics: 55, recoilVertical: 120 }, price: Number.NaN },
+    { shortName: 'C', properties: {}, price: 100 },
+  ];
+  const names = items => items.map(item => item.shortName);
+  const getPrice = item => item.price;
+  assert.deepEqual(names(sortHomeWeapons(list, 'name', getPrice)), ['A', 'B', 'C']);
+  assert.deepEqual(names(sortHomeWeapons(list, 'price', getPrice)), ['C', 'B', 'A']);
+  assert.deepEqual(names(sortHomeWeapons(list, 'ergonomics', getPrice)), ['A', 'B', 'C']);
+  assert.deepEqual(names(sortHomeWeapons(list, 'recoil', getPrice)), ['B', 'A', 'C']);
 });
