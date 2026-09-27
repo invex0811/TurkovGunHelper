@@ -889,7 +889,7 @@ test('provides an installable manifest and restores the catalog offline', async 
   await context.setOffline(true);
   await page.reload();
   await expect(page.getByRole('heading', { name: 'TW', exact: true })).toBeVisible();
-  await expect(page.getByText(/Previously saved data is in use|Data may be outdated|Saved data is in use/)).toBeVisible();
+  await expect(page.getByText(/Offline · saved data|Data may be outdated|Saved data is in use/)).toBeVisible();
   await context.setOffline(false);
 });
 

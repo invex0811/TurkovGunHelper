@@ -150,6 +150,8 @@
   --pwa-update-border: #a99d70;
   --pwa-update-shadow: 0 20px 48px rgba(0, 0, 0, 0.62), 0 4px 14px rgba(0, 0, 0, 0.35);
   --blur-amount: blur(12px);
+  --topbar-height: 64px;
+  --bottom-nav-height: 64px;
 
   /* Compatibility aliases used by the existing React views. */
   --bg: var(--bg-base);
@@ -196,7 +198,7 @@
   --color-text: var(--text-primary);
 
   /* Component background overrides */
-  --topbar-bg: rgba(12, 14, 13, 0.85);
+  --topbar-bg: rgba(10, 12, 11, 0.94);
   --brand-mark-bg: #000000;
   --config-bg: rgba(20, 24, 22, 0.92);
   --segmented-tabs-bg: rgba(0, 0, 0, 0.3);
@@ -345,32 +347,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.catalog-status {
-  align-items: center;
-  background: color-mix(in srgb, var(--color-surface) 82%, transparent);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  display: flex;
-  gap: 1rem;
-  justify-content: space-between;
-  margin-bottom: 1.25rem;
-  padding: 0.75rem 1rem;
-}
-
-.catalog-status div {
-  display: grid;
-  gap: 0.2rem;
-}
-
-.catalog-status span {
-  color: var(--color-text-muted);
-  font-size: 0.85rem;
-}
-
-.catalog-status--warning {
-  border-color: var(--color-accent-gold);
-}
-
 .pwa-update {
   align-items: flex-start;
   background: var(--pwa-update-bg);
@@ -503,128 +479,365 @@ a {
 }
 
 .app {
-  width: min(1760px, calc(100vw - 32px));
-  margin: 0 auto;
-  padding: 20px 0 32px;
+  min-height: 100vh;
 }
 
+.app__main {
+  width: min(1760px, 100%);
+  margin: 0 auto;
+  padding: 0 40px 48px;
+}
+
+/* Full-width header strip: brand, text tabs, price status and settings. */
 .topbar {
   position: sticky;
   top: 0;
-  z-index: 10;
-  display: grid;
-  grid-template-columns: minmax(240px, 1fr) auto;
-  gap: 16px;
+  z-index: 30;
+  display: flex;
   align-items: center;
-  padding: 14px 20px;
+  gap: 40px;
+  height: var(--topbar-height);
+  padding: 0 40px;
   background: var(--topbar-bg);
   backdrop-filter: var(--blur-amount);
   -webkit-backdrop-filter: var(--blur-amount);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  box-sizing: border-box;
+  border-bottom: 1px solid var(--panel-border);
 }
 
 .brand {
   display: inline-flex;
-  min-width: 0;
-  width: fit-content;
-  max-width: 100%;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 14px;
-  justify-self: start;
+  gap: 12px;
+  min-height: 44px;
+  border-radius: var(--radius-sm);
 }
 
-.topbar__primary {
-  align-items: center;
+.brand__mark {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+}
+
+.brand__name {
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.topnav {
   display: flex;
-  gap: 14px;
+  align-self: stretch;
+  gap: 28px;
   min-width: 0;
+}
+
+.topnav__link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.topnav__link:hover {
+  color: var(--text-primary);
+}
+
+.topnav__link.is-active {
+  border-bottom-color: var(--color-gold);
+  color: var(--text-primary);
+}
+
+.topnav__link:focus-visible {
+  outline-offset: -2px;
+}
+
+.topnav__icon,
+.topnav__label--short,
+.topnav__link--mobile-only {
+  display: none;
+}
+
+.topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-left: auto;
+}
+
+.topbar-status-wrap {
+  display: inline-flex;
+}
+
+.topbar-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.topbar-status:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.topbar-status:disabled {
+  cursor: progress;
+}
+
+.topbar-status__dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-green);
+}
+
+.topbar-status--stale .topbar-status__dot,
+.topbar-status--refreshFailed .topbar-status__dot {
+  background: var(--color-orange);
+}
+
+.topbar-status--offline .topbar-status__dot {
+  background: var(--color-red);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .topbar-status__dot.is-refreshing {
+    animation: pulse 1s ease-in-out infinite;
+  }
 }
 
 .price-mode-switch {
-  align-items: center;
-  background: var(--segmented-tabs-bg);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-sm);
   display: inline-flex;
   flex: 0 0 auto;
+  align-items: center;
   padding: 3px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--bg-darker);
 }
 
 .price-mode-switch__button {
+  display: inline-flex;
   align-items: center;
-  background: transparent;
+  min-height: 32px;
+  padding: 0 16px;
   border: 0;
-  border-radius: calc(var(--radius-sm) - 3px);
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  display: inline-flex;
-  font: 700 0.75rem/1 var(--font-sans);
-  gap: 4px;
-  min-height: 32px;
-  padding: 0 10px;
-  transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+  font: 600 12px/1 var(--font-mono);
+  letter-spacing: 0.04em;
+  transition: background-color 160ms ease, color 160ms ease;
 }
 
 .price-mode-switch__button:hover {
   color: var(--text-primary);
 }
 
-.price-mode-switch__button:focus-visible {
-  outline: 2px solid var(--color-gold);
-  outline-offset: 2px;
-}
-
 .price-mode-switch__button[aria-pressed="true"] {
   background: var(--color-gold);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-  color: var(--bg-darker);
+  color: var(--btn-primary-text, var(--bg-darker));
 }
 
-.price-mode-switch__indicator {
-  display: none;
-}
-
-.price-mode-switch__button[aria-pressed="true"] .price-mode-switch__indicator {
-  display: inline-block;
-  font-size: 16px;
-  vertical-align: -3px;
-}
-
-.brand__mark {
-  width: 44px;
-  height: 44px;
-  border: 1.5px solid var(--color-gold);
-  border-radius: var(--radius-sm);
-  background: var(--brand-mark-bg);
-  object-fit: cover;
-}
-
-.brand h1 {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: 1.2rem;
-  font-weight: 600;
-  line-height: 1;
-  text-transform: uppercase;
-  color: var(--text-primary);
-  letter-spacing: 0.5px;
-}
-
-.brand p {
-  margin: 5px 0 0;
+/* Square icon-only control; its name comes from aria-label. */
+.icon-btn {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: transparent;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  font-size: 0.75rem;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
 }
 
-.topbar__actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.icon-btn .material-symbol {
+  font-size: 20px;
+}
+
+.icon-btn:hover:not(:disabled) {
+  border-color: var(--panel-border-active);
+  color: var(--color-gold);
+}
+
+.icon-btn.is-active {
+  border-color: var(--color-gold);
+  color: var(--color-gold);
+}
+
+@media (max-width: 1180px) {
+  .topbar {
+    gap: 24px;
+    padding: 0 24px;
+  }
+
+  .topnav {
+    gap: 20px;
+  }
+
+  .topbar-status__text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .topbar-status {
+    justify-content: center;
+    width: 40px;
+  }
+
+  .app__main {
+    padding: 0 24px 40px;
+  }
+}
+
+/* Phones: compact header, the sections move to a bottom tab bar. */
+@media (max-width: 767px) {
+  :root {
+    --topbar-height: 56px;
+  }
+
+  /* No backdrop-filter here: it would make the header the containing block
+     of the fixed bottom tab bar. */
+  .topbar {
+    gap: 10px;
+    padding: 0 16px;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .brand {
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .brand__mark {
+    width: 30px;
+    height: 30px;
+  }
+
+  .brand__name {
+    overflow: hidden;
+    font-size: 16px;
+    text-overflow: ellipsis;
+  }
+
+  .topbar__actions {
+    gap: 6px;
+  }
+
+  .topbar__settings {
+    display: none;
+  }
+
+  .price-mode-switch__button {
+    min-height: 30px;
+    padding: 0 10px;
+    font-size: 11px;
+  }
+
+  .topnav {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 30;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+    height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    border-top: 1px solid var(--panel-border);
+    background: var(--topbar-bg);
+    backdrop-filter: var(--blur-amount);
+    -webkit-backdrop-filter: var(--blur-amount);
+  }
+
+  .topnav__link,
+  .topnav__link--mobile-only {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 0 4px;
+    border-bottom: 0;
+    font-size: 11px;
+  }
+
+  .topnav__link.is-active {
+    color: var(--color-gold);
+    font-weight: 600;
+  }
+
+  .topnav__icon {
+    display: block;
+    font-size: 22px;
+  }
+
+  .topnav__label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Long labels stay as the accessible name; the short one is shown. */
+  .topnav__link:has(.topnav__label--short) .topnav__label:not(.topnav__label--short) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .topnav__label--short {
+    display: block;
+  }
+
+  .app__main {
+    padding: 0 16px calc(var(--bottom-nav-height) + 32px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .pwa-update {
+    bottom: calc(var(--bottom-nav-height) + 12px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-width: 360px) {
+  .brand__name {
+    display: none;
+  }
 }
 
 .btn {
@@ -3566,21 +3779,12 @@ button.weapon-diagram-node:focus-visible,
     width: 100%;
   }
 
-  .app, .container {
+  .container {
     width: min(100vw - 20px, 1760px);
     padding-top: 10px;
   }
 
-  .topbar {
-    position: relative;
-    grid-template-columns: 1fr;
-  }
-
-  .topbar__primary {
-    justify-content: space-between;
-  }
-
-  .topbar__actions, .parts-toolbar, .weapon__head {
+  .parts-toolbar, .weapon__head {
     align-items: stretch;
     flex-direction: column;
   }
@@ -3588,11 +3792,6 @@ button.weapon-diagram-node:focus-visible,
   .source {
     justify-content: flex-start;
     text-align: left;
-  }
-
-  .topbar__actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
   }
 
   .input-grid,
@@ -3694,19 +3893,6 @@ button.weapon-diagram-node:focus-visible,
   font-weight: 700;
 }
 
-/* Settings Menu Dropdown */
-.settings-menu-container {
-  position: relative;
-}
-
-.settings-trigger {
-  gap: 6px;
-}
-
-.settings-trigger__icon {
-  font-size: 18px;
-}
-
 .settings-dropdown {
   position: absolute;
   top: calc(100% + 8px);
@@ -3766,17 +3952,6 @@ button.weapon-diagram-node:focus-visible,
   background: var(--color-gold);
   color: var(--btn-primary-text, #ffffff);
   box-shadow: 0 0 8px rgba(199, 192, 154, 0.25);
-}
-
-@media (max-width: 520px) {
-  .settings-trigger__text {
-    display: none;
-  }
-}
-
-@media (max-width: 520px) {
-  .topbar__actions { gap: .35rem; }
-  .language-switcher { margin-left: auto; }
 }
 
 @media (max-width: 520px) {
