@@ -8,6 +8,7 @@ import {
   normalizeStatPercent,
   toFiniteStatNumber,
   withBaseStatMaximum,
+  getStatDelta,
 } from '../../src/ui/weaponStatMeters.js';
 
 test('normalizes the minimum to an empty meter', () => {
@@ -116,4 +117,30 @@ test('uses explicit stable visualization ranges for every weapon stat', () => {
     max: 2_000_000,
     direction: 'lower-is-better',
   });
+});
+
+test('getStatDelta reports the change against the base with a tone', () => {
+  assert.deepEqual(
+    getStatDelta(58, 50, { direction: 'higher-is-better' }),
+    { value: 8, tone: 'better', text: '+8' },
+  );
+  assert.deepEqual(
+    getStatDelta(95, 108, { direction: 'lower-is-better', percent: true }),
+    { value: -12, tone: 'better', text: '−12%' },
+  );
+  assert.deepEqual(
+    getStatDelta(3.2, 2.78, { direction: 'lower-is-better', maximumFractionDigits: 2 }),
+    { value: 0.42, tone: 'worse', text: '+0.42' },
+  );
+  assert.deepEqual(
+    getStatDelta(900, 800, { direction: 'neutral' }),
+    { value: 100, tone: 'neutral', text: '+100' },
+  );
+});
+
+test('getStatDelta returns null without a base or without a visible change', () => {
+  assert.equal(getStatDelta(50, null), null);
+  assert.equal(getStatDelta(Number.NaN, 50), null);
+  assert.equal(getStatDelta(50.2, 50), null);
+  assert.equal(getStatDelta(10, 0, { percent: true }), null);
 });

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useEffect } from 'react';
-import { HashRouter as Router, Routes, Route, Link, NavLink } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Link, NavLink, useLocation } from 'react-router-dom';
 import Home from './pages/Home';
 import I18nProvider from './i18n/I18nProvider.jsx';
 import { useI18n } from './i18n/useI18n.js';
@@ -30,7 +30,8 @@ function useTheme() {
 }
 
 const NAV_ITEMS = [
-  { to: '/', end: true, icon: 'my_location', labelKey: 'app.weapons' },
+  // The configurator belongs to the weapons section.
+  { to: '/', end: true, icon: 'my_location', labelKey: 'app.weapons', activePrefix: '/configure/' },
   { to: '/module-comparison', icon: 'view_column', labelKey: 'moduleComparison.nav', shortLabelKey: 'moduleComparison.navShort' },
   { to: '/builds', icon: 'layers', labelKey: 'app.builds' },
 ];
@@ -42,10 +43,18 @@ function navLinkClassName({ isActive }) {
 // Text tabs in the header; below 768px the same links become a bottom tab bar
 // with icons, and settings joins them there.
 function MainNav({ t }) {
+  const { pathname } = useLocation();
   return (
     <nav className="topnav" aria-label={t('app.sections')}>
       {NAV_ITEMS.map(item => (
-        <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClassName}>
+        <NavLink
+          key={item.to}
+          to={item.to}
+          end={item.end}
+          className={({ isActive }) => navLinkClassName({
+            isActive: isActive || Boolean(item.activePrefix && pathname.startsWith(item.activePrefix)),
+          })}
+        >
           <MaterialSymbol name={item.icon} className="topnav__icon" />
           <span className="topnav__label">{t(item.labelKey)}</span>
           {item.shortLabelKey && (

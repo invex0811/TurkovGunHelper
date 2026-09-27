@@ -4,9 +4,11 @@ export function isPositivePrice(value) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
+const CURRENCY_SYMBOLS = Object.freeze({ RUB: '₽', USD: '$', EUR: '€' });
+
 export function formatCurrency(value, currency = 'RUB', unavailable = '—') {
   if (typeof value !== 'number' || !Number.isFinite(value) || value === 0) return unavailable;
-  return `${Math.round(value).toLocaleString()} ${currency}`;
+  return `${Math.round(value).toLocaleString()} ${CURRENCY_SYMBOLS[currency] ?? currency}`;
 }
 
 export function formatPriceSource(priceInfo, t) {

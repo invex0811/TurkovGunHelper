@@ -95,3 +95,34 @@ export function normalizeStatFillPercent(value, range) {
 
   return Math.min(100, Math.max(0, percent));
 }
+
+// Change of a build stat against the bare weapon. Recoil is compared in
+// percent, the rest in the stat's own unit. Returns null when there is no
+// base value or the rounded change is zero.
+export function getStatDelta(value, baseValue, {
+  direction = 'neutral',
+  maximumFractionDigits = 0,
+  percent = false,
+  locale = 'en',
+} = {}) {
+  const current = toFiniteStatNumber(value);
+  const base = toFiniteStatNumber(baseValue);
+  if (!Number.isFinite(current) || !Number.isFinite(base)) return null;
+  if (percent && base === 0) return null;
+
+  const change = percent ? ((current - base) / base) * 100 : current - base;
+  const factor = 10 ** maximumFractionDigits;
+  const rounded = Math.round(change * factor) / factor;
+  if (rounded === 0) return null;
+
+  const tone = direction === 'neutral'
+    ? 'neutral'
+    : (rounded > 0) === (direction === 'higher-is-better') ? 'better' : 'worse';
+  const magnitude = new Intl.NumberFormat(locale, { maximumFractionDigits }).format(Math.abs(rounded));
+
+  return {
+    value: rounded,
+    tone,
+    text: `${rounded > 0 ? '+' : '−'}${magnitude}${percent ? '%' : ''}`,
+  };
+}

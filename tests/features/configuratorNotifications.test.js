@@ -233,7 +233,7 @@ test('InlineMessage uses shared CSS, decorative icons, and unified price-mode re
   ]);
   const inlineMessageSource = primitives.slice(
     primitives.indexOf('export function InlineMessage'),
-    primitives.indexOf('export function StatMeterRow'),
+    primitives.indexOf('export function StatTile'),
   );
 
   assert.doesNotMatch(inlineMessageSource, /style=\{\{/);
