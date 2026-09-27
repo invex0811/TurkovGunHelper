@@ -1,6 +1,7 @@
 export const settingsMessages = {
   en: {
     'settings.open': 'Open settings',
+    'settings.eyebrow': 'Preferences · stored in this browser',
     'settings.interface': 'Interface',
     'settings.traders': 'Traders',
     'settings.rememberTacticalDeviceSelection': 'Install the last selected flashlight and TBL on any weapon',
@@ -39,6 +40,7 @@ export const settingsMessages = {
   },
   ru: {
     'settings.open': 'Открыть настройки',
+    'settings.eyebrow': 'Параметры · хранятся в этом браузере',
     'settings.interface': 'Интерфейс',
     'settings.traders': 'Торговцы',
     'settings.rememberTacticalDeviceSelection': 'Устанавливать последний выбранный фонарь и TBL для любого оружия',

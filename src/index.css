@@ -178,7 +178,7 @@
   --green-dark: var(--color-green-dim);
   --red: var(--color-red);
   --shadow: var(--shadow-lg);
-  --radius: 6px;
+  --radius: 8px;
   color-scheme: dark;
 
   /* Tarkov Theme Colors mapped to Mockup Colors */
@@ -201,7 +201,7 @@
   
   --radius-sm: 4px;
   --radius-md: 6px;
-  --radius-lg: 10px;
+  --radius-lg: 8px;
   
   --shadow-glass: var(--shadow);
   --blur-glass: var(--blur-amount);
@@ -212,7 +212,7 @@
   --brand-mark-bg: #000000;
   --config-bg: rgba(20, 24, 22, 0.92);
   --segmented-tabs-bg: rgba(0, 0, 0, 0.3);
-  --input-bg: rgba(8, 10, 9, 0.7);
+  --input-bg: #080a09;
   --search-item-bg: rgba(8, 10, 9, 0.35);
   --modal-backdrop-bg: rgba(3, 5, 4, .86);
   --dialog-bg: rgba(15, 19, 17, .99);
@@ -5410,6 +5410,7 @@ button.weapon-diagram-node:focus-visible,
 .config input::placeholder {
   color: var(--text-disabled);
   font-family: var(--font-sans);
+  font-size: 12px;
 }
 
 .limit-field {
@@ -6372,5 +6373,139 @@ button.weapon-diagram-node:focus-visible,
   .item-price {
     align-items: flex-start;
     text-align: left;
+  }
+}
+
+/* ---- Surfaces, radii and hit areas shared by every page ---- */
+
+/* Levels differ by background shade, not by extra frames:
+   page < panel < card, with dark plates for images. */
+body {
+  background-color: var(--surface-page);
+  background-image: none;
+}
+
+.glass-panel,
+.builds-hero,
+.comparison-panel,
+.builds-empty,
+.settings-card,
+.comparison-table-panel {
+  border-color: var(--panel-border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.glass-panel:hover {
+  border-color: var(--panel-border);
+}
+
+/* Inner rows sit on a plate instead of carrying their own border. */
+.settings-trader-toggle,
+.custom-priority-attributes,
+.required-module,
+.module-search-item {
+  border-color: transparent;
+  background: var(--surface-plate);
+}
+
+.builds-page {
+  gap: 20px;
+  margin-top: 0;
+  padding-top: 36px;
+}
+
+.module-comparison-page {
+  width: 100%;
+  padding-top: 36px;
+}
+
+.settings-page {
+  width: min(920px, 100%);
+}
+
+.builds-hero__eyebrow,
+.eyebrow {
+  color: var(--color-gold-dim) !important;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+}
+
+.builds-hero h2,
+.module-comparison-page__head h2,
+.settings-page__header h2 {
+  color: var(--color-gold);
+  font-size: clamp(30px, 4vw, 44px);
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+.settings-segmented {
+  border-color: var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--bg-darker);
+}
+
+.settings-segmented button {
+  min-height: 36px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
+.settings-segmented button[aria-pressed="true"] {
+  box-shadow: none;
+  font-weight: 600;
+}
+
+.tactical-device-picker__panel,
+.info-tooltip__bubble,
+.drawer__panel {
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+}
+
+/* Minimum 40px targets for text buttons and checkbox rows. */
+.btn {
+  min-height: 40px;
+}
+
+.check {
+  min-height: 40px;
+}
+
+.info-tooltip__trigger {
+  position: relative;
+}
+
+.info-tooltip__trigger::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
+.custom-priority-attributes__actions button,
+.tactical-device-picker__filter {
+  position: relative;
+}
+
+.custom-priority-attributes__actions button::after,
+.tactical-device-picker__filter::after {
+  content: "";
+  position: absolute;
+  inset: -6px -2px;
+}
+
+@media (max-width: 767px) {
+  .builds-page,
+  .module-comparison-page {
+    padding-top: 20px;
+  }
+
+  .settings-page {
+    padding-top: 20px;
   }
 }
