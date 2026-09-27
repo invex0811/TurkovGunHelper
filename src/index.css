@@ -137,8 +137,9 @@
   --color-green-dim: #326e47;
   --color-orange: #f08b33;
   --color-red: #cd3944;
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-display: "Oswald", "Arial Narrow", "IBM Plex Sans", sans-serif;
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
@@ -185,7 +186,6 @@
   --color-accent-red: var(--red);
   
   --font-primary: var(--font-sans);
-  --font-display: var(--font-sans);
   
   --radius-sm: 4px;
   --radius-md: 6px;
@@ -339,6 +339,10 @@ body {
   font-size: 14px;
   line-height: 1.5;
   overflow-y: scroll;
+  /* Only the loaded weights are used (Oswald 500/600, Plex and Mono 400-600),
+     so a heavier request falls back to 600 instead of a faux bold. */
+  font-synthesis-weight: none;
+  -webkit-font-smoothing: antialiased;
 }
 
 .catalog-status {
@@ -427,7 +431,13 @@ body {
   .pwa-update { bottom: 1rem; right: 1rem; }
 }
 
-h1, h2, h3, h4 {
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+h4 {
   font-family: var(--font-sans);
 }
 
@@ -594,9 +604,9 @@ a {
 
 .brand h1 {
   margin: 0;
-  font-family: var(--font-sans);
+  font-family: var(--font-display);
   font-size: 1.2rem;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   text-transform: uppercase;
   color: var(--text-primary);
@@ -624,11 +634,9 @@ a {
   color: var(--text-primary);
   padding: 10px 18px;
   font-family: var(--font-sans);
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: 0.875rem;
+  font-weight: 500;
   line-height: 1.2;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1252,7 +1260,7 @@ a {
   font-size: .75rem;
   font-weight: 700;
   line-height: 1.25;
-  text-transform: uppercase;
+  text-transform: none;
   cursor: pointer;
   transition: background-color 0.15s ease,
               border-color 0.15s ease,
@@ -1667,7 +1675,9 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
 
 .item-price > strong {
   color: var(--gold);
+  font-family: var(--font-mono);
   font-size: 0.8rem;
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -1791,7 +1801,7 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus {
   font-family: var(--font-sans);
   font-size: 0.75rem;
   font-weight: 700;
-  text-transform: uppercase;
+  text-transform: none;
   transition: background-color 0.15s ease,
               border-color 0.15s ease,
               color 0.15s ease;
@@ -3220,7 +3230,7 @@ button.weapon-diagram-node:focus-visible,
   font-family: var(--font-sans);
   font-size: .75rem;
   font-weight: 700;
-  text-transform: uppercase;
+  text-transform: none;
   transition: all 0.15s ease;
 }
 
@@ -3349,9 +3359,9 @@ button.weapon-diagram-node:focus-visible,
 }
 
 .app > main > .glass-panel a h3 {
-  font-family: var(--font-sans);
+  font-family: var(--font-display);
   font-size: 1.15rem !important;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -3861,7 +3871,7 @@ button.weapon-diagram-node:focus-visible,
   font-size: 0.7rem;
   cursor: pointer;
   font-family: var(--font-display);
-  text-transform: uppercase;
+  text-transform: none;
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
@@ -4828,7 +4838,7 @@ button.weapon-diagram-node:focus-visible,
 .comparison-table tbody th {
   color: var(--muted);
   font-size: .78rem;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .comparison-table td {
@@ -4870,7 +4880,7 @@ button.weapon-diagram-node:focus-visible,
 .comparison-count { flex: 0 0 auto; padding: 8px 11px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--gold); font-size: .8rem; font-weight: 800; }
 .comparison-controls, .comparison-module-list, .comparison-table-panel { margin-bottom: 18px; padding: 18px; }
 .comparison-controls { align-items: end; }
-.comparison-controls label { display: grid; flex: 1 1 200px; gap: 7px; color: var(--muted); font-size: .78rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+.comparison-controls label { display: grid; flex: 1 1 200px; gap: 7px; color: var(--muted); font-size: .78rem; font-weight: 800; }
 .comparison-controls select, .comparison-controls input, .comparison-module-list input { width: 100%; min-height: 40px; box-sizing: border-box; }
 .comparison-empty { margin: 18px 0; padding: 40px 18px; border: 1px dashed var(--line); border-radius: var(--radius); color: var(--muted); text-align: center; }
 .comparison-module-list__head { margin-bottom: 14px; }
