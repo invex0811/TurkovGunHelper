@@ -1,6 +1,10 @@
 import { Link } from 'react-router-dom';
 import { formatWeaponFireModes } from '../../../domain/fireModes.js';
-import { formatCaliberLabel, getWeaponTypeLabel } from '../../../pages/homeWeaponFilters.js';
+import {
+  formatCaliberLabel,
+  getHomeTypeFilterPath,
+  getWeaponTypeLabel,
+} from '../../../pages/homeWeaponFilters.js';
 import { MaterialSymbol } from '../../../ui/MaterialSymbol.js';
 import { TarkovDevItemLink } from '../../../ui/TarkovDevItemLink.js';
 
@@ -17,7 +21,7 @@ export default function ConfiguratorHero({ onOpenDiagram, t, weapon }) {
         <nav className="breadcrumbs" aria-label={t('config.breadcrumbs')}>
           <ol>
             <li><Link to="/">{t('config.breadcrumbCatalog')}</Link></li>
-            {type && <li>{type}</li>}
+            {type && <li><Link to={getHomeTypeFilterPath(type)}>{type}</Link></li>}
             <li aria-current="page">{weapon.shortName}</li>
           </ol>
         </nav>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { getWeapons, isAbortError } from '../data/tarkovApi';
 import { selectWeaponPurchasePrice } from '../data/price/priceMapper.js';
 import {
@@ -7,6 +7,7 @@ import {
   formatCaliberLabel,
   getHomeWeaponFilterOptions,
   getWeaponTypeLabel,
+  HOME_TYPE_PARAM,
   HOME_WEAPON_SORTS,
   sortHomeWeapons,
 } from './homeWeaponFilters.js';
@@ -98,12 +99,21 @@ function Home() {
   const [weapons, setWeapons] = useState([]);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('name');
-  const [selectedType, setSelectedType] = useState('All');
   const [selectedCaliber, setSelectedCaliber] = useState('All');
   const [selectedTrader, setSelectedTrader] = useState('All');
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedType = searchParams.get(HOME_TYPE_PARAM) || 'All';
+  const setSelectedType = useCallback(type => {
+    setSearchParams(current => {
+      const next = new URLSearchParams(current);
+      if (type === 'All') next.delete(HOME_TYPE_PARAM);
+      else next.set(HOME_TYPE_PARAM, type);
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
   const loadedLanguageRef = useRef(null);
   const searchRef = useRef(null);
 
@@ -144,10 +154,8 @@ function Home() {
         if (languageChanged) {
           setLoading(true);
           setWeapons([]);
-          // Category labels are supplied by Tarkov.dev and change with the locale.
-          // Keep raw caliber keys and the search intact, but discard a label-based type
-          // selection so it cannot become an invalid, stale filter after a language switch.
-          setSelectedType('All');
+          // Category labels come from Tarkov.dev and change with the locale; a
+          // type label from the old locale is dropped once the new list arrives.
         }
         return getWeapons({ signal: controller.signal, language, priceMode });
       })
@@ -182,6 +190,13 @@ function Home() {
   }, []);
 
   const { types: weaponTypes, calibers, traders } = useMemo(() => getHomeWeaponFilterOptions(weapons), [weapons]);
+  // A type from the URL that this catalog does not have (another language, a
+  // stale link) falls back to all weapons instead of an empty list.
+  const selectedType = weaponTypes.includes(requestedType) ? requestedType : 'All';
+  const hasStaleType = !loading && weapons.length > 0 && requestedType !== selectedType;
+  useEffect(() => {
+    if (hasStaleType) setSelectedType('All');
+  }, [hasStaleType, setSelectedType]);
 
   const prices = useMemo(() => {
     const options = {
