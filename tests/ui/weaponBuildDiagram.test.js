@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import {
   buildWeaponDiagramGraph,
   classifyWeaponDiagramNode,
+  getDiagramPathNodeIds,
+  getDiagramSubtreeNodeIds,
   getOrthogonalEdgePath,
   isDiagramEdgeHighlighted,
   layoutWeaponDiagramGraph,
@@ -265,7 +267,7 @@ test('normalizes stable API slot identifiers for localized diagram layout', () =
   assert.equal(classifyWeaponDiagramNode(localizedNode('mod_pistol_grip')).direction, 'bottom');
 });
 
-test('lays the weapon backbone horizontally from muzzle to stock around the centered weapon', () => {
+test('lays the weapon backbone horizontally from muzzle to stock', () => {
   const layout = layoutWeaponDiagramGraph(semanticGraph());
   const byId = new Map(layout.nodes.map(node => [node.id, node]));
   const backboneIds = ['muzzle', 'barrel', 'gas', 'handguard', 'receiver', 'weapon', 'buffer', 'stock'];
@@ -278,7 +280,60 @@ test('lays the weapon backbone horizontally from muzzle to stock around the cent
   assert.equal(byId.get('receiver').layoutZone, 'backbone-center');
   assert.equal(byId.get('muzzle').layoutZone, 'backbone-front');
   assert.equal(byId.get('stock').layoutZone, 'backbone-rear');
-  assert.equal(byId.get('weapon').position.x + byId.get('weapon').width / 2, layout.width / 2);
+});
+
+test('sizes the canvas to the real node bounds without an empty margin behind the stock', () => {
+  const layout = layoutWeaponDiagramGraph(semanticGraph(), { padding: 40 });
+  const minX = Math.min(...layout.nodes.map(node => node.position.x));
+  const maxX = Math.max(...layout.nodes.map(node => node.position.x + node.width));
+  const minY = Math.min(...layout.nodes.map(node => node.position.y));
+  const maxY = Math.max(...layout.nodes.map(node => node.position.y + node.height));
+
+  assert.equal(minX, 40);
+  assert.equal(minY, 40);
+  assert.equal(layout.width, maxX + 40);
+  assert.equal(layout.height, maxY + 40);
+});
+
+test('gives overlapping backbone routes separate lanes above the backbone', () => {
+  const graph = semanticGraph();
+  const handguard = graph.nodes.find(node => node.id === 'handguard');
+  handguard.parentId = 'weapon';
+  graph.edges = graph.edges.map(edge => (
+    edge.target === 'handguard' ? { ...edge, id: 'weapon-handguard', source: 'weapon' } : edge
+  ));
+  const layout = layoutWeaponDiagramGraph(graph);
+  const byId = new Map(layout.nodes.map(node => [node.id, node]));
+  const edgeById = new Map(layout.edges.map(edge => [edge.id, edge]));
+  const barrelEdge = edgeById.get('receiver-barrel');
+  const handguardEdge = edgeById.get('weapon-handguard');
+
+  assert.equal(Number.isInteger(barrelEdge.lane), true);
+  assert.equal(Number.isInteger(handguardEdge.lane), true);
+  assert.notEqual(barrelEdge.lane, handguardEdge.lane);
+  assert.equal(edgeById.get('weapon-receiver').lane, undefined);
+
+  const laneY = (edge) => Number(getOrthogonalEdgePath(byId.get(edge.source), byId.get(edge.target), edge).split(' ')[4]);
+  assert.notEqual(laneY(barrelEdge), laneY(handguardEdge));
+});
+
+test('collects the ancestor path and the mounted subtree of a node', () => {
+  const { nodes } = semanticGraph();
+
+  assert.deepEqual([...getDiagramPathNodeIds(nodes, 'muzzle')], ['muzzle', 'barrel', 'receiver', 'weapon']);
+  assert.deepEqual(
+    [...getDiagramSubtreeNodeIds(nodes, 'barrel')].sort(),
+    ['barrel', 'gas', 'muzzle'],
+  );
+  assert.equal(getDiagramPathNodeIds(nodes, null).size, 0);
+});
+
+test('highlights every edge on the ancestor path', () => {
+  const { nodes, edges } = semanticGraph();
+  const pathIds = getDiagramPathNodeIds(nodes, 'muzzle');
+  const highlighted = edges.filter(edge => isDiagramEdgeHighlighted(edge, pathIds)).map(edge => edge.id);
+
+  assert.deepEqual(highlighted.sort(), ['barrel-muzzle', 'receiver-barrel', 'weapon-receiver']);
 });
 
 test('keeps parent-to-child order for consecutive rear modules with the same category', () => {

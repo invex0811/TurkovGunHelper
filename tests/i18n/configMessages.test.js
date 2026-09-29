@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { configMessages } from '../../src/i18n/configMessages.js';
+import { interpolateMessage } from '../../src/i18n/interpolate.js';
 import { uiMessages } from '../../src/i18n/uiMessages.js';
 
 test('uses compact recoil labels only in the Russian configurator', () => {
@@ -32,4 +33,10 @@ test('explains soft directional characteristic limits in both languages', () => 
   assert.match(uiMessages.en['ui.radar.help'], /closest available build is chosen/);
   assert.match(uiMessages.ru['ui.radar.help'], /вес и отдача — не больше, эргономика — не меньше/);
   assert.match(uiMessages.ru['ui.radar.help'], /будет выбрана ближайшая доступная сборка/);
+});
+
+test('shows the module count in the build diagram header', () => {
+  assert.equal(interpolateMessage(uiMessages.en['ui.diagram.modules'], { count: 12 }, 'en'), '12 modules');
+  assert.equal(interpolateMessage(uiMessages.ru['ui.diagram.modules'], { count: 12 }, 'ru'), '12 модулей');
+  assert.equal(interpolateMessage(uiMessages.ru['ui.diagram.options'], { count: 3 }, 'ru'), '3 варианта');
 });
