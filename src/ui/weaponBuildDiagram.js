@@ -1,8 +1,9 @@
+import { getPurchasePriceValue } from '../data/price/priceMapper.js';
 import { buildWeaponAssemblyTree } from '../domain/weaponAssembly.js';
 import { getCompatibleItemsForSlot } from '../domain/weaponBuildEditor.js';
 import { categoryMatches, getItemCategoryKeys, hasItemCategory } from '../domain/itemCategories.js';
 
-export const WEAPON_DIAGRAM_NODE_SIZE = Object.freeze({ width: 190, height: 76 });
+export const WEAPON_DIAGRAM_NODE_SIZE = Object.freeze({ width: 212, height: 84 });
 
 const SEMANTIC_RULES = Object.freeze([
   { role: 'muzzle', backbone: 'front', order: 10, pattern: /muzzle|silencer|suppressor|flash hider|compensator|muzzle brake/ },
@@ -76,24 +77,45 @@ function getImageUrl(item) {
   return item?.image512pxLink || item?.iconLink || '';
 }
 
+function getStatTone(value, higherIsBetter) {
+  if (value === 0) return 'neutral';
+  return (value > 0) === higherIsBetter ? 'positive' : 'negative';
+}
+
+function formatSignedNumber(value) {
+  const rounded = Number.parseFloat(value.toFixed(2));
+  return `${rounded > 0 ? '+' : ''}${rounded}`;
+}
+
+// Ergonomics and recoil are the modifiers a player compares at a glance, so
+// they carry a tone; weight stays neutral and only appears in the tooltip.
 function getNodeStats(item) {
   const stats = [];
-  if (Number.isFinite(Number(item?.weight)) && Number(item.weight) > 0) {
-    stats.push({ key: 'weight', value: `${Number(item.weight).toFixed(3)} kg` });
+  const ergonomics = Number(item?.ergonomicsModifier);
+  if (Number.isFinite(ergonomics) && ergonomics !== 0) {
+    stats.push({ key: 'ergonomics', value: formatSignedNumber(ergonomics), tone: getStatTone(ergonomics, true) });
   }
-  if (Number.isFinite(Number(item?.ergonomicsModifier)) && Number(item.ergonomicsModifier) !== 0) {
-    stats.push({
-      key: 'ergonomics',
-      value: `${Number(item.ergonomicsModifier) > 0 ? '+' : ''}${item.ergonomicsModifier}`,
-    });
+  const recoil = Number(item?.recoilModifier);
+  if (Number.isFinite(recoil) && recoil !== 0) {
+    stats.push({ key: 'recoil', value: `${formatSignedNumber(recoil)}%`, tone: getStatTone(recoil, false) });
   }
-  if (Number.isFinite(Number(item?.recoilModifier)) && Number(item.recoilModifier) !== 0) {
-    stats.push({
-      key: 'recoil',
-      value: `${Number(item.recoilModifier) > 0 ? '+' : ''}${item.recoilModifier}%`,
-    });
+  const weight = Number(item?.weight);
+  if (Number.isFinite(weight) && weight > 0) {
+    stats.push({ key: 'weight', value: `${weight.toFixed(3)} kg`, tone: 'neutral' });
   }
   return stats;
+}
+
+function getNodePrice(item, options) {
+  if (!item || !options?.priceMode) return null;
+  const price = getPurchasePriceValue(item, {
+    priceMode: options.priceMode,
+    includeTraderPrices: options.includeTraderPrices,
+    traderLevels: options.traderLevels,
+    strictTraderLevels: options.strictTraderLevels,
+    includeRefOffers: options.includeRefOffers,
+  }, null);
+  return Number.isFinite(price) ? price : null;
 }
 
 function createDiagramNode({
@@ -108,6 +130,8 @@ function createDiagramNode({
   slotInstanceId,
   critical = false,
   unresolved = false,
+  price = null,
+  optionCount = null,
 }) {
   const isFreeSlot = nodeType === 'slot';
   return {
@@ -130,6 +154,8 @@ function createDiagramNode({
     nodeType,
     unresolved,
     stats: getNodeStats(item),
+    price,
+    optionCount,
   };
 }
 
@@ -181,6 +207,7 @@ export function buildWeaponDiagramGraph(weapon, buildParts = [], options = {}) {
         buildPart: child.buildPart,
         nodeType: 'module',
         critical: child.sourceSlot?.required === true,
+        price: getNodePrice(child.item, options),
       }));
       edges.push({
         id: `edge:${parentId}->${childId}`,
@@ -226,6 +253,7 @@ export function buildWeaponDiagramGraph(weapon, buildParts = [], options = {}) {
           slotInstanceId: slotContext.id,
           nodeType: 'slot',
           critical: slotContext.slot.required === true,
+          optionCount: compatibleItems.length,
         }));
         edges.push({
           id: `edge:${parentId}->${nodeId}`,
@@ -251,6 +279,7 @@ export function buildWeaponDiagramGraph(weapon, buildParts = [], options = {}) {
       slotName: part.slotName,
       nodeType: 'module',
       unresolved: true,
+      price: getNodePrice(part.item, options),
     }));
     edges.push({
       id: `edge:${rootId}->${nodeId}`,
@@ -532,17 +561,15 @@ export function layoutWeaponDiagramGraph(graph, options = {}) {
     };
   });
 
-  const rootNode = annotatedNodes.find(node => node.id === root.id);
+  // Fit the canvas to the real bounds: the backbone is usually much longer in
+  // front of the weapon than behind it, so centering on the weapon wasted a
+  // large empty margin and made "Fit" zoom out further than needed.
   const minX = Math.min(...annotatedNodes.map(node => node.position.x));
   const maxX = Math.max(...annotatedNodes.map(node => node.position.x + node.width));
   const minY = Math.min(...annotatedNodes.map(node => node.position.y));
   const maxY = Math.max(...annotatedNodes.map(node => node.position.y + node.height));
-  const rootCenterX = rootNode.position.x + rootNode.width / 2;
-  const backboneCenterY = rootNode.position.y + rootNode.height / 2;
-  const halfWidth = Math.max(rootCenterX - minX, maxX - rootCenterX, nodeWidth / 2);
-  const halfHeight = Math.max(backboneCenterY - minY, maxY - backboneCenterY, nodeHeight / 2);
-  const shiftX = padding + halfWidth - rootCenterX;
-  const shiftY = padding + halfHeight - backboneCenterY;
+  const shiftX = padding - minX;
+  const shiftY = padding - minY;
   const positionedNodes = annotatedNodes.map(node => ({
     ...node,
     position: {
@@ -551,15 +578,60 @@ export function layoutWeaponDiagramGraph(graph, options = {}) {
     },
   }));
 
+  const backboneIndexById = new Map(backboneNodes.map((node, index) => [node.id, index]));
+  const laneById = assignBackboneEdgeLanes(edges, backboneIndexById);
+  const laidOutEdges = edges.map(edge => (
+    laneById.has(edge.id) ? { ...edge, lane: laneById.get(edge.id) } : edge
+  ));
+
   return {
     nodes: positionedNodes,
-    edges,
-    width: Math.ceil(padding * 2 + halfWidth * 2),
-    height: Math.ceil(padding * 2 + halfHeight * 2),
+    edges: laidOutEdges,
+    width: Math.ceil(padding * 2 + maxX - minX),
+    height: Math.ceil(padding * 2 + maxY - minY),
   };
 }
 
-export function getOrthogonalEdgePath(sourceNode, targetNode) {
+// Backbone edges that skip over other backbone nodes (receiver -> barrel over
+// the handguard) run in a lane above the backbone. Each one gets its own lane
+// so parallel routes never merge into a single ambiguous line; shorter spans
+// take the lanes closest to the backbone.
+function assignBackboneEdgeLanes(edges, backboneIndexById) {
+  const spans = edges
+    .filter(edge => backboneIndexById.has(edge.source) && backboneIndexById.has(edge.target))
+    .map(edge => {
+      const sourceIndex = backboneIndexById.get(edge.source);
+      const targetIndex = backboneIndexById.get(edge.target);
+      return {
+        id: edge.id,
+        start: Math.min(sourceIndex, targetIndex),
+        end: Math.max(sourceIndex, targetIndex),
+      };
+    })
+    .filter(span => span.end - span.start > 1)
+    .sort((a, b) => (a.end - a.start) - (b.end - b.start) || a.start - b.start);
+
+  const lanes = [];
+  const laneById = new Map();
+  spans.forEach(span => {
+    let lane = lanes.findIndex(occupied => occupied.every(other => (
+      span.end < other.start || span.start > other.end
+    )));
+    if (lane === -1) {
+      lane = lanes.length;
+      lanes.push([]);
+    }
+    lanes[lane].push(span);
+    laneById.set(span.id, lane);
+  });
+  return laneById;
+}
+
+const LANE_BASE_OFFSET = 14;
+const LANE_STEP = 9;
+const LANE_MAX_OFFSET = 48;
+
+export function getOrthogonalEdgePath(sourceNode, targetNode, edge = null) {
   if (!sourceNode?.position || !targetNode?.position) return '';
   const sourceCenterX = sourceNode.position.x + sourceNode.width / 2;
   const sourceCenterY = sourceNode.position.y + sourceNode.height / 2;
@@ -574,8 +646,13 @@ export function getOrthogonalEdgePath(sourceNode, targetNode) {
     if (freeGap <= 100) {
       return `M ${sourceX} ${sourceCenterY} H ${targetX}`;
     }
-    const laneY = Math.min(sourceNode.position.y, targetNode.position.y) - 18;
-    return `M ${sourceCenterX} ${sourceNode.position.y} V ${laneY} H ${targetCenterX} V ${targetNode.position.y}`;
+    // Leave the node tops off-center so lane routes do not share the vertical
+    // stub of the branches that grow straight up from the same node.
+    const laneOffset = Math.min(LANE_MAX_OFFSET, LANE_BASE_OFFSET + (edge?.lane || 0) * LANE_STEP);
+    const laneY = Math.min(sourceNode.position.y, targetNode.position.y) - laneOffset;
+    const laneSourceX = sourceCenterX + direction * sourceNode.width * 0.3;
+    const laneTargetX = targetCenterX - direction * targetNode.width * 0.3;
+    return `M ${laneSourceX} ${sourceNode.position.y} V ${laneY} H ${laneTargetX} V ${targetNode.position.y}`;
   }
 
   const goesUp = targetCenterY < sourceCenterY;
@@ -585,6 +662,43 @@ export function getOrthogonalEdgePath(sourceNode, targetNode) {
   return `M ${sourceCenterX} ${sourceY} V ${middleY} H ${targetCenterX} V ${targetY}`;
 }
 
-export function isDiagramEdgeHighlighted(edge, highlightedNodeId) {
-  return Boolean(highlightedNodeId) && edge?.target === highlightedNodeId;
+// The hovered node plus every ancestor up to the weapon: the chain that holds
+// the module on the gun.
+export function getDiagramPathNodeIds(nodes, nodeId) {
+  const pathIds = new Set();
+  if (!nodeId) return pathIds;
+  const parentById = new Map((nodes || []).map(node => [node.id, node.parentId]));
+  let currentId = nodeId;
+  while (currentId && !pathIds.has(currentId) && parentById.has(currentId)) {
+    pathIds.add(currentId);
+    currentId = parentById.get(currentId);
+  }
+  return pathIds;
+}
+
+// The hovered node and everything mounted on it, directly or through other
+// modules — what would come off the gun together with it.
+export function getDiagramSubtreeNodeIds(nodes, nodeId) {
+  const subtreeIds = new Set();
+  if (!nodeId) return subtreeIds;
+  const childrenById = new Map();
+  (nodes || []).forEach(node => {
+    if (!node.parentId) return;
+    if (!childrenById.has(node.parentId)) childrenById.set(node.parentId, []);
+    childrenById.get(node.parentId).push(node.id);
+  });
+  const queue = [nodeId];
+  while (queue.length > 0) {
+    const currentId = queue.shift();
+    if (subtreeIds.has(currentId)) continue;
+    subtreeIds.add(currentId);
+    queue.push(...(childrenById.get(currentId) || []));
+  }
+  return subtreeIds;
+}
+
+export function isDiagramEdgeHighlighted(edge, highlighted) {
+  if (!edge || !highlighted) return false;
+  if (typeof highlighted === 'string') return edge.target === highlighted;
+  return highlighted.has(edge.target) && highlighted.has(edge.source);
 }

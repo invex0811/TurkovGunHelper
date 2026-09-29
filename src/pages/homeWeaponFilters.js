@@ -52,6 +52,14 @@ export function getWeaponTypeLabel(weapon) {
   return category ? category.name.trim() : '';
 }
 
+// The catalog keeps its type filter in the URL, so other pages (the
+// configurator breadcrumbs) can link to the catalog narrowed to one type.
+export const HOME_TYPE_PARAM = 'type';
+
+export function getHomeTypeFilterPath(type) {
+  return type ? `/?${new URLSearchParams({ [HOME_TYPE_PARAM]: type })}` : '/';
+}
+
 function getWeaponTraders(weapon) {
   return (weapon?.buyFor || []).flatMap(offer => {
     const id = offer?.vendor?.normalizedName || offer?.vendor?.id;

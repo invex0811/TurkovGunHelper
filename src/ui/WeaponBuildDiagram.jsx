@@ -3,6 +3,8 @@ import { useI18n } from '../i18n/useI18n.js';
 import { MaterialSymbol } from './MaterialSymbol.js';
 
 import {
+  getDiagramPathNodeIds,
+  getDiagramSubtreeNodeIds,
   getOrthogonalEdgePath,
   isDiagramEdgeHighlighted,
 } from './weaponBuildDiagram.js';
@@ -37,21 +39,59 @@ function formatNodeStat(stat, t) {
   return t(`ui.diagram.stat.${stat.key}`, { value: stat.value });
 }
 
+function formatNodePrice(price) {
+  if (!Number.isFinite(price)) return null;
+  if (price < 1000) return `${Math.round(price)} ₽`;
+  if (price < 1000000) return `${Number.parseFloat((price / 1000).toFixed(price < 10000 ? 1 : 0))}k ₽`;
+  return `${Number.parseFloat((price / 1000000).toFixed(1))}M ₽`;
+}
+
 function getNodeTooltip(node, labels, t) {
   return [
     labels.fullName,
     t('ui.diagram.category', { category: labels.category }),
     node.slotName ? t('ui.diagram.slot', { slot: node.slotName }) : null,
     ...(node.stats || []).map(stat => formatNodeStat(stat, t)),
+    Number.isFinite(node.price)
+      ? t('ui.diagram.price', { value: `${Math.round(node.price).toLocaleString('en-US')} ₽` })
+      : null,
     node.unresolved ? t('ui.diagram.unresolvedParent') : null,
   ].filter(Boolean).join('\n');
 }
 
-function DiagramNode({ node, isSelected, onHighlight, onSelect, t }) {
+// One compact line under the name: the ergonomics and recoil the module adds
+// and what it costs, or how many modules fit an empty slot.
+function DiagramNodeFacts({ node, t }) {
+  // The weapon's own ergonomics is a base value, not a modifier.
+  if (node.nodeType === 'weapon') return null;
+  if (node.nodeType === 'slot') {
+    if (!Number.isFinite(node.optionCount)) return null;
+    return (
+      <span className="weapon-diagram-node__facts">
+        <span className="weapon-diagram-node__fact">{t('ui.diagram.options', { count: node.optionCount })}</span>
+      </span>
+    );
+  }
+  const stats = (node.stats || []).filter(stat => stat.key === 'ergonomics' || stat.key === 'recoil');
+  const price = formatNodePrice(node.price);
+  if (stats.length === 0 && !price) return null;
+  return (
+    <span className="weapon-diagram-node__facts">
+      {stats.map(stat => (
+        <span key={stat.key} className={`weapon-diagram-node__fact is-${stat.tone || 'neutral'}`}>
+          {t(`ui.diagram.short.${stat.key}`, { value: stat.value })}
+        </span>
+      ))}
+      {price && <span className="weapon-diagram-node__fact weapon-diagram-node__price">{price}</span>}
+    </span>
+  );
+}
+
+function DiagramNode({ node, isSelected, relation, onHighlight, onSelect, t }) {
   const labels = getNodeLabels(node, t);
   const fallbackLabel = labels.name.slice(0, 2).toUpperCase();
   const interactive = node.nodeType !== 'weapon' && Boolean(node.slotInstanceId) && !node.unresolved;
-  const className = `weapon-diagram-node weapon-diagram-node--${node.nodeType}${node.critical ? ' is-critical' : ''}${node.unresolved ? ' is-unresolved' : ''}${isSelected ? ' is-selected' : ''}`;
+  const className = `weapon-diagram-node weapon-diagram-node--${node.nodeType}${node.critical ? ' is-critical' : ''}${node.unresolved ? ' is-unresolved' : ''}${isSelected ? ' is-selected' : ''}${relation ? ` is-${relation}` : ''}`;
   const content = (
     <>
       <div className="weapon-diagram-node__media" aria-hidden="true">
@@ -70,9 +110,12 @@ function DiagramNode({ node, isSelected, onHighlight, onSelect, t }) {
         )}
       </div>
       <div className="weapon-diagram-node__body">
-        <strong>{labels.name}</strong>
+        <span className="weapon-diagram-node__title">
+          <strong>{labels.name}</strong>
+          {node.critical && <em>{t('ui.diagram.required')}</em>}
+        </span>
         <span>{node.slotName && node.nodeType === 'module' ? `${labels.category} · ${node.slotName}` : labels.category}</span>
-        {node.critical && <em>{t('ui.diagram.required')}</em>}
+        <DiagramNodeFacts node={node} t={t} />
       </div>
     </>
   );
@@ -126,10 +169,28 @@ export default function WeaponBuildDiagram({ layout, selectedSlotId, stats, onSe
   const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
   const [isPanning, setIsPanning] = useState(false);
   const [highlightedNodeId, setHighlightedNodeId] = useState(null);
+  const [statsCollapsed, setStatsCollapsed] = useState(false);
   const nodeById = useMemo(
     () => new Map(layout.nodes.map(node => [node.id, node])),
     [layout.nodes],
   );
+  const activeNodeId = nodeById.has(highlightedNodeId) ? highlightedNodeId : null;
+  const pathNodeIds = useMemo(
+    () => getDiagramPathNodeIds(layout.nodes, activeNodeId),
+    [activeNodeId, layout.nodes],
+  );
+  const subtreeNodeIds = useMemo(
+    () => getDiagramSubtreeNodeIds(layout.nodes, activeNodeId),
+    [activeNodeId, layout.nodes],
+  );
+  // While a node is hovered, its chain to the weapon and everything mounted on
+  // it stay lit and the rest of the build fades back.
+  const getNodeRelation = node => {
+    if (!activeNodeId || node.id === activeNodeId) return null;
+    if (pathNodeIds.has(node.id)) return 'on-path';
+    if (subtreeNodeIds.has(node.id)) return 'mounted';
+    return 'dimmed';
+  };
 
   const fitToView = useCallback(() => {
     const viewport = viewportRef.current;
@@ -243,12 +304,21 @@ export default function WeaponBuildDiagram({ layout, selectedSlotId, stats, onSe
           <MaterialSymbol name="filter_center_focus" />
           {t('ui.diagram.center')}
         </button>
+        <button
+          className={`btn btn--ghost weapon-diagram__text-control weapon-diagram__stats-toggle${statsCollapsed ? ' is-collapsed' : ''}`}
+          type="button"
+          aria-pressed={!statsCollapsed}
+          onClick={() => setStatsCollapsed(current => !current)}
+        >
+          <MaterialSymbol name="expand_more" />
+          {t('ui.diagram.statsToggle')}
+        </button>
         <span>{t('ui.diagram.panZoomHint', { scale: Math.round(view.scale * 100) })}</span>
       </div>
 
       <div
         ref={viewportRef}
-        className={`weapon-diagram__viewport${isPanning ? ' is-panning' : ''}`}
+        className={`weapon-diagram__viewport${isPanning ? ' is-panning' : ''}${activeNodeId ? ' has-highlight' : ''}`}
         onWheel={handleWheel}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -272,19 +342,20 @@ export default function WeaponBuildDiagram({ layout, selectedSlotId, stats, onSe
           >
             {[...layout.edges]
               .sort((first, second) => (
-                Number(isDiagramEdgeHighlighted(first, highlightedNodeId))
-                - Number(isDiagramEdgeHighlighted(second, highlightedNodeId))
+                Number(isDiagramEdgeHighlighted(first, pathNodeIds))
+                - Number(isDiagramEdgeHighlighted(second, pathNodeIds))
               ))
               .map(edge => {
               const sourceNode = nodeById.get(edge.source);
               const targetNode = nodeById.get(edge.target);
-              const path = getOrthogonalEdgePath(sourceNode, targetNode);
+              const path = getOrthogonalEdgePath(sourceNode, targetNode, edge);
               if (!path) return null;
-              const isHighlighted = isDiagramEdgeHighlighted(edge, highlightedNodeId);
+              const isHighlighted = isDiagramEdgeHighlighted(edge, pathNodeIds);
+              const isMounted = !isHighlighted && isDiagramEdgeHighlighted(edge, subtreeNodeIds);
               return (
                 <path
                   key={edge.id}
-                  className={`${edge.unresolved ? 'is-unresolved' : ''}${edge.free ? ' is-free' : ''}${isHighlighted ? ' is-highlighted' : ''}`.trim()}
+                  className={`${edge.unresolved ? 'is-unresolved' : ''}${edge.free ? ' is-free' : ''}${isHighlighted ? ' is-highlighted' : ''}${isMounted ? ' is-mounted' : ''}`.trim()}
                   d={path}
                 />
               );
@@ -295,13 +366,14 @@ export default function WeaponBuildDiagram({ layout, selectedSlotId, stats, onSe
               key={node.id}
               node={node}
               isSelected={node.slotInstanceId === selectedSlotId}
+              relation={getNodeRelation(node)}
               onHighlight={setHighlightedNodeId}
               onSelect={onSelectNode}
               t={t}
             />
           ))}
         </div>
-        <WeaponBuildDiagramStats stats={stats} />
+        {!statsCollapsed && <WeaponBuildDiagramStats stats={stats} />}
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   filterHomeWeapons,
   formatCaliberLabel,
+  getHomeTypeFilterPath,
   getHomeWeaponFilterOptions,
   getWeaponTypeLabel,
   sortHomeWeapons,
@@ -123,4 +124,13 @@ test('sorts by name, price, ergonomics and recoil with missing values last', () 
   assert.deepEqual(names(sortHomeWeapons(list, 'price', getPrice)), ['C', 'B', 'A']);
   assert.deepEqual(names(sortHomeWeapons(list, 'ergonomics', getPrice)), ['A', 'B', 'C']);
   assert.deepEqual(names(sortHomeWeapons(list, 'recoil', getPrice)), ['B', 'A', 'C']);
+});
+
+test('builds a catalog link narrowed to one weapon type', () => {
+  assert.equal(getHomeTypeFilterPath('Assault rifle'), '/?type=Assault+rifle');
+  assert.equal(
+    new URLSearchParams(getHomeTypeFilterPath('Штурм. винтовка').slice(2)).get('type'),
+    'Штурм. винтовка',
+  );
+  assert.equal(getHomeTypeFilterPath(''), '/');
 });
