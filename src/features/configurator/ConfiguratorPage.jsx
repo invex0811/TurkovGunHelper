@@ -29,6 +29,7 @@ import {
   saveBuildGoalModePreference,
 } from '../../data/settings/buildPreferences.js';
 import { useI18n } from '../../i18n/useI18n.js';
+import { trackWeaponOpen } from '../analytics/analytics.js';
 import {
   getSavedBuild,
   restoreBuildParts,
@@ -1140,6 +1141,8 @@ function Configurator() {
     }) => {
       setWeapon(weaponData);
       setAllMods(modsData);
+      // Price mode and language reloads show the same weapon again.
+      if (!isCatalogReload) trackWeaponOpen(weaponData);
 
       if (isCatalogReload) {
         setBuildResult(current => {
