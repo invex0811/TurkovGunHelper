@@ -9,6 +9,7 @@ import PriceModeSwitch from './features/priceMode/PriceModeSwitch.jsx';
 import TraderLevelsProvider from './features/traderLevels/TraderLevelsProvider.jsx';
 import CatalogStatusProvider from './features/dataStatus/CatalogStatusProvider.jsx';
 import CatalogStatus from './features/dataStatus/CatalogStatus.jsx';
+import { usePageviewTracking } from './features/analytics/usePageviewTracking.js';
 import { MaterialSymbol } from './ui/MaterialSymbol.js';
 
 const Configurator = lazy(() => import('./pages/Configurator'));
@@ -100,6 +101,7 @@ function ConfiguratorLoading() {
 function MainLayout() {
   const { t } = useI18n();
   const [theme, setTheme] = useTheme();
+  usePageviewTracking();
 
   return (
     <div className="app">
