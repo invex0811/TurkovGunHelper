@@ -42,6 +42,15 @@ Saved builds are stored locally in the browser. To move builds to another browse
 
 Prices are estimates and may differ from current in-game prices.
 
+## Development
+
+```bash
+npm ci
+npm run dev
+```
+
+Developer documentation (in Russian) lives in [`docs/`](docs/README.md): architecture, data layer and pricing, build calculator, storage and build transfer, testing, and contribution guidelines.
+
 ## Disclaimer
 
 Tarkov Gun Helper is an independent, unofficial project and is not affiliated with Battlestate Games.

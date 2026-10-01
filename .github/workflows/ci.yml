@@ -1,10 +1,9 @@
 name: CI
 
+# Runs on pull requests only: main changes through pull requests, and the
+# deploy workflow builds the merged commit without repeating these checks.
 on:
   pull_request:
-  push:
-    branches:
-      - main
 
 permissions:
   contents: read
