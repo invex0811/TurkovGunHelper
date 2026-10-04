@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { formatCaliberLabel } from '../pages/homeWeaponFilters.js';
 import { useI18n } from '../i18n/useI18n.js';
 import ModalDialog from './ModalDialog.jsx';
+import SelectButton from './SelectButton.jsx';
 
 function HomeFilterModal({ calibers, onApply, onClose, selectedCaliber, selectedTrader, traders }) {
   const { t } = useI18n();
@@ -16,7 +17,7 @@ function HomeFilterModal({ calibers, onApply, onClose, selectedCaliber, selected
       className="home-filter-modal__dialog"
       aria-labelledby="homeFilterModalTitle"
       aria-describedby="homeFilterModalDescription"
-      initialFocus="select"
+      initialFocus=".select-button__trigger"
       onClose={onClose}
     >
         <header className="home-filter-modal__header">
@@ -26,20 +27,32 @@ function HomeFilterModal({ calibers, onApply, onClose, selectedCaliber, selected
           </div>
         </header>
         <div className="home-filter-modal__body">
-          <label className="home-filter-modal__field">
-            <span>{t('filter.caliber')}</span>
-            <select value={draftCaliber} onChange={event => setDraftCaliber(event.target.value)}>
-              <option value="All">{t('filter.allCalibers')}</option>
-              {calibers.map(caliber => <option key={caliber} value={caliber}>{formatCaliberLabel(caliber)}</option>)}
-            </select>
-          </label>
-          <label className="home-filter-modal__field">
-            <span>{t('filter.trader')}</span>
-            <select value={draftTrader} onChange={event => setDraftTrader(event.target.value)}>
-              <option value="All">{t('filter.allTraders')}</option>
-              {traders.map(trader => <option key={trader.id} value={trader.id}>{trader.name}</option>)}
-            </select>
-          </label>
+          <div className="home-filter-modal__field">
+            <label id="homeFilterCaliberLabel" htmlFor="homeFilterCaliber">{t('filter.caliber')}</label>
+            <SelectButton
+              id="homeFilterCaliber"
+              labelId="homeFilterCaliberLabel"
+              options={[
+                { value: 'All', label: t('filter.allCalibers') },
+                ...calibers.map(caliber => ({ value: caliber, label: formatCaliberLabel(caliber) })),
+              ]}
+              value={draftCaliber}
+              onChange={setDraftCaliber}
+            />
+          </div>
+          <div className="home-filter-modal__field">
+            <label id="homeFilterTraderLabel" htmlFor="homeFilterTrader">{t('filter.trader')}</label>
+            <SelectButton
+              id="homeFilterTrader"
+              labelId="homeFilterTraderLabel"
+              options={[
+                { value: 'All', label: t('filter.allTraders') },
+                ...traders.map(trader => ({ value: trader.id, label: trader.name })),
+              ]}
+              value={draftTrader}
+              onChange={setDraftTrader}
+            />
+          </div>
         </div>
         <footer className="home-filter-modal__actions">
           <button className="btn btn--ghost" type="button" onClick={() => { setDraftCaliber('All'); setDraftTrader('All'); }}>{t('common.reset')}</button>

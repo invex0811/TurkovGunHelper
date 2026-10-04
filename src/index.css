@@ -3105,9 +3105,9 @@ button.weapon-diagram-node:focus-visible,
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(5, 7, 5, .78);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  /* No backdrop-filter: its dropdown repaints over the backdrop on every
+     hover and scroll frame, and Chrome then re-blurs the whole screen. */
+  background: rgba(5, 7, 5, .86);
 }
 
 .home-filter-modal__dialog {
@@ -3162,20 +3162,21 @@ button.weapon-diagram-node:focus-visible,
   text-transform: uppercase;
 }
 
-.home-filter-modal__field select {
-  width: 100%;
-  min-height: 42px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
+/* The dropdown fills the field and reads as a form input, not a toolbar
+   button. */
+.home-filter-modal__field .select-button {
+  display: flex;
+}
+
+.home-filter-modal__field .select-button__trigger {
+  height: 42px;
+  padding-left: 12px;
+  border-color: var(--line);
   border-radius: var(--radius-sm);
   background: var(--input-bg);
   color: var(--text);
-}
-
-.home-filter-modal__field select:focus {
-  border-color: var(--color-gold);
-  outline: 2px solid rgba(199, 192, 154, .25);
-  outline-offset: 2px;
+  font-weight: 400;
+  text-transform: none;
 }
 
 .home-filter-modal__actions {
@@ -4666,6 +4667,13 @@ button.weapon-diagram-node:focus-visible,
   font-size: 14px;
 }
 
+/* The wrapper border is the focus indicator; drop the global ring on the input.
+   The attribute selector is needed to outrank the global :focus-visible rule. */
+.search-field input[type="search"]:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 .search-field input::placeholder {
   color: var(--text-disabled);
 }
@@ -4680,22 +4688,40 @@ button.weapon-diagram-node:focus-visible,
   line-height: 1.2;
 }
 
-/* A native select dressed as a button: "Sort: by name". */
+/* "Sort: by name": a field-styled trigger with a themed option list. */
 .select-button {
   position: relative;
   display: inline-flex;
+}
+
+.select-button__trigger {
+  display: inline-flex;
+  flex: 1 1 auto;
   align-items: center;
   gap: 6px;
   height: 44px;
-  padding: 0 12px 0 16px;
+  padding: 0 38px 0 16px;
   border: 1px solid var(--field-border);
   border-radius: var(--radius-md);
+  background: transparent;
   color: var(--text-primary);
+  font: inherit;
   font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.16s ease;
 }
 
-.select-button:focus-within {
+.select-button__trigger:hover {
+  border-color: var(--panel-border-active);
+}
+
+/* Like the search field, the border is the focus indicator. The extra class
+   outranks the global :focus-visible ring. */
+.select-button .select-button__trigger:focus-visible,
+.select-button.is-open .select-button__trigger {
   border-color: var(--color-gold);
+  outline: none;
 }
 
 .select-button__label {
@@ -4703,29 +4729,95 @@ button.weapon-diagram-node:focus-visible,
   white-space: nowrap;
 }
 
-.select-button select {
-  appearance: none;
-  height: 100%;
-  padding: 0 26px 0 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font-size: 14px;
+/* Every option sits in one grid cell, so the field keeps the width of the
+   longest one and only the current one shows. */
+.select-button__value {
+  display: inline-grid;
+  white-space: nowrap;
 }
 
-.select-button select option {
-  background: var(--dialog-bg);
-  color: var(--text-primary);
+.select-button__value > span {
+  grid-area: 1 / 1;
+  visibility: hidden;
+}
+
+.select-button__value > .is-current {
+  visibility: visible;
 }
 
 .select-button__chevron {
   position: absolute;
+  top: 50%;
   right: 10px;
   color: var(--text-muted);
   font-size: 18px;
   pointer-events: none;
+  transform: translateY(-50%);
+  transition: transform 0.18s ease;
+}
+
+.select-button.is-open .select-button__chevron {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+/* Portaled to <body>; SelectButton sets its coordinates. It sits above the
+   filter dialog (z-index 100) as well as the page. */
+.select-button__list {
+  position: fixed;
+  z-index: 120;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  border: 1px solid var(--panel-border-active);
+  border-radius: var(--radius-md);
+  background: var(--bg-darker);
+  box-shadow: var(--shadow-lg);
+  list-style: none;
+  outline: none;
+}
+
+.select-button__option {
+  position: relative;
+  padding: 9px 34px 9px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.select-button__option.is-active {
+  background: rgba(199, 192, 154, 0.1);
+}
+
+.select-button__option[aria-selected="true"] {
+  color: var(--color-gold);
+}
+
+/* Keyboard users need to see the highlighted option clearly. */
+.select-button__list:focus-visible .select-button__option.is-active {
+  border-color: rgba(199, 192, 154, 0.55);
+}
+
+.select-button__check {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  color: var(--color-gold);
+  font-size: 18px;
+  transform: translateY(-50%);
+}
+
+@media (forced-colors: active) {
+  .select-button__option.is-active {
+    outline: 2px solid Highlight;
+  }
 }
 
 .chip-row {
@@ -5073,7 +5165,7 @@ button.weapon-diagram-node:focus-visible,
     flex: 1 1 auto;
   }
 
-  .select-button select {
+  .select-button__value {
     flex: 1 1 auto;
   }
 
