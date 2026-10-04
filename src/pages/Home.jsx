@@ -12,6 +12,7 @@ import {
   sortHomeWeapons,
 } from './homeWeaponFilters.js';
 import HomeFilterModal from '../ui/HomeFilterModal.jsx';
+import SelectButton from '../ui/SelectButton.jsx';
 import { useI18n } from '../i18n/useI18n.js';
 import AsyncImage from '../ui/AsyncImage.jsx';
 import { MaterialSymbol } from '../ui/MaterialSymbol.js';
@@ -263,15 +264,12 @@ function Home() {
             />
             <kbd className="search-field__kbd" aria-hidden="true">/</kbd>
           </label>
-          <label className="select-button">
-            <span className="select-button__label">{t('home.sort.label')}</span>
-            <select value={sort} onChange={event => setSort(event.target.value)}>
-              {HOME_WEAPON_SORTS.map(option => (
-                <option key={option} value={option}>{t(`home.sort.${option}`)}</option>
-              ))}
-            </select>
-            <MaterialSymbol name="expand_more" className="select-button__chevron" />
-          </label>
+          <SelectButton
+            label={t('home.sort.label')}
+            options={HOME_WEAPON_SORTS.map(option => ({ value: option, label: t(`home.sort.${option}`) }))}
+            value={sort}
+            onChange={setSort}
+          />
         </div>
       </div>
 
