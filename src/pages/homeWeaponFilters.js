@@ -55,6 +55,12 @@ export function getWeaponTypeLabel(weapon) {
 // The catalog keeps its type filter in the URL, so other pages (the
 // configurator breadcrumbs) can link to the catalog narrowed to one type.
 export const HOME_TYPE_PARAM = 'type';
+// The rest of the catalog state lives there too, so returning from a weapon
+// or reloading the page keeps the list the user narrowed down.
+export const HOME_SEARCH_PARAM = 'q';
+export const HOME_SORT_PARAM = 'sort';
+export const HOME_CALIBER_PARAM = 'caliber';
+export const HOME_TRADER_PARAM = 'trader';
 
 export function getHomeTypeFilterPath(type) {
   return type ? `/?${new URLSearchParams({ [HOME_TYPE_PARAM]: type })}` : '/';

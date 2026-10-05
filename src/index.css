@@ -4387,8 +4387,16 @@ button.weapon-diagram-node:focus-visible,
 .comparison-count { flex: 0 0 auto; padding: 8px 11px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--gold); font-size: .8rem; font-weight: 800; }
 .comparison-controls, .comparison-module-list, .comparison-table-panel { margin-bottom: 18px; padding: 18px; }
 .comparison-controls { align-items: end; }
-.comparison-controls label { display: grid; flex: 1 1 200px; gap: 7px; color: var(--muted); font-size: .78rem; font-weight: 800; }
+.comparison-controls > label, .comparison-controls > .comparison-field { display: grid; flex: 1 1 200px; gap: 7px; min-width: 0; color: var(--muted); font-size: .78rem; font-weight: 800; }
 .comparison-controls select, .comparison-controls input, .comparison-module-list input { width: 100%; min-height: 40px; box-sizing: border-box; }
+/* The dropdowns read as form inputs. In the top row they fill the column and
+   cut a long weapon name instead of growing to the longest one. */
+.comparison-field .select-button { display: flex; min-width: 0; }
+.comparison-field .select-button__trigger { min-width: 0; height: 40px; padding-left: 12px; border-color: var(--line); border-radius: var(--radius-sm); background: var(--input-bg); color: var(--text); font-weight: 400; }
+.comparison-controls .select-button__value { flex: 1 1 auto; grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.comparison-controls .select-button__value > span { overflow: hidden; text-overflow: ellipsis; }
+.comparison-field--inline { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: .8rem; }
+.comparison-field--inline .select-button__trigger { height: 38px; }
 .comparison-empty { margin: 18px 0; padding: 40px 18px; border: 1px dashed var(--line); border-radius: var(--radius); color: var(--muted); text-align: center; }
 .comparison-module-list__head { margin-bottom: 14px; }
 .comparison-module-list__head h3, .comparison-table-panel__head h3 { margin: 0; color: var(--text); font-family: var(--font-display); text-transform: uppercase; }
@@ -4466,6 +4474,7 @@ button.weapon-diagram-node:focus-visible,
   .comparison-module { align-items: center; }
   .module-comparison-filters { align-items: stretch; flex-direction: column; }
   .module-comparison-filters select, .module-comparison-filters .input-field { width: 100%; }
+  .module-comparison-filters .comparison-field--inline { display: grid; }
   .comparison-table-panel--wide { width: calc(100vw - 20px); max-width: calc(100vw - 20px); }
   .module-comparison-table-wrap { max-height: calc(100vh - 220px); }
 }
@@ -4788,7 +4797,8 @@ button.weapon-diagram-node:focus-visible,
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-size: 14px;
-  white-space: nowrap;
+  /* The list is as wide as the field; a long weapon name wraps. */
+  overflow-wrap: break-word;
   cursor: pointer;
 }
 
@@ -5094,16 +5104,26 @@ button.weapon-diagram-node:focus-visible,
   font-size: 18px;
 }
 
-.weapon-card:hover .weapon-card__cta,
+/* A tap leaves :hover stuck on touch screens, so the call to action would keep
+   covering the price after the user comes back to the catalog. */
 .weapon-card:focus-visible .weapon-card__cta {
   display: flex;
 }
 
-.weapon-card:hover .weapon-card__stats,
-.weapon-card:hover .weapon-card__price,
 .weapon-card:focus-visible .weapon-card__stats,
 .weapon-card:focus-visible .weapon-card__price {
   visibility: hidden;
+}
+
+@media (hover: hover) {
+  .weapon-card:hover .weapon-card__cta {
+    display: flex;
+  }
+
+  .weapon-card:hover .weapon-card__stats,
+  .weapon-card:hover .weapon-card__price {
+    visibility: hidden;
+  }
 }
 
 .catalog__footer {
@@ -5233,8 +5253,12 @@ button.weapon-diagram-node:focus-visible,
     margin-left: 0;
   }
 
-  .weapon-card:hover .weapon-card__stats,
-  .weapon-card:hover .weapon-card__price {
+  /* The compact card has no room for the call to action; the price stays. */
+  .weapon-card:is(:hover, :focus-visible) .weapon-card__cta {
+    display: none;
+  }
+
+  .weapon-card:is(:hover, :focus-visible) .weapon-card__price {
     visibility: visible;
   }
 

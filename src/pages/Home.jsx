@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigationType, useSearchParams } from 'react-router-dom';
 import { getWeapons, isAbortError } from '../data/tarkovApi';
 import { selectWeaponPurchasePrice } from '../data/price/priceMapper.js';
 import {
@@ -7,6 +7,10 @@ import {
   formatCaliberLabel,
   getHomeWeaponFilterOptions,
   getWeaponTypeLabel,
+  HOME_CALIBER_PARAM,
+  HOME_SEARCH_PARAM,
+  HOME_SORT_PARAM,
+  HOME_TRADER_PARAM,
   HOME_TYPE_PARAM,
   HOME_WEAPON_SORTS,
   sortHomeWeapons,
@@ -19,6 +23,10 @@ import { MaterialSymbol } from '../ui/MaterialSymbol.js';
 import { useCatalogStatus } from '../features/dataStatus/useCatalogStatus.js';
 import { usePriceMode } from '../features/priceMode/usePriceMode.js';
 import { useTraderLevels } from '../features/traderLevels/useTraderLevels.js';
+
+// Marks the catalog's own URL updates, so they are told apart from a link or
+// history step that brings a different search.
+const CATALOG_UPDATE_STATE = { catalogUpdate: true };
 
 function formatRubles(value, language) {
   return `${new Intl.NumberFormat(language, { maximumFractionDigits: 0 }).format(value)} ₽`;
@@ -98,23 +106,47 @@ function Home() {
   const { traderLevels, strictTraderLevels, includeRefOffers } = useTraderLevels();
   const { refreshVersion } = useCatalogStatus();
   const [weapons, setWeapons] = useState([]);
-  const [search, setSearch] = useState('');
-  const [sort, setSort] = useState('name');
-  const [selectedCaliber, setSelectedCaliber] = useState('All');
-  const [selectedTrader, setSelectedTrader] = useState('All');
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
-  const requestedType = searchParams.get(HOME_TYPE_PARAM) || 'All';
-  const setSelectedType = useCallback(type => {
+  // Takes every changed parameter at once: separate calls in one event would
+  // each start from the same URL and overwrite one another.
+  const updateParams = useCallback(changes => {
     setSearchParams(current => {
       const next = new URLSearchParams(current);
-      if (type === 'All') next.delete(HOME_TYPE_PARAM);
-      else next.set(HOME_TYPE_PARAM, type);
+      Object.entries(changes).forEach(([key, value]) => {
+        if (!value || value === 'All') next.delete(key);
+        else next.set(key, value);
+      });
       return next;
-    }, { replace: true });
+    }, { replace: true, state: CATALOG_UPDATE_STATE });
   }, [setSearchParams]);
+  // The field keeps its own state: a value read back from the URL after each
+  // navigation would arrive late and move the caret while typing. Any other
+  // navigation (the header link, Back) loads the search from the URL.
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  const urlSearch = searchParams.get(HOME_SEARCH_PARAM) || '';
+  const [search, setSearchState] = useState(urlSearch);
+  // Compared by identity: entries made by editing the hash all share one key.
+  const [syncedLocation, setSyncedLocation] = useState(location);
+  if (location !== syncedLocation) {
+    setSyncedLocation(location);
+    const isCatalogUpdate = navigationType === 'REPLACE' && location.state?.catalogUpdate;
+    if (!isCatalogUpdate) setSearchState(urlSearch);
+  }
+  const setSearch = value => {
+    setSearchState(value);
+    updateParams({ [HOME_SEARCH_PARAM]: value.trim() ? value : '' });
+  };
+  const requestedSort = searchParams.get(HOME_SORT_PARAM);
+  const sort = HOME_WEAPON_SORTS.includes(requestedSort) ? requestedSort : 'name';
+  const setSort = value => updateParams({ [HOME_SORT_PARAM]: value === 'name' ? '' : value });
+  const requestedType = searchParams.get(HOME_TYPE_PARAM) || 'All';
+  const requestedCaliber = searchParams.get(HOME_CALIBER_PARAM) || 'All';
+  const requestedTrader = searchParams.get(HOME_TRADER_PARAM) || 'All';
+  const setSelectedType = useCallback(type => updateParams({ [HOME_TYPE_PARAM]: type }), [updateParams]);
   const loadedLanguageRef = useRef(null);
   const searchRef = useRef(null);
 
@@ -191,13 +223,23 @@ function Home() {
   }, []);
 
   const { types: weaponTypes, calibers, traders } = useMemo(() => getHomeWeaponFilterOptions(weapons), [weapons]);
-  // A type from the URL that this catalog does not have (another language, a
+  // A filter from the URL that this catalog does not have (another language, a
   // stale link) falls back to all weapons instead of an empty list.
   const selectedType = weaponTypes.includes(requestedType) ? requestedType : 'All';
-  const hasStaleType = !loading && weapons.length > 0 && requestedType !== selectedType;
+  const selectedCaliber = calibers.includes(requestedCaliber) ? requestedCaliber : 'All';
+  const selectedTrader = traders.some(trader => trader.id === requestedTrader) ? requestedTrader : 'All';
+  const isCatalogReady = !loading && weapons.length > 0;
+  const hasStaleType = isCatalogReady && requestedType !== selectedType;
+  const hasStaleCaliber = isCatalogReady && requestedCaliber !== selectedCaliber;
+  const hasStaleTrader = isCatalogReady && requestedTrader !== selectedTrader;
   useEffect(() => {
-    if (hasStaleType) setSelectedType('All');
-  }, [hasStaleType, setSelectedType]);
+    if (!hasStaleType && !hasStaleCaliber && !hasStaleTrader) return;
+    updateParams({
+      ...(hasStaleType && { [HOME_TYPE_PARAM]: '' }),
+      ...(hasStaleCaliber && { [HOME_CALIBER_PARAM]: '' }),
+      ...(hasStaleTrader && { [HOME_TRADER_PARAM]: '' }),
+    });
+  }, [hasStaleCaliber, hasStaleTrader, hasStaleType, updateParams]);
 
   const prices = useMemo(() => {
     const options = {
@@ -233,10 +275,13 @@ function Home() {
   const showInitialError = error && weapons.length === 0;
 
   const resetFilters = () => {
-    setSearch('');
-    setSelectedType('All');
-    setSelectedCaliber('All');
-    setSelectedTrader('All');
+    setSearchState('');
+    updateParams({
+      [HOME_SEARCH_PARAM]: '',
+      [HOME_TYPE_PARAM]: '',
+      [HOME_CALIBER_PARAM]: '',
+      [HOME_TRADER_PARAM]: '',
+    });
   };
 
   const closeFilterModal = useCallback(() => setIsFilterModalOpen(false), []);
@@ -246,7 +291,13 @@ function Home() {
       <div className="catalog__head">
         <div className="catalog__heading">
           <p className="eyebrow-mono">
-            {t('home.eyebrow', { mode: t(`priceMode.${priceMode}`), count: weapons.length })}
+            {visibleWeapons.length === weapons.length
+              ? t('home.eyebrow', { mode: t(`priceMode.${priceMode}`), count: weapons.length })
+              : t('home.eyebrowFiltered', {
+                mode: t(`priceMode.${priceMode}`),
+                count: visibleWeapons.length,
+                total: weapons.length,
+              })}
           </p>
           <h1 id="catalogTitle" className="page-title">{t('home.selectWeapon')}</h1>
         </div>
@@ -313,8 +364,7 @@ function Home() {
           selectedTrader={selectedTrader}
           onClose={closeFilterModal}
           onApply={({ caliber, trader }) => {
-            setSelectedCaliber(caliber);
-            setSelectedTrader(trader);
+            updateParams({ [HOME_CALIBER_PARAM]: caliber, [HOME_TRADER_PARAM]: trader });
             closeFilterModal();
           }}
         />

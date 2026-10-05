@@ -7,6 +7,7 @@ import {
   getAllMods,
   getWeaponDetails,
   getWeapons,
+  isBuildableWeapon,
   TARKOV_API_CACHE_TTL_MS,
 } from '../../src/data/tarkovApi/repository.js';
 import { PRICE_MODES } from '../../src/data/price/priceModes.js';
@@ -359,4 +360,14 @@ test('one aborted consumer does not cancel a shared request, but the last one do
     await assert.rejects(request, { code: 'ABORTED' });
     assert.equal(catalogSignal.aborted, true);
   });
+});
+
+test('flare cartridges without modules or ammo are not buildable weapons', () => {
+  const slot = { id: 'slot-1' };
+  assert.equal(isBuildableWeapon({ properties: { slots: [slot], allowedAmmo: ['ammo-1'] } }), true);
+  // A signal pistol or a rocket launcher has no modules but still takes ammo.
+  assert.equal(isBuildableWeapon({ properties: { slots: [], allowedAmmo: ['ammo-1'] } }), true);
+  assert.equal(isBuildableWeapon({ properties: { slots: [], allowedAmmo: [] } }), false);
+  // Without an ammo list the data is too old to tell, so the weapon stays.
+  assert.equal(isBuildableWeapon({ properties: { slots: [] } }), true);
 });

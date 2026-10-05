@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   COMPARISON_METRICS, deselectComparedModules, filterComparisonRows, getCandidatesForCategory,
-  getAvailableComparisonMetrics, getComparisonMetric, getMetricExtremes, getReachableModules,
+  getAvailableComparisonMetrics, getComparisonMetric, getMetricExtremes, getReachableModules, getWeaponOptions,
   hasMetricValue, metricValue, normalizeComparisonSort, selectComparedModules, sortComparisonRows,
   toggleComparedModule,
 } from '../../src/features/moduleComparison/comparison.js';
@@ -168,4 +168,17 @@ test('sorting by a modifier that disappears with the category resets to name asc
   const sightingRange = getComparisonMetric('sightingRange');
   assert.deepEqual(normalizeComparisonSort('capacity', 'desc', [sightingRange]), { sortKey: 'name', sortDirection: 'asc' });
   assert.deepEqual(normalizeComparisonSort('capacity', 'desc', [capacity]), { sortKey: 'capacity', sortDirection: 'desc' });
+});
+
+test('weapon options spell out guns that share a short name and sort by label', () => {
+  const options = getWeaponOptions([
+    { id: 'mdr-762', shortName: 'MDR', name: 'Desert Tech MDR 7.62x51 assault rifle' },
+    { id: 'ak', shortName: 'AK-74', name: 'Kalashnikov AK-74 5.45x39 assault rifle' },
+    { id: 'mdr-556', shortName: 'MDR', name: 'Desert Tech MDR 5.56x45 assault rifle' },
+  ], 'en');
+  assert.deepEqual(options, [
+    { value: 'ak', label: 'AK-74' },
+    { value: 'mdr-556', label: 'Desert Tech MDR 5.56x45 assault rifle' },
+    { value: 'mdr-762', label: 'Desert Tech MDR 7.62x51 assault rifle' },
+  ]);
 });
