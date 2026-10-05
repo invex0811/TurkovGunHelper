@@ -35,7 +35,7 @@ function isSamePosition(left, right) {
 //
 // With `label`, the label is shown inside the field ("Sort: by name"). With
 // `labelId`, an external element labels it, as in a form.
-function SelectButton({ className = '', id, label, labelId, options, value, onChange }) {
+function SelectButton({ className = '', disabled = false, id, label, labelId, options, value, onChange }) {
   const listId = useId();
   const valueId = useId();
   const rootRef = useRef(null);
@@ -165,6 +165,7 @@ function SelectButton({ className = '', id, label, labelId, options, value, onCh
         aria-expanded={isOpen}
         aria-controls={listId}
         aria-labelledby={labelId ? `${labelId} ${valueId}` : undefined}
+        disabled={disabled}
         onClick={() => (isOpen ? setIsOpen(false) : open())}
         onKeyDown={event => {
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {

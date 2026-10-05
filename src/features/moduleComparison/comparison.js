@@ -26,6 +26,20 @@ export function getComparisonMetric(key) {
   return COMPARISON_METRICS.find(metric => metric.key === key) || null;
 }
 
+// Several guns share a short name (colour variants, the two MDR calibers).
+// Those show their full name so the weapon list can tell them apart.
+export function getWeaponOptions(weapons, locale) {
+  const shortNameOf = weapon => weapon.shortName || weapon.name || weapon.id;
+  const counts = new Map();
+  weapons.forEach(weapon => counts.set(shortNameOf(weapon), (counts.get(shortNameOf(weapon)) || 0) + 1));
+  return weapons
+    .map(weapon => ({
+      value: weapon.id,
+      label: counts.get(shortNameOf(weapon)) > 1 ? weapon.name || shortNameOf(weapon) : shortNameOf(weapon),
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label, locale));
+}
+
 function categoryFor(item) {
   const category = (item.categories || []).find(entry => entry?.name || entry?.normalizedName || entry?.id);
   const label = category?.name || category?.normalizedName || category?.id || 'Other';

@@ -261,6 +261,19 @@ export function loadItemsCatalog(gameMode = 'regular', options = {}) {
   });
 }
 
+// Tarkov.dev lists the single-use RSP-30 and ROP-30 flare cartridges as guns.
+// They take no modules and no ammo, so there is nothing to build or compare.
+// Data without an ammo list (an old cache) keeps the weapon.
+export function isBuildableWeapon(weapon) {
+  const properties = weapon?.properties;
+  return (properties?.slots?.length ?? 0) > 0
+    || !Array.isArray(properties?.allowedAmmo)
+    || properties.allowedAmmo.length > 0;
+}
+
+// Keyed by catalog, so repeated calls return the same array for memoization.
+const buildableWeaponsByCatalog = new WeakMap();
+
 export async function getWeapons(options = {}) {
   const gameMode = options.gameMode === 'pve' || options.priceMode === 'pve'
     ? 'pve'
@@ -269,7 +282,10 @@ export async function getWeapons(options = {}) {
     ...options,
     priceMode: gameMode === 'pve' ? 'pve' : DEFAULT_PRICE_MODE,
   });
-  return catalog.weapons;
+  if (!buildableWeaponsByCatalog.has(catalog)) {
+    buildableWeaponsByCatalog.set(catalog, catalog.weapons.filter(isBuildableWeapon));
+  }
+  return buildableWeaponsByCatalog.get(catalog);
 }
 
 export async function getAllMods(priceMode = DEFAULT_PRICE_MODE, options = {}) {
