@@ -1,7 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
+  loadIncludeFleaMarketPreference,
   loadIncludeRefOffersPreference,
   loadStrictTraderLevelsPreference,
+  saveIncludeFleaMarketPreference,
   saveIncludeRefOffersPreference,
   saveStrictTraderLevelsPreference,
 } from '../../data/settings/buildPreferences.js';
@@ -35,6 +37,16 @@ export default function TraderLevelsProvider({ children }) {
     saveIncludeRefOffersPreference(normalizedValue);
   }, []);
 
+  const [includeFleaMarket, setIncludeFleaMarketState] = useState(
+    loadIncludeFleaMarketPreference,
+  );
+
+  const setIncludeFleaMarket = useCallback(nextValue => {
+    const normalizedValue = nextValue !== false;
+    setIncludeFleaMarketState(normalizedValue);
+    saveIncludeFleaMarketPreference(normalizedValue);
+  }, []);
+
   const updateTraderLevel = useCallback((traderId, level, priceMode, traders) => {
     setTraderLevelsState(current => {
       const next = setTraderLevel(traderId, level, priceMode, current, traders);
@@ -65,13 +77,17 @@ export default function TraderLevelsProvider({ children }) {
     setStrictTraderLevels,
     includeRefOffers,
     setIncludeRefOffers,
+    includeFleaMarket,
+    setIncludeFleaMarket,
     initializeTraderLevels: initializeProfile,
     updateTraderLevel,
     resetTraderLevels: resetProfile,
   }), [
+    includeFleaMarket,
     includeRefOffers,
     initializeProfile,
     resetProfile,
+    setIncludeFleaMarket,
     setIncludeRefOffers,
     setStrictTraderLevels,
     strictTraderLevels,

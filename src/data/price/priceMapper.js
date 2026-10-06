@@ -258,7 +258,10 @@ function createMissingPrice(mode, item, offers = null) {
 
 export function selectPurchasePrice(item, options = {}) {
   const mode = options.priceMode ?? item?.purchaseOffers?.mode ?? item?.price?.mode ?? DEFAULT_PRICE_MODE;
-  const includeTraderPrices = options.includeTraderPrices !== false;
+  // Players below the Flea Market unlock level can only buy from traders, so
+  // with the Flea Market off trader prices and loyalty levels always apply.
+  const includeFleaMarket = options.includeFleaMarket !== false;
+  const includeTraderPrices = options.includeTraderPrices !== false || !includeFleaMarket;
   let offers = item?.purchaseOffers;
 
   // Keep supporting objects normalized by older repository versions and focused
@@ -304,12 +307,12 @@ export function selectPurchasePrice(item, options = {}) {
   }
 
   const includeRefOffers = options.includeRefOffers !== false;
+  const fleaMarketOffer = includeFleaMarket ? offers.fleaMarket : null;
   const traderOffers = (offers.traderOffers || [])
     .filter(offer => includeRefOffers || !isRefOffer(offer));
   const evaluatesTraderAvailability = Boolean(
     includeTraderPrices
-    && options.strictTraderLevels === true
-    && options.traderLevels,
+    && ((options.strictTraderLevels === true && options.traderLevels) || !includeFleaMarket),
   );
   const enforcesTraderAvailability = evaluatesTraderAvailability;
   const unavailableTraderOffers = evaluatesTraderAvailability
@@ -319,7 +322,7 @@ export function selectPurchasePrice(item, options = {}) {
         < offer.traderLevel;
     })
     : [];
-  const candidates = [offers.fleaMarket];
+  const candidates = [fleaMarketOffer];
   if (includeTraderPrices) {
     candidates.push(...traderOffers.filter(offer => (
       !enforcesTraderAvailability || !unavailableTraderOffers.includes(offer)
@@ -328,7 +331,7 @@ export function selectPurchasePrice(item, options = {}) {
 
   const selectedOffer = selectCheapestOffer(candidates);
   const unrestrictedSelectedOffer = includeTraderPrices
-    ? selectCheapestOffer([offers.fleaMarket, ...traderOffers])
+    ? selectCheapestOffer([fleaMarketOffer, ...traderOffers])
     : null;
   const traderFallbackUsed = Boolean(
     enforcesTraderAvailability
@@ -420,6 +423,14 @@ export function normalizeItemPrice(item, mode = DEFAULT_PRICE_MODE) {
 export function getPurchasePriceValue(item, options = {}, missingValue = null) {
   const value = selectPurchasePrice(item, options).value;
   return isPositiveNumber(value) ? value : missingValue;
+}
+
+// True when the price policy leaves no way to buy the item: it is sold only by
+// a disabled Ref, or, with the Flea Market off, no trader sells it at the
+// selected loyalty levels.
+export function isItemUnavailable(item, options = {}) {
+  if (options.includeRefOffers === false && isRefOnlyItem(item)) return true;
+  return options.includeFleaMarket === false && getPurchasePriceValue(item, options) === null;
 }
 
 export function sumPurchasePrices(items, options = {}) {

@@ -35,6 +35,7 @@ export default function WeaponBuildDiagramModal({
   traderLevels,
   strictTraderLevels,
   includeRefOffers,
+  includeFleaMarket,
   onBuildChange,
   onClose,
   chainGoal,
@@ -61,8 +62,9 @@ export default function WeaponBuildDiagramModal({
       traderLevels,
       strictTraderLevels,
       includeRefOffers,
+      includeFleaMarket,
     }),
-    [allMods, buildParts, includeTraderPrices, priceMode, showFreeSlots, strictTraderLevels, includeRefOffers, traderLevels, weapon],
+    [allMods, buildParts, includeTraderPrices, priceMode, showFreeSlots, strictTraderLevels, includeRefOffers, includeFleaMarket, traderLevels, weapon],
   );
   const layout = useMemo(() => layoutWeaponDiagramGraph(graph), [graph]);
   const slotContext = useMemo(
@@ -82,8 +84,9 @@ export default function WeaponBuildDiagramModal({
       traderLevels,
       strictTraderLevels,
       includeRefOffers,
+      includeFleaMarket,
     }) : [],
-    [allMods, buildParts, includeTraderPrices, priceMode, slotContext, strictTraderLevels, includeRefOffers, traderLevels, weapon],
+    [allMods, buildParts, includeTraderPrices, priceMode, slotContext, strictTraderLevels, includeRefOffers, includeFleaMarket, traderLevels, weapon],
   );
   const supportsChains = useMemo(
     () => Boolean(chainOptions && selectedSlotId) && slotSupportsChains(
@@ -117,6 +120,7 @@ export default function WeaponBuildDiagramModal({
       traderLevels,
       strictTraderLevels,
       includeRefOffers,
+      includeFleaMarket,
       locale: language,
       meters: stats,
     })
@@ -129,6 +133,7 @@ export default function WeaponBuildDiagramModal({
       traderLevels,
       strictTraderLevels,
       includeRefOffers,
+      includeFleaMarket,
       priceMode,
       selectedSlotId,
       stats,
@@ -238,6 +243,7 @@ export default function WeaponBuildDiagramModal({
       traderLevels,
       strictTraderLevels,
       includeRefOffers,
+      includeFleaMarket,
     });
     if (plan.errors?.length > 0) {
       setPanelError(plan.errors.map(error => getSlotPlanErrorMessage(error, t)).join(' '));
@@ -250,7 +256,7 @@ export default function WeaponBuildDiagramModal({
       return;
     }
     applyPlan(plan);
-  }, [allMods, applyPlan, buildParts, includeTraderPrices, priceMode, selectedSlotId, strictTraderLevels, includeRefOffers, t, traderLevels, weapon]);
+  }, [allMods, applyPlan, buildParts, includeTraderPrices, priceMode, selectedSlotId, strictTraderLevels, includeRefOffers, includeFleaMarket, t, traderLevels, weapon]);
 
   return createPortal(
     <div className="weapon-diagram-modal" role="presentation" onMouseDown={closeModal}>
@@ -311,6 +317,7 @@ export default function WeaponBuildDiagramModal({
               traderLevels={traderLevels}
               strictTraderLevels={strictTraderLevels}
               includeRefOffers={includeRefOffers}
+              includeFleaMarket={includeFleaMarket}
               onChoose={requestChange}
               onRemove={() => requestChange(null)}
               onConfirmPlan={() => applyPlan(pendingPlan)}

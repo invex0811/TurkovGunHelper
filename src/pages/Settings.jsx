@@ -25,6 +25,8 @@ export default function Settings({ theme, setTheme }) {
     setStrictTraderLevels,
     includeRefOffers,
     setIncludeRefOffers,
+    includeFleaMarket,
+    setIncludeFleaMarket,
     initializeTraderLevels,
     updateTraderLevel,
     resetTraderLevels,
@@ -74,16 +76,8 @@ export default function Settings({ theme, setTheme }) {
     resetTraderLevels(priceMode, traders);
   };
 
-  const handleStrictChange = event => {
-    const nextValue = event.target.checked;
-    if (!nextValue) {
-      setStrictTraderLevels(false);
-      setStrictNotice(null);
-      return;
-    }
-
-    const initializesDefaultLevels = nextValue
-      && traders.length > 0
+  const enableStrictTraderLevels = () => {
+    const initializesDefaultLevels = traders.length > 0
       && Object.keys(currentProfile).length === 0;
     if (initializesDefaultLevels) {
       initializeTraderLevels(priceMode, traders);
@@ -91,6 +85,24 @@ export default function Settings({ theme, setTheme }) {
     setStrictTraderLevels(true);
     setStrictNotice(initializesDefaultLevels ? t('traders.strictLevelsDefaultNotice') : null);
   };
+
+  const handleStrictChange = event => {
+    if (event.target.checked) {
+      enableStrictTraderLevels();
+      return;
+    }
+    setStrictTraderLevels(false);
+    setStrictNotice(null);
+  };
+
+  // Without the Flea Market only trader offers remain, so loyalty levels
+  // must apply and the level list has to be visible.
+  const handleFleaMarketChange = event => {
+    const nextValue = event.target.checked;
+    setIncludeFleaMarket(nextValue);
+    if (!nextValue && !strictTraderLevels) enableStrictTraderLevels();
+  };
+  const effectiveStrictTraderLevels = strictTraderLevels || !includeFleaMarket;
 
   return (
     <div className="settings-page page-shell">
@@ -175,6 +187,18 @@ export default function Settings({ theme, setTheme }) {
         <label className="check settings-trader-toggle">
           <input
             type="checkbox"
+            checked={includeFleaMarket}
+            onChange={handleFleaMarketChange}
+          />
+          <span>
+            <strong>{t('traders.includeFleaMarket')}</strong>
+            <small>{t('traders.includeFleaMarketDescription')}</small>
+          </span>
+        </label>
+
+        <label className="check settings-trader-toggle">
+          <input
+            type="checkbox"
             checked={includeRefOffers}
             onChange={event => setIncludeRefOffers(event.target.checked)}
           />
@@ -187,18 +211,23 @@ export default function Settings({ theme, setTheme }) {
         <label className="check settings-trader-toggle">
           <input
             type="checkbox"
-            checked={strictTraderLevels}
+            checked={effectiveStrictTraderLevels}
+            disabled={!includeFleaMarket}
             onChange={handleStrictChange}
             aria-controls="trader-level-settings"
-            aria-expanded={strictTraderLevels}
+            aria-expanded={effectiveStrictTraderLevels}
           />
           <span>
             <strong>{t('traders.strictLevels')}</strong>
-            <small>{t('traders.strictLevelsDescription')}</small>
+            <small>
+              {t(includeFleaMarket
+                ? 'traders.strictLevelsDescription'
+                : 'traders.strictLevelsRequiredWithoutFlea')}
+            </small>
           </span>
         </label>
 
-        {strictTraderLevels && (
+        {effectiveStrictTraderLevels && (
           <>
             {strictNotice && (
               <p className="inline-message inline-message--info" role="status">

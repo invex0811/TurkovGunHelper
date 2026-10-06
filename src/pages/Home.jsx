@@ -103,7 +103,7 @@ function WeaponCard({ language, price, t, weapon }) {
 function Home() {
   const { language, t } = useI18n();
   const { priceMode } = usePriceMode();
-  const { traderLevels, strictTraderLevels, includeRefOffers } = useTraderLevels();
+  const { traderLevels, strictTraderLevels, includeRefOffers, includeFleaMarket } = useTraderLevels();
   const { refreshVersion } = useCatalogStatus();
   const [weapons, setWeapons] = useState([]);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -248,12 +248,13 @@ function Home() {
       traderLevels: traderLevels.profiles?.[priceMode] || {},
       strictTraderLevels,
       includeRefOffers,
+      includeFleaMarket,
     };
     return new Map(weapons.map(weapon => {
       const value = selectWeaponPurchasePrice(weapon, options).value;
       return [weapon.id, typeof value === 'number' && value > 0 ? value : Number.NaN];
     }));
-  }, [includeRefOffers, priceMode, strictTraderLevels, traderLevels, weapons]);
+  }, [includeFleaMarket, includeRefOffers, priceMode, strictTraderLevels, traderLevels, weapons]);
 
   const visibleWeapons = useMemo(
     () => sortHomeWeapons(

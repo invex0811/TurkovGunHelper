@@ -10,6 +10,7 @@ export const CONFIGURATOR_MESSAGE_TYPES = Object.freeze([
 const BUILD_WARNING_MESSAGE_KEYS = Object.freeze({
   BASE_WEAPON_MAX_WEIGHT: 'config.warning.baseWeaponMaxWeight',
   BUILD_MAX_PRICE_EXCEEDED: 'config.warning.buildMaxPriceExceeded',
+  MAGAZINE_CAPACITY_SUBSTITUTED: 'config.warning.magazineCapacitySubstituted',
   PRICE_ITEMS_UNAVAILABLE: 'config.warning.priceItemsUnavailable',
   REQUIREMENTS_UNMET_CLOSEST_BUILD: 'config.warning.requirementsUnmet',
   SAVED_MODULES_SKIPPED: 'config.notification.warning.savedModulesSkipped',

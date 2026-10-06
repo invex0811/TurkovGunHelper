@@ -15,6 +15,7 @@
 | `tarkovGunHelper.includeTraderPrices` | то же | Учитывать цены торговцев |
 | `tarkovGunHelper.strictTraderLevels` | то же | Учитывать уровни торговцев |
 | `tarkovGunHelper.includeRefOffers` | то же | Учитывать торговца Ref |
+| `tarkovGunHelper.includeFleaMarket` | то же | Учитывать Барахолку (до 15 уровня она недоступна) |
 | `tarkovGunHelper.rememberTacticalDeviceSelection` | то же | Запоминать выбранные фонарь и ЛЦУ |
 | `tarkovGunHelper.lastSelectedFlashlightId`, `tarkovGunHelper.lastSelectedTblId` | то же | Последние выбранные устройства |
 | `tarkovGunHelper.rememberRequiredModules` | то же | Запоминать обязательные модули для каждого оружия |

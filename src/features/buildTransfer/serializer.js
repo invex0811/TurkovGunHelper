@@ -35,6 +35,7 @@ const EXPORTED_SETTING_KEYS = [
   'includeTraderPrices',
   'strictTraderLevels',
   'includeRefOffers',
+  'includeFleaMarket',
   'traderLevelsSnapshot',
   'maxWeight',
   'maxPrice',

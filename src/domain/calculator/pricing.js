@@ -1,19 +1,22 @@
 import {
   getPurchasePriceValue,
-  isRefOnlyItem,
+  isItemUnavailable,
   selectWeaponPurchasePrice,
 } from '../../data/price/priceMapper.js';
 
 // With Ref disabled, items that only Ref sells are removed from the search.
-// Modules the user pinned explicitly stay available.
-export function excludeRefOnlyItems(modMap, options = {}) {
-  if (options.includeRefOffers !== false || !modMap) return modMap;
+// With the Flea Market disabled, so are items no trader sells at the selected
+// loyalty levels. Modules the user pinned explicitly stay available.
+export function excludeUnavailableItems(modMap, options = {}) {
+  if ((options.includeRefOffers !== false && options.includeFleaMarket !== false) || !modMap) {
+    return modMap;
+  }
 
   const requiredItemIds = new Set((options.requiredItemIds || []).map(String));
   let removed = false;
   const filtered = {};
   for (const [itemId, item] of Object.entries(modMap)) {
-    if (!requiredItemIds.has(itemId) && isRefOnlyItem(item)) {
+    if (!requiredItemIds.has(itemId) && isItemUnavailable(item, options)) {
       removed = true;
       continue;
     }

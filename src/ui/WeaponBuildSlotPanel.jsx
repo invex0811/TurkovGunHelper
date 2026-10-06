@@ -17,11 +17,12 @@ function formatPrice(
   traderLevels,
   strictTraderLevels,
   includeRefOffers,
+  includeFleaMarket,
   t,
 ) {
   const price = getPurchasePriceValue(
     item,
-    { priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers },
+    { priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers, includeFleaMarket },
     Number.POSITIVE_INFINITY,
   );
   return Number.isFinite(price)
@@ -42,6 +43,7 @@ export default function WeaponBuildSlotPanel({
   traderLevels,
   strictTraderLevels,
   includeRefOffers,
+  includeFleaMarket,
   onChoose,
   onRemove,
   onConfirmPlan,
@@ -62,8 +64,8 @@ export default function WeaponBuildSlotPanel({
     [createChainPlanner, isChainTab],
   );
   const priceOptions = useMemo(
-    () => ({ priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers }),
-    [includeRefOffers, includeTraderPrices, priceMode, strictTraderLevels, traderLevels],
+    () => ({ priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers, includeFleaMarket }),
+    [includeFleaMarket, includeRefOffers, includeTraderPrices, priceMode, strictTraderLevels, traderLevels],
   );
   const currentItem = slotContext?.installedNode?.item || null;
   const parentItem = slotContext?.parent?.item || null;
@@ -93,7 +95,7 @@ export default function WeaponBuildSlotPanel({
           <section className="weapon-slot-panel__current" aria-label={t('ui.slot.currentModule')}>
             <span>{t('ui.slot.installed')}</span>
             <strong>{getItemName(currentItem, t)}</strong>
-            <small>{formatPrice(currentItem, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers, t)}</small>
+            <small>{formatPrice(currentItem, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers, includeFleaMarket, t)}</small>
           </section>
         )}
 
@@ -165,6 +167,7 @@ export default function WeaponBuildSlotPanel({
                   traderLevels,
                   strictTraderLevels,
                   includeRefOffers,
+                  includeFleaMarket,
                 });
                 return (
                   <button
@@ -196,7 +199,7 @@ export default function WeaponBuildSlotPanel({
                       </span>
                     </span>
                     <span className="weapon-slot-option__meta">
-                      <small>{formatPrice(item, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers, t)}</small>
+                      <small>{formatPrice(item, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers, includeFleaMarket, t)}</small>
                       <em className={`is-${comparison.priceTone}`}>{comparison.priceDiff === null ? t('ui.slot.differenceUnavailable') : comparison.priceDiffText}</em>
                       {isCurrent && <span className="weapon-slot-option__badge">{t('ui.slot.current')}</span>}
                     </span>
