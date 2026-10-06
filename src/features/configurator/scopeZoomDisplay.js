@@ -1,4 +1,12 @@
+import { getScopeZoomLevels } from '../../domain/scopeZoom.js';
+
 export const PRIMARY_SCOPE_ZOOMS = Object.freeze([1, 4, 6, 8]);
+
+// Lists the same discrete levels the zoom filter matches, e.g. "1/6x".
+export function formatScopeZoomBadge(scope) {
+  const zoomLevels = getScopeZoomLevels(scope);
+  return zoomLevels.length > 0 ? `${zoomLevels.join('/')}x` : null;
+}
 
 export function getPrimaryScopeZoomLevels(scopeZoomLevels) {
   return PRIMARY_SCOPE_ZOOMS.filter(zoom => scopeZoomLevels.includes(zoom));

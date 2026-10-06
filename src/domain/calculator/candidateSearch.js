@@ -1,6 +1,7 @@
 import { createBranchEvaluator } from './branchEvaluation.js';
 import { createBuildOptimizers } from './buildOptimizers.js';
 import {
+  BUILD_ERROR_CODES,
   BUILD_WARNING_CODES,
   setBuildWarnings,
 } from './buildResultMessages.js';
@@ -909,28 +910,39 @@ export function _calculateWeighted(
 
   const warnings = [];
   const errors = [];
+  const errorDetails = [];
+  const addError = (code, params, fallback) => {
+    errorDetails.push({ code, params });
+    errors.push(fallback);
+  };
   if (options.requireSuppressor && !hasSuppressorGlobal) {
-    errors.push('No compatible suppressor could be installed with the current constraints.');
+    addError(BUILD_ERROR_CODES.SUPPRESSOR_UNAVAILABLE, {}, 'No compatible suppressor could be installed with the current constraints.');
   }
   if (requireSight && !hasSight) {
-    errors.push('No compatible sight could be installed with the current constraints.');
+    addError(BUILD_ERROR_CODES.SIGHT_UNAVAILABLE, {}, 'No compatible sight could be installed with the current constraints.');
   }
   if (characteristicConstraints && options.includeLaser && !hasLaserDevice(installedIds)) {
-    errors.push('No compatible laser could be installed with the current constraints.');
+    addError(BUILD_ERROR_CODES.LASER_UNAVAILABLE, {}, 'No compatible laser could be installed with the current constraints.');
   }
   if (characteristicConstraints && options.includeFlashlight && !hasFlashlightDevice(installedIds)) {
-    errors.push('No compatible flashlight could be installed with the current constraints.');
+    addError(BUILD_ERROR_CODES.FLASHLIGHT_UNAVAILABLE, {}, 'No compatible flashlight could be installed with the current constraints.');
   }
   const missingRequiredIds = [...requiredItemIds].filter(itemId => !installedIds.has(itemId));
   if (missingRequiredIds.length > 0) {
     const missingNames = missingRequiredIds
-      .map(itemId => modMap[itemId]?.shortName || modMap[itemId]?.name || itemId)
-      .join(', ');
-    errors.push(`Required modules could not be installed with the current weapon and constraints: ${missingNames}.`);
+      .map(itemId => modMap[itemId]?.shortName || modMap[itemId]?.name || itemId);
+    addError(
+      BUILD_ERROR_CODES.REQUIRED_MODULES_MISSING,
+      { modules: missingNames },
+      `Required modules could not be installed with the current weapon and constraints: ${missingNames.join(', ')}.`,
+    );
   }
   if (missingRequiredSlotNames.size > 0) {
-    errors.push(
-      `Required weapon slots could not be completed within the current constraints: ${[...missingRequiredSlotNames].join(', ')}.`,
+    const slotNames = [...missingRequiredSlotNames];
+    addError(
+      BUILD_ERROR_CODES.REQUIRED_SLOTS_INCOMPLETE,
+      { slots: slotNames },
+      `Required weapon slots could not be completed within the current constraints: ${slotNames.join(', ')}.`,
     );
   }
   if (maxWeight > 0 && totalWeight > maxWeight + weightEpsilon) {
@@ -946,8 +958,12 @@ export function _calculateWeighted(
       params: { maxPrice },
       fallback: 'The build exceeds the selected max price.',
     });
-    result.errorCode = 'MAX_PRICE_EXCEEDED';
-    errors.push(`The build exceeds the selected max price of ${maxPrice} RUB.`);
+    result.errorCode = BUILD_ERROR_CODES.MAX_PRICE_EXCEEDED;
+    addError(
+      BUILD_ERROR_CODES.MAX_PRICE_EXCEEDED,
+      { maxPrice, price: Math.round(totalPrice) },
+      `The build exceeds the selected max price of ${maxPrice} RUB.`,
+    );
   }
   if (!Number.isFinite(totalPrice)) {
     const missingItemCount = [
@@ -969,13 +985,18 @@ export function _calculateWeighted(
     }, characteristicConstraints);
     // options.maxWeight is the separate hard technical maximum.
     if (maxWeight > 0 && totalWeight > maxWeight) {
-      errors.push('The build exceeds the maximum weight.');
+      addError(
+        BUILD_ERROR_CODES.MAX_WEIGHT_EXCEEDED,
+        { maxWeight, weight: Number(totalWeight.toFixed(2)) },
+        `The build exceeds the maximum weight of ${maxWeight} kg.`,
+      );
     }
     if (errors.length > 0) result.build = [];
   }
   setBuildWarnings(result, warnings);
   if (errors.length > 0) {
     result.error = errors.join(' ');
+    result.errorDetails = errorDetails;
   }
 
   return result;

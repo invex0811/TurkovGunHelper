@@ -308,8 +308,10 @@ test('build goal modes preserve their state and calculator settings', async ({ p
   await includeTraderPrices.check();
   await includeTraderPrices.uncheck();
   await expect(priorityMaxPrice).toHaveValue(String(warningBudget));
+  // Prices are formatted in the browser's locale, e.g. "1,280 ₽".
+  const formatRub = value => page.evaluate(amount => `${amount.toLocaleString()} ₽`, value);
   await expect(page.getByText(
-    `The current build exceeds the ${warningBudget} RUB budget under this price policy.`,
+    `With the current price settings, the build goes over the ${await formatRub(warningBudget)} budget.`,
     { exact: true },
   )).toBeVisible();
 
@@ -319,20 +321,15 @@ test('build goal modes preserve their state and calculator settings', async ({ p
   const alternativePart = page.locator('.part-card').filter({ hasText: 'Alternative Grip' });
   await alternativePart.getByRole('button', { name: 'Replace', exact: true }).click();
   await page.getByRole('button', { name: /Replace: Starter Grip/ }).click();
-  await expect(page.getByText(
-    `This replacement exceeds the ${replacementBudget} RUB budget limit.`,
-    { exact: false },
-  )).toBeVisible();
+  const replacementBudgetError = `This replacement goes over the ${await formatRub(replacementBudget)} budget.`;
+  await expect(page.getByText(replacementBudgetError, { exact: false })).toBeVisible();
   await page.keyboard.press('Escape');
 
   await page.getByRole('button', { name: 'Build Diagram', exact: true }).click();
   const diagram = page.getByRole('dialog', { name: 'Build Diagram', exact: true });
   await diagram.getByRole('button', { name: 'Replace module Alternative Grip', exact: true }).click();
   await diagram.getByRole('button', { name: 'Install Starter Grip', exact: true }).click();
-  await expect(diagram.getByText(
-    `This replacement exceeds the ${replacementBudget} RUB budget limit.`,
-    { exact: false },
-  )).toBeVisible();
+  await expect(diagram.getByText(replacementBudgetError, { exact: false })).toBeVisible();
   await diagram.getByRole('button', { name: 'Close build diagram', exact: true }).click();
 
   await priorityMaxPrice.fill('250000');
@@ -805,6 +802,9 @@ test('header price switch persists without resetting Home or the current build',
   const priceModeGroup = page.locator('header').getByRole('group', { name: 'Price mode' });
   await expect(priceModeGroup.getByRole('button', { name: 'PvP', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('searchbox', { name: 'Search weapons' }).fill('TW');
+  // The search box renders before the catalog; count requests only once the
+  // initial PvP load has finished, or a slow first request lands after the snapshot.
+  await expect(page.getByRole('heading', { name: 'TW', exact: true })).toBeVisible();
   const homeUrl = page.url();
   const requestsBeforeSwitch = regularItemsRequests;
   await priceModeGroup.getByRole('button', { name: 'PvE', exact: true }).click();

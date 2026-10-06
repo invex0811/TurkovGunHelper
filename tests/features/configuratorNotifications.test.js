@@ -7,11 +7,13 @@ import {
   createConfiguratorNotifications,
   dedupeConfiguratorNotifications,
   getBuildResultWarningMessage,
+  getLocalizedBuildErrors,
   getLocalizedBuildWarnings,
   getInlineMessageA11y,
   localizeBuildWarning,
   normalizeConfiguratorNotification,
 } from '../../src/features/configurator/configuratorNotifications.js';
+import { formatCurrency } from '../../src/features/configurator/formatters.js';
 import { interpolateMessage } from '../../src/i18n/interpolate.js';
 import { messages } from '../../src/i18n/messages.js';
 
@@ -145,6 +147,44 @@ test('unknown warning code uses safe original text and rejects technical payload
     }, t),
     'The build was created with a warning, but its reason is unavailable.',
   );
+});
+
+test('build errors name each failed requirement in Russian and English', () => {
+  const result = {
+    error: 'English fallback text.',
+    errorDetails: [
+      { code: 'REQUIRED_MODULES_MISSING', params: { modules: ['ADAR', 'ABA M1'] } },
+      { code: 'MAX_PRICE_EXCEEDED', params: { maxPrice: 1000, price: 22997 } },
+      { code: 'MAX_WEIGHT_EXCEEDED', params: { maxWeight: 3, weight: 3.456 } },
+    ],
+  };
+  assert.deepEqual(getLocalizedBuildErrors(result, translator('ru')), [
+    'Не удалось установить обязательные модули: ADAR, ABA M1. Возможно, они конфликтуют друг с другом или с другими настройками.',
+    `Сборка стоит ${formatCurrency(22997)} — это больше бюджета ${formatCurrency(1000)}.`,
+    `Сборка весит ${(3.46).toLocaleString()} кг — это больше лимита 3 кг.`,
+  ]);
+  assert.match(getLocalizedBuildErrors(result, translator('en'))[0], /ADAR, ABA M1/);
+});
+
+test('build errors without known details fall back to the generic message', () => {
+  assert.deepEqual(
+    getLocalizedBuildErrors({ error: 'Raw English text.' }, translator('ru')),
+    ['Ни одна сборка не подходит под выбранные настройки. Попробуйте ослабить ограничения.'],
+  );
+  assert.deepEqual(
+    getLocalizedBuildErrors({ errorDetails: [{ code: 'UNKNOWN' }] }, translator('en')),
+    ['No build fits the selected settings. Try relaxing the limits.'],
+  );
+});
+
+test('several calculation errors are listed instead of joined into one paragraph', () => {
+  const [single] = createConfiguratorNotifications({ calculationError: ['Only reason'] }, translator('en'));
+  const [several] = createConfiguratorNotifications({ calculationError: ['First', 'Second'] }, translator('en'));
+
+  assert.equal(single.message, 'Only reason');
+  assert.deepEqual(single.details, []);
+  assert.equal(several.message, '');
+  assert.deepEqual(several.details, ['First', 'Second']);
 });
 
 test('notification types include error, warning, info, and success', () => {

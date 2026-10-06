@@ -89,12 +89,13 @@ import ModalDialog from '../../ui/ModalDialog.jsx';
 import useBuildCalculation from './hooks/useBuildCalculation.js';
 import useConfiguratorCatalog from './hooks/useConfiguratorCatalog.js';
 import useSavedBuild from './hooks/useSavedBuild.js';
-import { getLocalizedBuildWarnings } from './configuratorNotifications.js';
+import { getLocalizedBuildErrors, getLocalizedBuildWarnings } from './configuratorNotifications.js';
 import {
   getTacticalDeviceOptions,
   isTacticalDeviceReachable,
   TACTICAL_DEVICE_TYPES,
 } from './tacticalDeviceOptions.js';
+import { getReachableModuleIds } from './moduleReachability.js';
 import {
   getPrimaryManualModuleType,
   getUniqueItemIds,
@@ -773,6 +774,7 @@ function isSuppressorItem(item) {
 }
 
 function getReplacementConstraintErrors({
+  allMods,
   weapon,
   buildParts,
   priceMode,
@@ -820,7 +822,10 @@ function getReplacementConstraintErrors({
   const requiredIds = new Set((requiredItemIds || []).map(String));
   const missingRequiredIds = [...requiredIds].filter(itemId => !itemsById.has(itemId));
   if (missingRequiredIds.length > 0) {
-    errors.push(t('config.requiredRemoved'));
+    const modules = missingRequiredIds
+      .map(itemId => getItemDisplayName(allMods?.[itemId], itemId))
+      .join(', ');
+    errors.push(t('config.requiredRemoved', { modules }));
   }
 
   const suppressorCount = [...itemsById.values()].filter(isSuppressorItem).length;
@@ -866,7 +871,7 @@ function getReplacementConstraintErrors({
   if (parsedMaxPrice > 0 && !isPositivePrice(costSummary.remainingTotal)) {
     errors.push(t('config.priceUnavailable'));
   } else if (parsedMaxPrice > 0 && costSummary.remainingTotal > parsedMaxPrice) {
-    errors.push(t('config.budgetLimit', { price: parsedMaxPrice }));
+    errors.push(t('config.budgetLimit', { price: formatCurrency(parsedMaxPrice) }));
   }
 
   return { errors, stats };
@@ -927,13 +932,13 @@ function getModuleSearchText(item) {
   ].filter(Boolean).join(' ').toLowerCase();
 }
 
-function getRequiredModuleSearchResults(allMods, query, selectedIds) {
+function getRequiredModuleSearchResults(allMods, query, selectedIds, reachableIds) {
   if (!allMods || query.trim().length < 2) return [];
 
   const normalizedQuery = query.trim().toLowerCase();
   const selectedIdSet = new Set(selectedIds);
   return Object.values(allMods)
-    .filter(item => !selectedIdSet.has(item.id))
+    .filter(item => reachableIds.has(item.id) && !selectedIdSet.has(item.id))
     .filter(item => getModuleSearchText(item).includes(normalizedQuery))
     .sort((a, b) => {
       const aName = (a.shortName || a.name || '').toLowerCase();
@@ -944,10 +949,6 @@ function getRequiredModuleSearchResults(allMods, query, selectedIds) {
       return aName.localeCompare(bName);
     })
     .slice(0, 12);
-}
-
-function getBuildResultErrorMessage(buildResult, language, t) {
-  return language === 'ru' ? t('config.constraintMessage') : buildResult.error;
 }
 
 function Configurator() {
@@ -1195,7 +1196,7 @@ function Configurator() {
             budgetLimit > 0 && !isPositivePrice(nextPrice)
               ? t('config.currentPriceUnavailable')
               : budgetLimit > 0 && nextPrice > budgetLimit
-                ? t('config.currentBudgetExceeded', { price: budgetLimit })
+                ? t('config.currentBudgetExceeded', { price: formatCurrency(budgetLimit) })
                 : null,
           );
           if (currentBuild) setPriceModeNotice(t('priceMode.recalculateNotice'));
@@ -1370,6 +1371,7 @@ function Configurator() {
 
     const attachmentError = getUnattachedBuildPartError(weapon, updatedBuild, t);
     const { errors, stats } = getReplacementConstraintErrors({
+      allMods,
       weapon,
       buildParts: updatedBuild,
       priceMode,
@@ -1423,6 +1425,7 @@ function Configurator() {
   const validateBuildChange = useCallback((nextBuildParts) => {
     const attachmentError = getUnattachedBuildPartError(weapon, nextBuildParts, t);
     const { errors, stats } = getReplacementConstraintErrors({
+      allMods,
       weapon,
       buildParts: nextBuildParts,
       priceMode,
@@ -1442,6 +1445,7 @@ function Configurator() {
     return { errors, stats };
   }, [
     activeTraderLevels,
+    allMods,
     includeTraderPrices,
     strictTraderLevels,
     includeRefOffers,
@@ -1590,7 +1594,7 @@ function Configurator() {
       budgetLimit > 0 && !isPositivePrice(remainingTotal)
         ? t('config.currentPriceUnavailable')
         : budgetLimit > 0 && remainingTotal > budgetLimit
-          ? t('config.currentBudgetExceeded', { price: budgetLimit })
+          ? t('config.currentBudgetExceeded', { price: formatCurrency(budgetLimit) })
           : null,
     );
   };
@@ -1708,17 +1712,25 @@ function Configurator() {
   ]);
 
   const hasCalculationError = buildResult ? Boolean(buildResult.error) : false;
+  // Pickers and the required-module search only offer modules this weapon can mount.
+  const reachableModuleIds = useMemo(
+    () => getReachableModuleIds(weapon, allMods),
+    [allMods, weapon],
+  );
   const flashlightItems = useMemo(
     () => getTacticalDeviceOptions(allMods, TACTICAL_DEVICE_TYPES.FLASHLIGHT)
-      .filter(item => isTacticalDeviceReachable(weapon, allMods, item.id)),
-    [allMods, weapon],
+      .filter(item => reachableModuleIds.has(item.id)),
+    [allMods, reachableModuleIds],
   );
   const tblItems = useMemo(
     () => getTacticalDeviceOptions(allMods, TACTICAL_DEVICE_TYPES.TBL)
-      .filter(item => isTacticalDeviceReachable(weapon, allMods, item.id)),
-    [allMods, weapon],
+      .filter(item => reachableModuleIds.has(item.id)),
+    [allMods, reachableModuleIds],
   );
-  const scopeItems = useMemo(() => getScopeOptions(allMods), [allMods]);
+  const scopeItems = useMemo(
+    () => getScopeOptions(allMods).filter(item => reachableModuleIds.has(item.id)),
+    [allMods, reachableModuleIds],
+  );
   const scopeZoomLevels = useMemo(() => getScopeZoomOptions(scopeItems), [scopeItems]);
   const hasBuildParts = buildResult ? (Array.isArray(buildResult.build) && buildResult.build.length > 0) : false;
   const canShowBuildDetails = Boolean(buildResult && !hasCalculationError && hasBuildParts);
@@ -1760,8 +1772,8 @@ function Configurator() {
     [allMods, requiredModuleIds],
   );
   const requiredModuleResults = useMemo(
-    () => getRequiredModuleSearchResults(allMods, requiredModuleSearch, requiredModuleIds),
-    [allMods, requiredModuleSearch, requiredModuleIds],
+    () => getRequiredModuleSearchResults(allMods, requiredModuleSearch, requiredModuleIds, reachableModuleIds),
+    [allMods, reachableModuleIds, requiredModuleSearch, requiredModuleIds],
   );
   const toModuleView = item => {
     const priceInfo = getSelectedPriceInfo(
@@ -2249,18 +2261,21 @@ function Configurator() {
               </div>
             )}
           </div>
-          <div className="parts-toolbar">
-            <label className="search-field search-field--compact">
-              <MaterialSymbol name="search" className="search-field__icon" />
-              <input
-                type="search"
-                aria-label={t('config.filterPartsLabel')}
-                placeholder={t('config.filterParts')}
-                value={partsFilter}
-                onChange={e => setPartsFilter(e.target.value)}
-              />
-            </label>
-          </div>
+          {/* The filter only makes sense once there are modules to filter. */}
+          {canShowBuildDetails && (
+            <div className="parts-toolbar">
+              <label className="search-field search-field--compact">
+                <MaterialSymbol name="search" className="search-field__icon" />
+                <input
+                  type="search"
+                  aria-label={t('config.filterPartsLabel')}
+                  placeholder={t('config.filterParts')}
+                  value={partsFilter}
+                  onChange={e => setPartsFilter(e.target.value)}
+                />
+              </label>
+            </div>
+          )}
 
           {/* Вывод ошибок при расчете сборки */}
           <BuildWarnings
@@ -2268,7 +2283,7 @@ function Configurator() {
             pricePolicyWarning={pricePolicyWarning}
             replacementError={replacementError}
             calculationError={buildResult && hasCalculationError
-              ? getBuildResultErrorMessage(buildResult, language, t)
+              ? getLocalizedBuildErrors(buildResult, t)
               : null}
             buildWarnings={buildResult
               && !hasCalculationError

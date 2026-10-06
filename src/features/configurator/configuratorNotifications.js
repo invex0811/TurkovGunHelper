@@ -1,3 +1,5 @@
+import { formatCurrency } from './formatters.js';
+
 export const CONFIGURATOR_MESSAGE_TYPES = Object.freeze([
   'error',
   'warning',
@@ -12,6 +14,32 @@ const BUILD_WARNING_MESSAGE_KEYS = Object.freeze({
   REQUIREMENTS_UNMET_CLOSEST_BUILD: 'config.warning.requirementsUnmet',
   SAVED_MODULES_SKIPPED: 'config.notification.warning.savedModulesSkipped',
 });
+
+const BUILD_ERROR_MESSAGE_KEYS = Object.freeze({
+  SUPPRESSOR_UNAVAILABLE: 'config.buildError.suppressorUnavailable',
+  SIGHT_UNAVAILABLE: 'config.buildError.sightUnavailable',
+  LASER_UNAVAILABLE: 'config.buildError.laserUnavailable',
+  FLASHLIGHT_UNAVAILABLE: 'config.buildError.flashlightUnavailable',
+  REQUIRED_MODULES_MISSING: 'config.buildError.requiredModulesMissing',
+  REQUIRED_SLOTS_INCOMPLETE: 'config.buildError.requiredSlotsIncomplete',
+  MAX_PRICE_EXCEEDED: 'config.buildError.maxPriceExceeded',
+  MAX_WEIGHT_EXCEEDED: 'config.buildError.maxWeightExceeded',
+});
+
+const PRICE_PARAMS = new Set(['maxPrice', 'price']);
+const WEIGHT_PARAMS = new Set(['maxWeight', 'weight']);
+
+// Prices read as "1 000 ₽", weights keep up to two decimals, lists are joined.
+function formatMessageParams(params) {
+  return Object.fromEntries(Object.entries(params || {}).map(([key, value]) => {
+    if (Array.isArray(value)) return [key, value.join(', ')];
+    if (PRICE_PARAMS.has(key) && Number.isFinite(Number(value))) return [key, formatCurrency(Number(value))];
+    if (WEIGHT_PARAMS.has(key) && Number.isFinite(Number(value))) {
+      return [key, Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })];
+    }
+    return [key, value];
+  }));
+}
 
 const LEGACY_BUILD_WARNINGS = Object.freeze([
   {
@@ -28,8 +56,10 @@ const LEGACY_BUILD_WARNINGS = Object.freeze([
   },
 ]);
 
+// Collapses whitespace but keeps the non-breaking spaces that number
+// formatting puts inside prices, so a price never wraps mid-number.
 export function normalizeNotificationText(value) {
-  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+  return typeof value === 'string' ? value.replace(/[^\S\u00a0\u202f]+/g, ' ').trim() : '';
 }
 
 function getSafeFallbackText(value) {
@@ -44,12 +74,29 @@ export function localizeBuildWarning(warning, t) {
   const messageKey = BUILD_WARNING_MESSAGE_KEYS[warningCode];
 
   if (messageKey) {
-    const translated = normalizeNotificationText(t(messageKey, warning?.params || {}));
+    const translated = normalizeNotificationText(t(messageKey, formatMessageParams(warning?.params)));
     if (translated && translated !== messageKey) return translated;
   }
 
   return getSafeFallbackText(warning?.fallback)
     || t('config.notification.buildWarningUnknown');
+}
+
+// One localized line per failed hard requirement.
+export function getLocalizedBuildErrors(buildResult, t) {
+  const details = Array.isArray(buildResult?.errorDetails) ? buildResult.errorDetails : [];
+  const localized = details
+    .map((detail) => {
+      const messageKey = BUILD_ERROR_MESSAGE_KEYS[detail?.code];
+      if (!messageKey) return '';
+      const translated = normalizeNotificationText(t(messageKey, formatMessageParams(detail.params)));
+      return translated === messageKey ? '' : translated;
+    })
+    .filter(Boolean);
+
+  return localized.length > 0
+    ? [...new Set(localized)]
+    : [t('config.constraintMessage')];
 }
 
 function getLegacyBuildWarnings(value) {
@@ -191,6 +238,9 @@ export function createConfiguratorNotifications({
   const normalizedBuildWarnings = normalizeDetails(
     buildWarnings?.length ? buildWarnings : [buildWarning],
   );
+  const calculationErrors = normalizeDetails(
+    Array.isArray(calculationError) ? calculationError : [calculationError],
+  );
   const notifications = [
     {
       id: 'generation-error',
@@ -202,7 +252,9 @@ export function createConfiguratorNotifications({
       id: 'calculation-error',
       type: 'error',
       title: t('config.constraintFailed'),
-      message: calculationError,
+      // Several reasons read better as a list than as one run-on paragraph.
+      message: calculationErrors.length === 1 ? calculationErrors[0] : '',
+      details: calculationErrors.length > 1 ? calculationErrors : [],
     },
     {
       id: 'replacement-error',

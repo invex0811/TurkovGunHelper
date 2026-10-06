@@ -1,4 +1,5 @@
 import { hasItemCategory } from '../../domain/itemCategories.js';
+import { getReachableModuleIds } from './moduleReachability.js';
 
 export const TACTICAL_DEVICE_TYPES = Object.freeze({
   FLASHLIGHT: 'flashlight',
@@ -43,17 +44,5 @@ export function getTacticalDeviceOptions(allMods, type) {
 }
 
 export function isTacticalDeviceReachable(weapon, allMods, itemId) {
-  if (!weapon?.id || !allMods?.[itemId]) return false;
-
-  const visitedItemIds = new Set();
-  const visit = item => {
-    if (!item?.id || visitedItemIds.has(item.id)) return false;
-    if (item.id === itemId) return true;
-    visitedItemIds.add(item.id);
-    return (item.properties?.slots || []).some(slot => (
-      (slot.filters?.allowedItems || []).some(reference => visit(allMods[reference.id]))
-    ));
-  };
-
-  return visit(weapon);
+  return getReachableModuleIds(weapon, allMods).has(itemId);
 }
