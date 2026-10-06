@@ -78,8 +78,9 @@ calculateBestBuild(
     price,                     // рубли или null, если какую-то часть нельзя купить
     accuracyMoa,               // добавляет worker; может быть null
   },
-  error,                       // строка — билд не найден или нарушены жёсткие условия
+  error,                       // английский текст — билд не найден или нарушены жёсткие условия
   errorCode,                   // напр. 'MAX_PRICE_EXCEEDED'
+  errorDetails: [{ code, params }], // по одной записи на каждое нарушенное жёсткое условие
   warnings: [{ code, params, fallback }],
   constraintEvaluation,        // только в режиме ограничений — см. ниже
 }
@@ -93,6 +94,19 @@ calculateBestBuild(
 | `BUILD_MAX_PRICE_EXCEEDED` | Билд дороже бюджета |
 | `PRICE_ITEMS_UNAVAILABLE` | У части предметов нет цены при текущей политике цен |
 | `REQUIREMENTS_UNMET_CLOSEST_BUILD` | Мягкие ограничения недостижимы — показан ближайший билд |
+
+Коды ошибок (`BUILD_ERROR_CODES` там же) локализуются из `errorDetails` функцией `getLocalizedBuildErrors`; цены и вес форматируются в UI, списки модулей и слотов передаются массивами:
+
+| Код | `params` | Значение |
+| --- | --- | --- |
+| `SUPPRESSOR_UNAVAILABLE` | — | Глушитель обязателен, но ни один не встаёт |
+| `SIGHT_UNAVAILABLE` | — | Нет прицела нужной кратности или типа |
+| `LASER_UNAVAILABLE` | — | Лазер включён, но ни один не встаёт |
+| `FLASHLIGHT_UNAVAILABLE` | — | Фонарь включён, но ни один не встаёт |
+| `REQUIRED_MODULES_MISSING` | `modules` | Обязательные модули не установились |
+| `REQUIRED_SLOTS_INCOMPLETE` | `slots` | Обязательные слоты оружия остались пустыми |
+| `MAX_PRICE_EXCEEDED` | `maxPrice`, `price` | Билд дороже бюджета |
+| `MAX_WEIGHT_EXCEEDED` | `maxWeight`, `weight` | Билд тяжелее лимита веса |
 
 ## Формулы характеристик
 

@@ -14,6 +14,7 @@ import { getPriorityWeightMax } from '../priorityWeightControls.js';
 import { scopeSupportsZoom } from '../scopeOptions.js';
 import { SCOPE_MODES, SCOPE_NONE_OPTION_ID } from '../scopeSelection.js';
 import {
+  formatScopeZoomBadge,
   getAdditionalScopeZoomLevels,
   getCompactScopeZoomLevels,
 } from '../scopeZoomDisplay.js';
@@ -444,6 +445,8 @@ function SightSection({
   zoomFiltersExpanded,
   setZoomFiltersExpanded,
 }) {
+  const hiddenZoomCount = additionalScopeZoomLevels
+    .filter(zoom => !compactScopeZoomLevels.includes(zoom)).length;
   return (
     <div className="config__subsection">
       <span className="field-label">{t('config.sight')}</span>
@@ -465,6 +468,7 @@ function SightSection({
           { id: SCOPE_NONE_OPTION_ID, label: t('config.sight.none') },
         ]}
         filterItems={item => scopeZoom === null || scopeSupportsZoom(item, scopeZoom)}
+        getItemBadge={formatScopeZoomBadge}
         panelControls={(
           <div className="tactical-device-picker__filters" aria-label={t('config.sight.zoomFilters')}>
             <button
@@ -493,7 +497,9 @@ function SightSection({
               aria-expanded={zoomFiltersExpanded}
               onClick={() => setZoomFiltersExpanded(expanded => !expanded)}
             >
-              <MaterialSymbol name="expand_more" className="tactical-device-picker__filter-chevron" />
+              {!zoomFiltersExpanded && hiddenZoomCount > 0
+                ? `+${hiddenZoomCount}`
+                : <MaterialSymbol name="expand_more" className="tactical-device-picker__filter-chevron" />}
             </button>
             {zoomFiltersExpanded && additionalScopeZoomLevels.map(zoom => (
               <button

@@ -5,6 +5,19 @@ export const BUILD_WARNING_CODES = Object.freeze({
   REQUIREMENTS_UNMET_CLOSEST_BUILD: 'REQUIREMENTS_UNMET_CLOSEST_BUILD',
 });
 
+// Hard failures. The UI localizes them from `errorDetails`; `error` keeps the
+// English text for logs and callers without translations.
+export const BUILD_ERROR_CODES = Object.freeze({
+  SUPPRESSOR_UNAVAILABLE: 'SUPPRESSOR_UNAVAILABLE',
+  SIGHT_UNAVAILABLE: 'SIGHT_UNAVAILABLE',
+  LASER_UNAVAILABLE: 'LASER_UNAVAILABLE',
+  FLASHLIGHT_UNAVAILABLE: 'FLASHLIGHT_UNAVAILABLE',
+  REQUIRED_MODULES_MISSING: 'REQUIRED_MODULES_MISSING',
+  REQUIRED_SLOTS_INCOMPLETE: 'REQUIRED_SLOTS_INCOMPLETE',
+  MAX_PRICE_EXCEEDED: 'MAX_PRICE_EXCEEDED',
+  MAX_WEIGHT_EXCEEDED: 'MAX_WEIGHT_EXCEEDED',
+});
+
 function normalizeWarning(warning) {
   if (!warning || typeof warning !== 'object') return null;
   const code = typeof warning.code === 'string' ? warning.code.trim() : '';

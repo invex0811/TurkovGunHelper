@@ -177,7 +177,11 @@ test('Constraints reject a base weapon that already exceeds the maximum price', 
 
   assert.equal(overBudget.errorCode, 'MAX_PRICE_EXCEEDED');
   assert.match(overBudget.error, /selected max price/i);
+  const priceError = overBudget.errorDetails.find(detail => detail.code === 'MAX_PRICE_EXCEEDED');
+  assert.equal(priceError.params.maxPrice, 500);
+  assert.ok(priceError.params.price > 500);
   assert.equal(affordable.error, undefined);
+  assert.equal(affordable.errorDetails, undefined);
   assertInstalled(affordable, targetPart.id);
 });
 
