@@ -802,6 +802,9 @@ test('header price switch persists without resetting Home or the current build',
   const priceModeGroup = page.locator('header').getByRole('group', { name: 'Price mode' });
   await expect(priceModeGroup.getByRole('button', { name: 'PvP', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('searchbox', { name: 'Search weapons' }).fill('TW');
+  // The search box renders before the catalog; count requests only once the
+  // initial PvP load has finished, or a slow first request lands after the snapshot.
+  await expect(page.getByRole('heading', { name: 'TW', exact: true })).toBeVisible();
   const homeUrl = page.url();
   const requestsBeforeSwitch = regularItemsRequests;
   await priceModeGroup.getByRole('button', { name: 'PvE', exact: true }).click();
