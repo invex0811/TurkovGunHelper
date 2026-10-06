@@ -314,6 +314,7 @@ function SuppressorSection({ suppressorMode, suppressorOptions, setters, t }) {
 }
 
 function TraderPricesSection({
+  includeFleaMarket,
   includeTraderPrices,
   onIncludeTraderPricesChange,
   strictTraderLevels,
@@ -324,7 +325,9 @@ function TraderPricesSection({
       <div className="switch-row">
         <label className="switch-row__text" htmlFor="includeTraderPrices">
           <span id="includeTraderPricesLabel">{t('config.includeTraders')}</span>
-          <span id="includeTraderPricesHelp" className="field-help">{t('config.helpPrices')}</span>
+          <span id="includeTraderPricesHelp" className="field-help">
+            {t(includeFleaMarket ? 'config.helpPrices' : 'config.helpPricesWithoutFlea')}
+          </span>
         </label>
         <input
           id="includeTraderPrices"
@@ -332,6 +335,7 @@ function TraderPricesSection({
           type="checkbox"
           role="switch"
           checked={includeTraderPrices}
+          disabled={!includeFleaMarket}
           onChange={event => onIncludeTraderPricesChange(event.target.checked)}
           aria-labelledby="includeTraderPricesLabel"
           aria-describedby="includeTraderPricesHelp"
@@ -670,6 +674,7 @@ export default function BuildSettings(props) {
     flashlightItems,
     generating,
     includeFlashlight,
+    includeFleaMarket = true,
     includeLaser,
     includeTraderPrices,
     magazineCapacity,
@@ -736,6 +741,7 @@ export default function BuildSettings(props) {
   );
   const traderPricesSection = (
     <TraderPricesSection
+      includeFleaMarket={includeFleaMarket}
       includeTraderPrices={includeTraderPrices}
       onIncludeTraderPricesChange={onIncludeTraderPricesChange}
       strictTraderLevels={strictTraderLevels}

@@ -2,7 +2,7 @@ import { _calculateWeighted } from './calculator/candidateSearch.js';
 import { createCalculationCache } from './calculator/calculationCache.js';
 import { PRICE_AWARE_TARGET } from './calculator/constants.js';
 import { compareConstraintCandidates } from './calculator/orchestration.js';
-import { excludeRefOnlyItems } from './calculator/pricing.js';
+import { excludeUnavailableItems } from './calculator/pricing.js';
 import { getPrioritySearchRoutes } from './calculator/priorityCandidates.js';
 import {
   selectCustomPriorityCandidate,
@@ -327,7 +327,7 @@ export function createReplacementChainPlanner({
   const currentItems = collectChainNodes(currentNode).map(node => node.item);
   const remainingParts = buildParts.filter(part => !oldSubtreeParts.has(part));
   const remainingFixedBuild = remainingParts.map(part => ({ slotName: part.slotName, item: part.item }));
-  const modMap = excludeRefOnlyItems(allMods, options);
+  const modMap = excludeUnavailableItems(allMods, options);
   const calculationCache = createCalculationCache();
   const priceOptions = {
     priceMode: options.priceMode,
@@ -335,6 +335,7 @@ export function createReplacementChainPlanner({
     traderLevels: options.traderLevels,
     strictTraderLevels: options.strictTraderLevels,
     includeRefOffers: options.includeRefOffers,
+    includeFleaMarket: options.includeFleaMarket,
   };
   const maxPrice = Number(options.maxPrice) || 0;
   const goalMode = Object.values(CHAIN_GOAL_MODES).includes(goal.mode) ? goal.mode : CHAIN_GOAL_MODES.META;

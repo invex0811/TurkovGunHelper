@@ -168,6 +168,23 @@ test('saved builds preserve includeRefOffers and default legacy snapshots to tru
   assert.equal(getSavedBuild('legacy-ref', oldStorage).settings.includeRefOffers, true);
 });
 
+test('saved builds preserve includeFleaMarket and default legacy snapshots to true', () => {
+  const storage = createStorage();
+  saveBuildSnapshot(createSnapshot({
+    settings: {
+      targetType: 'meta',
+      priceMode: 'pvp',
+      includeFleaMarket: false,
+    },
+  }), storage, { id: 'no-flea' });
+
+  assert.equal(getSavedBuild('no-flea', storage).settings.includeFleaMarket, false);
+
+  const oldStorage = createStorage();
+  saveBuildSnapshot(createSnapshot(), oldStorage, { id: 'legacy-flea' });
+  assert.equal(getSavedBuild('legacy-flea', oldStorage).settings.includeFleaMarket, true);
+});
+
 test('saved builds keep their own price mode', () => {
   const storage = createStorage();
   saveBuildSnapshot(createSnapshot({

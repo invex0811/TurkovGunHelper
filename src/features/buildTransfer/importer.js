@@ -202,10 +202,13 @@ export function createImportedBuildSnapshot(importedBuild, catalog) {
   const includeTraderPrices = importedBuild.settings.includeTraderPrices !== false;
   const strictTraderLevels = importedBuild.settings.strictTraderLevels === true;
   const includeRefOffers = importedBuild.settings.includeRefOffers !== false;
+  const includeFleaMarket = importedBuild.settings.includeFleaMarket !== false;
   const recalculated = recalculateBuildStats(restored.weapon, restored.buildParts, {
     priceMode,
     includeTraderPrices,
     includeRefOffers,
+    includeFleaMarket,
+    traderLevels: importedBuild.settings.traderLevelsSnapshot,
   });
   const snapshot = createBuildSnapshot({
     name: importedBuild.name,
@@ -217,6 +220,7 @@ export function createImportedBuildSnapshot(importedBuild, catalog) {
       includeTraderPrices,
       strictTraderLevels,
       includeRefOffers,
+      includeFleaMarket,
     },
     ownedItems: Array.isArray(importedBuild.ownedItems) ? importedBuild.ownedItems : [],
   });

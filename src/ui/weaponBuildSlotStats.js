@@ -53,8 +53,9 @@ export function getPackageComparison({
   traderLevels,
   strictTraderLevels,
   includeRefOffers,
+  includeFleaMarket,
 }) {
-  const priceOptions = { priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers };
+  const priceOptions = { priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers, includeFleaMarket };
   const ergonomicsDiff = sumItems(items, 'ergonomicsModifier') - sumItems(currentItems, 'ergonomicsModifier');
   const recoilDiff = sumItems(items, 'recoilModifier') - sumItems(currentItems, 'recoilModifier');
   const weightDiff = sumItems(items, 'weight') - sumItems(currentItems, 'weight');

@@ -59,6 +59,7 @@ calculateBestBuild(
 | `includeTraderPrices` | boolean | Учитывать предложения торговцев |
 | `traderLevels`, `strictTraderLevels` | объект, boolean | Учитывать только доступные по уровню предложения |
 | `includeRefOffers` | boolean | Учитывать торговца Ref |
+| `includeFleaMarket` | boolean | Учитывать Барахолку; `false` — только торговцы на выбранных уровнях |
 
 Параметры из `customProfile` в режиме ограничений — **мягкие**: они влияют на выбор между допустимыми билдами, но не делают билд недействительным. Желаемый вес (`customProfile.weight`) никогда не превращается в жёсткий `maxWeight`.
 
@@ -93,6 +94,7 @@ calculateBestBuild(
 | `BASE_WEAPON_MAX_WEIGHT` | Оружие без модулей уже тяжелее лимита |
 | `BUILD_MAX_PRICE_EXCEEDED` | Билд дороже бюджета |
 | `PRICE_ITEMS_UNAVAILABLE` | У части предметов нет цены при текущей политике цен |
+| `MAGAZINE_CAPACITY_SUBSTITUTED` | Магазина выбранной ёмкости нет (например, его не продают на выбранных уровнях), установлен ближайший |
 | `REQUIREMENTS_UNMET_CLOSEST_BUILD` | Мягкие ограничения недостижимы — показан ближайший билд |
 
 Коды ошибок (`BUILD_ERROR_CODES` там же) локализуются из `errorDetails` функцией `getLocalizedBuildErrors`; цены и вес форматируются в UI, списки модулей и слотов передаются массивами:

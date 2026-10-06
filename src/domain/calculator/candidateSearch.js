@@ -180,6 +180,16 @@ export function _calculateWeighted(
       return allowedItems;
     }
 
+    // A magazine the user pinned explicitly overrides the selected capacity.
+    const requiredMagazineIds = new Set(
+      magazines.filter(m => requiredItemIds.has(m.id)).map(m => m.id),
+    );
+    if (requiredMagazineIds.size > 0) {
+      const requiredAllowedItems = allowedItems.filter(child => requiredMagazineIds.has(child.id));
+      filteredAllowedItemsByCapacity.set(targetCap, requiredAllowedItems);
+      return requiredAllowedItems;
+    }
+
     const exactMatch = magazines.filter(m => m.properties?.capacity === targetCap);
     if (exactMatch.length > 0) {
       const exactIds = new Set(exactMatch.map(m => m.id));
@@ -964,6 +974,24 @@ export function _calculateWeighted(
       { maxPrice, price: Math.round(totalPrice) },
       `The build exceeds the selected max price of ${maxPrice} RUB.`,
     );
+  }
+  // The magazine filter falls back to the nearest capacity when no magazine of
+  // the requested one can be used, e.g. none is sold at the selected loyalty
+  // levels. A magazine the user pinned explicitly is their own choice.
+  const installedMagazine = build.find(part => (
+    hasCategory(part.item, 'Magazine') && Number.isFinite(part.item.properties?.capacity)
+  ))?.item;
+  if (
+    options.magazineCapacity !== undefined
+    && installedMagazine
+    && installedMagazine.properties.capacity !== targetCapacity
+    && !requiredItemIds.has(installedMagazine.id)
+  ) {
+    warnings.push({
+      code: BUILD_WARNING_CODES.MAGAZINE_CAPACITY_SUBSTITUTED,
+      params: { requested: targetCapacity, installed: installedMagazine.properties.capacity },
+      fallback: `No ${targetCapacity}-round magazine is available, so a ${installedMagazine.properties.capacity}-round magazine was used.`,
+    });
   }
   if (!Number.isFinite(totalPrice)) {
     const missingItemCount = [

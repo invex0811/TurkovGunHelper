@@ -4,12 +4,14 @@ import assert from 'node:assert/strict';
 import {
   BUILD_GOAL_MODES,
   DEFAULT_BUILD_GOAL_MODE,
+  DEFAULT_INCLUDE_FLEA_MARKET,
   DEFAULT_INCLUDE_REF_OFFERS,
   DEFAULT_INCLUDE_TRADER_PRICES,
   DEFAULT_REMEMBER_REQUIRED_MODULES,
   DEFAULT_REMEMBER_TACTICAL_DEVICE_SELECTION,
   DEFAULT_STRICT_TRADER_LEVELS,
   loadBuildGoalModePreference,
+  loadIncludeFleaMarketPreference,
   loadIncludeRefOffersPreference,
   loadIncludeTraderPricesPreference,
   loadLastSelectedFlashlightId,
@@ -23,6 +25,7 @@ import {
   normalizeBuildGoalMode,
   normalizeTargetType,
   saveBuildGoalModePreference,
+  saveIncludeFleaMarketPreference,
   saveIncludeRefOffersPreference,
   saveIncludeTraderPricesPreference,
   saveLastSelectedFlashlightId,
@@ -86,6 +89,29 @@ test('Ref offers are enabled by default and the choice persists', () => {
   }, () => {
     assert.equal(loadIncludeRefOffersPreference(), true);
     assert.doesNotThrow(() => saveIncludeRefOffersPreference(false));
+  });
+});
+
+test('the Flea Market is enabled by default and the choice persists', () => {
+  assert.equal(DEFAULT_INCLUDE_FLEA_MARKET, true);
+  assert.equal(loadIncludeFleaMarketPreference(), true);
+
+  withWindow(createStorage(), () => {
+    assert.equal(loadIncludeFleaMarketPreference(), true);
+    saveIncludeFleaMarketPreference(false);
+    assert.equal(loadIncludeFleaMarketPreference(), false);
+    saveIncludeFleaMarketPreference('true');
+    assert.equal(loadIncludeFleaMarketPreference(), false);
+    saveIncludeFleaMarketPreference(true);
+    assert.equal(loadIncludeFleaMarketPreference(), true);
+  });
+
+  withWindow({
+    getItem: () => { throw new Error('denied'); },
+    setItem: () => { throw new Error('denied'); },
+  }, () => {
+    assert.equal(loadIncludeFleaMarketPreference(), true);
+    assert.doesNotThrow(() => saveIncludeFleaMarketPreference(false));
   });
 });
 

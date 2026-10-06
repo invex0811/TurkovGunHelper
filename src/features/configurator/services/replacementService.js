@@ -1,4 +1,4 @@
-import { getPurchasePriceValue, isRefOnlyItem } from '../../../data/price/priceMapper.js';
+import { getPurchasePriceValue, isItemUnavailable } from '../../../data/price/priceMapper.js';
 import { hasItemCategory } from '../../../domain/itemCategories.js';
 import { isValidSightForMode } from '../../../domain/sightModes.js';
 
@@ -60,7 +60,7 @@ export function getAlternativeDisplayName(item) {
     : formatPartName(item.shortName, item);
 }
 
-function getItemsMetrics(items, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers) {
+function getItemsMetrics(items, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers, includeFleaMarket) {
   return items.reduce((metrics, item) => ({
     ergonomics: metrics.ergonomics + (item.ergonomicsModifier || 0),
     recoil: metrics.recoil + (item.recoilModifier || 0),
@@ -71,6 +71,7 @@ function getItemsMetrics(items, priceMode, includeTraderPrices, traderLevels, st
       traderLevels,
       strictTraderLevels,
       includeRefOffers,
+      includeFleaMarket,
     }, MISSING_PRICE_COMPARISON_VALUE),
   }), {
     ergonomics: 0,
@@ -80,7 +81,7 @@ function getItemsMetrics(items, priceMode, includeTraderPrices, traderLevels, st
   });
 }
 
-function getNodeMetrics(node, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers) {
+function getNodeMetrics(node, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers, includeFleaMarket) {
   const items = [];
   function collect(currentNode) {
     if (!currentNode?.item) return;
@@ -88,7 +89,7 @@ function getNodeMetrics(node, priceMode, includeTraderPrices, traderLevels, stri
     currentNode.children.forEach(collect);
   }
   collect(node);
-  return getItemsMetrics(items, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers);
+  return getItemsMetrics(items, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers, includeFleaMarket);
 }
 
 function getSimilarityDistance(
@@ -99,6 +100,7 @@ function getSimilarityDistance(
   traderLevels,
   strictTraderLevels,
   includeRefOffers,
+  includeFleaMarket,
 ) {
   const candidateMetrics = getItemsMetrics(
     getAlternativePackageItems(item),
@@ -107,6 +109,7 @@ function getSimilarityDistance(
     traderLevels,
     strictTraderLevels,
     includeRefOffers,
+    includeFleaMarket,
   );
   return (Math.abs(referenceMetrics.ergonomics - candidateMetrics.ergonomics) * 1.5)
     + (Math.abs(referenceMetrics.recoil - candidateMetrics.recoil) * 4)
@@ -114,7 +117,7 @@ function getSimilarityDistance(
     + (Math.abs(referenceMetrics.price - candidateMetrics.price) * 0.0001);
 }
 
-export function scoreScope(item, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers) {
+export function scoreScope(item, priceMode, includeTraderPrices, traderLevels, strictTraderLevels, includeRefOffers, includeFleaMarket) {
   const ergonomics = item.ergonomicsModifier || 0;
   const recoil = item.recoilModifier || 0;
   const weight = item.weight || 0;
@@ -124,6 +127,7 @@ export function scoreScope(item, priceMode, includeTraderPrices, traderLevels, s
     traderLevels,
     strictTraderLevels,
     includeRefOffers,
+    includeFleaMarket,
   }, MISSING_PRICE_COMPARISON_VALUE);
   return ergonomics - recoil * 5 - weight * 10 - (price > 0 ? price * 0.0001 : 0);
 }
@@ -186,7 +190,16 @@ export function selectReplacementCandidates({
   traderLevels,
   strictTraderLevels,
   includeRefOffers,
+  includeFleaMarket,
 }) {
+  const priceOptions = {
+    priceMode,
+    includeTraderPrices,
+    traderLevels,
+    strictTraderLevels,
+    includeRefOffers,
+    includeFleaMarket,
+  };
   const uniqueAlternatives = new Map();
   const referenceMetricsByNode = new Map();
   const distanceByAlternative = new Map();
@@ -208,6 +221,7 @@ export function selectReplacementCandidates({
         traderLevels,
         strictTraderLevels,
         includeRefOffers,
+        includeFleaMarket,
       );
       referenceMetricsByNode.set(distanceNode, referenceMetrics);
     }
@@ -220,16 +234,16 @@ export function selectReplacementCandidates({
       traderLevels,
       strictTraderLevels,
       includeRefOffers,
+      includeFleaMarket,
     );
     distanceByAlternative.set(alternative, distance);
     return distance;
   };
 
   alternatives.forEach(alternative => {
-    if (
-      includeRefOffers === false
-      && getAlternativePackageItems(alternative).some(isRefOnlyItem)
-    ) return;
+    if (getAlternativePackageItems(alternative).some(item => isItemUnavailable(item, priceOptions))) {
+      return;
+    }
     const isSightOrHasAttached = isSightItem(alternative) || alternative.attachedScope;
     const key = isSightOrHasAttached
       ? (alternative.attachedScope?.id || alternative.id)

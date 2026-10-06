@@ -114,6 +114,7 @@ function getNodePrice(item, options) {
     traderLevels: options.traderLevels,
     strictTraderLevels: options.strictTraderLevels,
     includeRefOffers: options.includeRefOffers,
+    includeFleaMarket: options.includeFleaMarket,
   }, null);
   return Number.isFinite(price) ? price : null;
 }
@@ -239,6 +240,7 @@ export function buildWeaponDiagramGraph(weapon, buildParts = [], options = {}) {
           traderLevels: options.traderLevels,
           strictTraderLevels: options.strictTraderLevels,
           includeRefOffers: options.includeRefOffers,
+          includeFleaMarket: options.includeFleaMarket,
         });
         if (compatibleItems.length === 0) return;
 

@@ -26,6 +26,7 @@ export function getProjectedBuildMeters({
   traderLevels,
   strictTraderLevels,
   includeRefOffers,
+  includeFleaMarket,
   locale,
   meters,
 }) {
@@ -40,6 +41,7 @@ export function getProjectedBuildMeters({
     traderLevels,
     strictTraderLevels,
     includeRefOffers,
+    includeFleaMarket,
   });
   if (plan.errors?.length > 0 || plan.changed === false) return null;
 
@@ -49,6 +51,7 @@ export function getProjectedBuildMeters({
     traderLevels,
     strictTraderLevels,
     includeRefOffers,
+    includeFleaMarket,
   }).stats;
   const weight = Number(projectedStats.weight);
 

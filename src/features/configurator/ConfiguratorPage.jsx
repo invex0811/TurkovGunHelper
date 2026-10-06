@@ -9,7 +9,7 @@ import {
 import { useParams, useSearchParams } from 'react-router-dom';
 import { PRICE_CONFIDENCE } from '../../data/price/priceModes.js';
 import {
-  isRefOnlyItem,
+  isItemUnavailable,
   selectPurchasePrice,
   selectWeaponPurchasePrice,
   sumPurchasePrices,
@@ -214,6 +214,7 @@ function findCompatibleAlternatives(
   traderLevels,
   strictTraderLevels,
   includeRefOffers,
+  includeFleaMarket,
   sightMode,
   t,
   mode = 'EXACT_ITEM',
@@ -419,7 +420,14 @@ function findCompatibleAlternatives(
         for (const allowed of allowedItems) {
           const scopeItem = allMods[allowed.id];
           if (!scopeItem) continue;
-          if (includeRefOffers === false && isRefOnlyItem(scopeItem)) continue;
+          if (isItemUnavailable(scopeItem, {
+            priceMode,
+            includeTraderPrices,
+            traderLevels,
+            strictTraderLevels,
+            includeRefOffers,
+            includeFleaMarket,
+          })) continue;
 
           if (!isValidSightForMode(scopeItem, sightMode)) continue;
           if (currentSight && scopeItem.id === currentSight.id) continue;
@@ -432,6 +440,7 @@ function findCompatibleAlternatives(
             traderLevels,
             strictTraderLevels,
             includeRefOffers,
+            includeFleaMarket,
           );
           if (score > bestScopeScore) {
             bestScopeScore = score;
@@ -559,6 +568,7 @@ function findCompatibleAlternatives(
     traderLevels,
     strictTraderLevels,
     includeRefOffers,
+    includeFleaMarket,
   });
 }
 
@@ -573,6 +583,7 @@ function getSelectedPriceInfo(
   traderLevels,
   strictTraderLevels,
   includeRefOffers,
+  includeFleaMarket,
   useWeaponFallback = false,
 ) {
   const priceInfo = (useWeaponFallback ? selectWeaponPurchasePrice : selectPurchasePrice)(item, {
@@ -581,6 +592,7 @@ function getSelectedPriceInfo(
     traderLevels,
     strictTraderLevels,
     includeRefOffers,
+    includeFleaMarket,
   });
 
   return {
@@ -602,6 +614,7 @@ function getPackagePriceInfo(
   traderLevels,
   strictTraderLevels,
   includeRefOffers,
+  includeFleaMarket,
   t,
 ) {
   const packagePrice = sumPurchasePrices(items, {
@@ -610,6 +623,7 @@ function getPackagePriceInfo(
     traderLevels,
     strictTraderLevels,
     includeRefOffers,
+    includeFleaMarket,
   });
   const sourceLabels = Array.from(new Set(
     packagePrice.priceInfos.map(priceInfo => formatPriceSource(priceInfo, t)).filter(Boolean),
@@ -635,10 +649,15 @@ function formatDiagnosticsList(entries, t, limit = 3) {
   return names.join(', ');
 }
 
-function getPriceSummaryStatus(diagnostics, includeTraderPrices, t) {
+function getPricePolicyLabel(includeTraderPrices, includeFleaMarket, t) {
+  if (!includeFleaMarket) return t('config.price.tradersOnly');
+  return includeTraderPrices ? t('config.price.fleaTrader') : t('config.price.fleaOnly');
+}
+
+function getPriceSummaryStatus(diagnostics, includeTraderPrices, includeFleaMarket, t) {
   if (diagnostics.missingEntries.length > 0) return t('config.price.missingStatus');
   if (diagnostics.fallbackEntries.length > 0) return t('config.price.fallbackStatus');
-  return includeTraderPrices ? t('config.price.fleaTrader') : t('config.price.fleaOnly');
+  return getPricePolicyLabel(includeTraderPrices, includeFleaMarket, t);
 }
 
 function collectBuildPriceDiagnostics(
@@ -649,6 +668,7 @@ function collectBuildPriceDiagnostics(
   traderLevels,
   strictTraderLevels,
   includeRefOffers,
+  includeFleaMarket,
   ownedItems,
   t,
   instances = null,
@@ -668,6 +688,7 @@ function collectBuildPriceDiagnostics(
       traderLevels,
       strictTraderLevels,
       includeRefOffers,
+      includeFleaMarket,
       instance.isWeapon,
     ),
   }));
@@ -726,7 +747,7 @@ function collectBuildPriceDiagnostics(
   const summaryStatus = getPriceSummaryStatus({
     fallbackEntries,
     missingEntries,
-  }, includeTraderPrices, t);
+  }, includeTraderPrices, includeFleaMarket, t);
 
   return {
     entries,
@@ -782,6 +803,7 @@ function getReplacementConstraintErrors({
   traderLevels,
   strictTraderLevels,
   includeRefOffers,
+  includeFleaMarket,
   ownedItems,
   maxWeight,
   maxPrice,
@@ -849,6 +871,7 @@ function getReplacementConstraintErrors({
     traderLevels,
     strictTraderLevels,
     includeRefOffers,
+    includeFleaMarket,
   });
   const parsedMaxWeight = Number(maxWeight) || 0;
   const parsedMaxPrice = Number(maxPrice) || 0;
@@ -862,6 +885,7 @@ function getReplacementConstraintErrors({
       traderLevels,
       strictTraderLevels,
       includeRefOffers,
+      includeFleaMarket,
     },
   });
 
@@ -894,26 +918,58 @@ function getUnattachedBuildPartError(weapon, buildParts, t) {
     : t('config.unattached');
 }
 
-function getAvailableCapacities(weapon, allMods) {
-  if (!weapon || !allMods) return [30];
-
-  const magSlot = weapon.properties?.slots?.find(slot => {
+function getWeaponMagazines(weapon, allMods) {
+  const magSlot = weapon?.properties?.slots?.find(slot => {
     const name = (slot.name || '').toLowerCase();
     const nameId = (slot.nameId || '').toLowerCase();
     return name === 'mag' || name === 'magazine' || nameId === 'mod_magazine';
   });
+  if (!magSlot || !allMods) return null;
 
-  if (!magSlot) return [30];
-
-  const allowedIds = magSlot.filters?.allowedItems || [];
-  const capacities = allowedIds
+  return (magSlot.filters?.allowedItems || [])
     .map(shallowItem => allMods[shallowItem.id])
-    .filter(mod => mod && mod.properties?.capacity !== undefined)
+    .filter(mod => mod && mod.properties?.capacity !== undefined);
+}
+
+// The magazine the user pinned as a required module, if any; the calculator
+// installs it whatever capacity is selected.
+function getPinnedMagazine(weapon, allMods, requiredItemIds) {
+  const requiredIds = new Set(requiredItemIds || []);
+  return getWeaponMagazines(weapon, allMods)?.find(mod => requiredIds.has(mod.id)) ?? null;
+}
+
+// With price options, capacities of magazines that cannot be bought under the
+// price policy (e.g. not sold at the selected loyalty levels) are left out,
+// unless that would leave no magazine at all. A pinned magazine always counts.
+function getAvailableCapacities(weapon, allMods, priceOptions = null, pinnedMagazine = null) {
+  if (!weapon || !allMods) return [30];
+
+  const magazines = getWeaponMagazines(weapon, allMods);
+  if (!magazines) return [30];
+
+  const purchasableMagazines = priceOptions
+    ? magazines.filter(mod => mod === pinnedMagazine || !isItemUnavailable(mod, priceOptions))
+    : magazines;
+  const capacities = (purchasableMagazines.length > 0 ? purchasableMagazines : magazines)
     .map(mod => mod.properties.capacity);
 
   if (capacities.length === 0) return [30];
 
   return Array.from(new Set(capacities)).sort((a, b) => a - b);
+}
+
+// The selected capacity when it is available, otherwise the nearest one
+// (the larger on a tie).
+function getNearestCapacity(capacities, requestedCapacity) {
+  const requested = Number(requestedCapacity) || 30;
+  if (capacities.length === 0 || capacities.includes(requested)) return requested;
+  return capacities.reduce((nearest, capacity) => {
+    const distance = Math.abs(capacity - requested);
+    const nearestDistance = Math.abs(nearest - requested);
+    return distance < nearestDistance || (distance === nearestDistance && capacity > nearest)
+      ? capacity
+      : nearest;
+  });
 }
 
 function getModuleCategoryLabel(item, t) {
@@ -958,6 +1014,7 @@ function Configurator() {
     traderLevels,
     strictTraderLevels,
     includeRefOffers,
+    includeFleaMarket,
   } = useTraderLevels();
   const activeTraderLevels = useMemo(
     () => traderLevels.profiles?.[priceMode] || {},
@@ -982,10 +1039,11 @@ function Configurator() {
     () => resolveSharedMaxPrice(requestedSavedBuild?.settings),
   );
   const [suppressorMode, setSuppressorMode] = useState('allow');
-  const [includeTraderPrices, setIncludeTraderPrices] = useState(
+  const [includeTraderPricesSetting, setIncludeTraderPrices] = useState(
     () => requestedSavedBuild?.settings.includeTraderPrices
       ?? loadIncludeTraderPricesPreference(),
   );
+  const includeTraderPrices = includeTraderPricesSetting || !includeFleaMarket;
   const [activeReplacePartId, setActiveReplacePartId] = useState(null);
   const replacementTriggerRef = useRef(null);
   const [replaceMode, setReplaceMode] = useState('EXACT_ITEM');
@@ -1086,6 +1144,7 @@ function Configurator() {
       includeTraderPrices,
       strictTraderLevels,
       includeRefOffers,
+      includeFleaMarket,
       traderLevelsSnapshot: activeTraderLevels,
       magazineCapacity,
       includeLaser,
@@ -1113,8 +1172,8 @@ function Configurator() {
   }, [cancelPendingCalculations, priceMode]);
 
   useEffect(() => {
-    saveIncludeTraderPricesPreference(includeTraderPrices);
-  }, [includeTraderPrices]);
+    saveIncludeTraderPricesPreference(includeTraderPricesSetting);
+  }, [includeTraderPricesSetting]);
 
   useEffect(() => {
     saveBuildGoalModePreference(buildGoalMode);
@@ -1162,6 +1221,7 @@ function Configurator() {
             traderLevels: activeTraderLevels,
             strictTraderLevels,
             includeRefOffers,
+            includeFleaMarket,
           });
           return {
             ...current,
@@ -1189,6 +1249,7 @@ function Configurator() {
                 traderLevels: activeTraderLevels,
                 strictTraderLevels,
                 includeRefOffers,
+                includeFleaMarket,
               },
             }).remainingTotal
             : null;
@@ -1224,6 +1285,7 @@ function Configurator() {
           traderLevels: activeTraderLevels,
           strictTraderLevels,
           includeRefOffers,
+          includeFleaMarket,
         });
 
         setBuildResult({
@@ -1379,6 +1441,7 @@ function Configurator() {
       traderLevels: activeTraderLevels,
       strictTraderLevels,
       includeRefOffers,
+      includeFleaMarket,
       ownedItems: reconciledOwnedItems,
       maxWeight: effectiveHardMaxWeight,
       maxPrice,
@@ -1433,6 +1496,7 @@ function Configurator() {
       traderLevels: activeTraderLevels,
       strictTraderLevels,
       includeRefOffers,
+      includeFleaMarket,
       ownedItems: reconciledOwnedItems,
       maxWeight: effectiveHardMaxWeight,
       maxPrice,
@@ -1449,6 +1513,7 @@ function Configurator() {
     includeTraderPrices,
     strictTraderLevels,
     includeRefOffers,
+    includeFleaMarket,
     maxPrice,
     effectiveHardMaxWeight,
     priceMode,
@@ -1570,6 +1635,7 @@ function Configurator() {
       traderLevels: activeTraderLevels,
       strictTraderLevels,
       includeRefOffers,
+      includeFleaMarket,
     });
     const budgetLimit = Number(maxPrice) || 0;
     const remainingTotal = calculateBuildCostSummary({
@@ -1583,6 +1649,7 @@ function Configurator() {
         traderLevels: activeTraderLevels,
         strictTraderLevels,
         includeRefOffers,
+        includeFleaMarket,
       },
     }).remainingTotal;
 
@@ -1599,16 +1666,48 @@ function Configurator() {
     );
   };
 
+  // The capacity buttons list only magazines the price policy can buy. The
+  // user's choice is kept, so it comes back once its magazines are available.
+  const pinnedMagazine = useMemo(
+    () => getPinnedMagazine(weapon, allMods, requiredItemIds),
+    [allMods, requiredItemIds, weapon],
+  );
+  const availableCapacities = useMemo(
+    () => getAvailableCapacities(weapon, allMods, {
+      priceMode,
+      includeTraderPrices,
+      traderLevels: activeTraderLevels,
+      strictTraderLevels,
+      includeRefOffers,
+      includeFleaMarket,
+    }, pinnedMagazine),
+    [
+      activeTraderLevels,
+      allMods,
+      includeFleaMarket,
+      includeRefOffers,
+      includeTraderPrices,
+      pinnedMagazine,
+      priceMode,
+      strictTraderLevels,
+      weapon,
+    ],
+  );
+  const effectiveMagazineCapacity = pinnedMagazine
+    ? pinnedMagazine.properties.capacity
+    : getNearestCapacity(availableCapacities, magazineCapacity);
+
   const calculationOptions = useMemo(() => ({
     ...getSuppressorOptions(suppressorMode),
     maxWeight: Number(effectiveHardMaxWeight) || 0,
     maxPrice,
-    magazineCapacity: Number(magazineCapacity) || 30,
+    magazineCapacity: effectiveMagazineCapacity,
     priceMode,
     includeTraderPrices,
     traderLevels: activeTraderLevels,
     strictTraderLevels,
     includeRefOffers,
+    includeFleaMarket,
     includeLaser,
     includeFlashlight,
     sightMode,
@@ -1620,8 +1719,9 @@ function Configurator() {
     includeFlashlight,
     includeLaser,
     includeRefOffers,
+    includeFleaMarket,
     includeTraderPrices,
-    magazineCapacity,
+    effectiveMagazineCapacity,
     maxPrice,
     priceMode,
     requiredItemIds,
@@ -1747,6 +1847,7 @@ function Configurator() {
           traderLevels: activeTraderLevels,
           strictTraderLevels,
           includeRefOffers,
+          includeFleaMarket,
         },
       })
       : null,
@@ -1760,12 +1861,9 @@ function Configurator() {
       priceMode,
       strictTraderLevels,
       includeRefOffers,
+      includeFleaMarket,
       weapon,
     ],
-  );
-  const availableCapacities = useMemo(
-    () => getAvailableCapacities(weapon, allMods),
-    [weapon, allMods],
   );
   const selectedRequiredModules = useMemo(
     () => requiredModuleIds.map(itemId => allMods?.[itemId]).filter(Boolean),
@@ -1783,6 +1881,7 @@ function Configurator() {
       activeTraderLevels,
       strictTraderLevels,
       includeRefOffers,
+      includeFleaMarket,
     );
     return {
       item,
@@ -1855,12 +1954,13 @@ function Configurator() {
         activeTraderLevels,
         strictTraderLevels,
         includeRefOffers,
+        includeFleaMarket,
         sightMode,
         t,
         replaceMode,
       ),
     };
-  }, [weapon, buildResult, currentBuildSnapshot, hasBuildParts, activeReplacePartId, allMods, priceMode, includeTraderPrices, activeTraderLevels, strictTraderLevels, includeRefOffers, sightMode, t, replaceMode]);
+  }, [weapon, buildResult, currentBuildSnapshot, hasBuildParts, activeReplacePartId, allMods, priceMode, includeTraderPrices, activeTraderLevels, strictTraderLevels, includeRefOffers, includeFleaMarket, sightMode, t, replaceMode]);
 
   const replacementChainPlanner = useMemo(() => {
     if (!replacementContext?.supportsChains || replaceTab !== 'chain') return null;
@@ -1879,7 +1979,8 @@ function Configurator() {
     traderLevels: activeTraderLevels,
     strictTraderLevels,
     includeRefOffers,
-  }), [activeTraderLevels, includeRefOffers, includeTraderPrices, priceMode, strictTraderLevels]);
+    includeFleaMarket,
+  }), [activeTraderLevels, includeFleaMarket, includeRefOffers, includeTraderPrices, priceMode, strictTraderLevels]);
 
   const isLoading = loading || (weapon && weapon.id !== weaponId);
 
@@ -1906,13 +2007,14 @@ function Configurator() {
       activeTraderLevels,
       strictTraderLevels,
       includeRefOffers,
+      includeFleaMarket,
       reconciledOwnedItems,
       t,
       currentBuildSnapshot?.instances,
     )
     : {
-      summaryLabel: `${t(`config.price.${priceMode}Short`)} · tarkov.dev · ${includeTraderPrices ? t('config.price.fleaTrader') : t('config.price.fleaOnly')}`,
-      summaryStatus: includeTraderPrices ? t('config.price.fleaTrader') : t('config.price.fleaOnly'),
+      summaryLabel: `${t(`config.price.${priceMode}Short`)} · tarkov.dev · ${getPricePolicyLabel(includeTraderPrices, includeFleaMarket, t)}`,
+      summaryStatus: getPricePolicyLabel(includeTraderPrices, includeFleaMarket, t),
       warningMessages: [],
       infoMessages: [],
       fallbackEntries: [],
@@ -1945,6 +2047,7 @@ function Configurator() {
       activeTraderLevels,
       strictTraderLevels,
       includeRefOffers,
+      includeFleaMarket,
       true,
     ).value);
   const allPurchased = canShowBuildDetails && buildCostSummary?.remainingTotal === 0;
@@ -2071,6 +2174,7 @@ function Configurator() {
             activeTraderLevels,
             strictTraderLevels,
             includeRefOffers,
+            includeFleaMarket,
           )
           : null,
       }));
@@ -2104,6 +2208,7 @@ function Configurator() {
           activeTraderLevels,
           strictTraderLevels,
           includeRefOffers,
+          includeFleaMarket,
           true,
         ),
       }],
@@ -2158,8 +2263,9 @@ function Configurator() {
           flashlightItems={flashlightItems}
           flashlightItemId={flashlightItemId}
           includeTraderPrices={includeTraderPrices}
+          includeFleaMarket={includeFleaMarket}
           strictTraderLevels={strictTraderLevels}
-          magazineCapacity={magazineCapacity}
+          magazineCapacity={effectiveMagazineCapacity}
           maxPrice={maxPrice}
           maxPriceDraft={maxPriceDraft}
           maxPriceLimit={WEAPON_STAT_UI_RANGES.price.max}
@@ -2326,6 +2432,7 @@ function Configurator() {
           traderLevels={activeTraderLevels}
           strictTraderLevels={strictTraderLevels}
           includeRefOffers={includeRefOffers}
+          includeFleaMarket={includeFleaMarket}
           onBuildChange={handleDiagramBuildChange}
           onClose={handleCloseBuildDiagram}
           chainGoal={chainGoal}
@@ -2352,6 +2459,7 @@ function Configurator() {
           activeTraderLevels,
           strictTraderLevels,
           includeRefOffers,
+          includeFleaMarket,
         );
 
         return (
@@ -2460,6 +2568,7 @@ function Configurator() {
                             activeTraderLevels,
                             strictTraderLevels,
                             includeRefOffers,
+                            includeFleaMarket,
                             t,
                           );
                           const altPriceValue = altPriceInfo.value;
@@ -2486,6 +2595,7 @@ function Configurator() {
                             activeTraderLevels,
                             strictTraderLevels,
                             includeRefOffers,
+                            includeFleaMarket,
                             t,
                           );
                           const baselinePrice = baselinePriceInfo.value;

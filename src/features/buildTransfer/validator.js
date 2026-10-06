@@ -31,6 +31,7 @@ const ALLOWED_SETTING_KEYS = new Set([
   'includeTraderPrices',
   'strictTraderLevels',
   'includeRefOffers',
+  'includeFleaMarket',
   'traderLevelsSnapshot',
   'maxWeight',
   'maxPrice',
