@@ -119,6 +119,7 @@ test('requiredItemIds reports incompatible modules', () => {
   });
   const incompatibleGrip = createTestMod({
     id: 'incompatible-grip',
+    name: 'Bad Required Grip',
     shortName: 'Bad Req',
     categories: createCategories(['Pistol grip']),
     ergonomicsModifier: 20,
@@ -133,7 +134,8 @@ test('requiredItemIds reports incompatible modules', () => {
   });
 
   assert.match(result.error, /Required modules could not be installed/i);
-  assert.match(result.error, /Bad Req/);
+  // The full name: short names repeat across a weapon's parts.
+  assert.match(result.error, /Bad Required Grip/);
   assertNotInstalled(result, incompatibleGrip.id);
   assertStatsMatchPartsForWeapon(testWeapon, result);
 });
