@@ -22,6 +22,7 @@ const BUILD_ERROR_MESSAGE_KEYS = Object.freeze({
   LASER_UNAVAILABLE: 'config.buildError.laserUnavailable',
   FLASHLIGHT_UNAVAILABLE: 'config.buildError.flashlightUnavailable',
   REQUIRED_MODULES_MISSING: 'config.buildError.requiredModulesMissing',
+  REQUIRED_MODULE_PARTS_UNAVAILABLE: 'config.buildError.requiredModulePartsUnavailable',
   REQUIRED_SLOTS_INCOMPLETE: 'config.buildError.requiredSlotsIncomplete',
   MAX_PRICE_EXCEEDED: 'config.buildError.maxPriceExceeded',
   MAX_WEIGHT_EXCEEDED: 'config.buildError.maxWeightExceeded',
@@ -124,7 +125,16 @@ function getLegacyBuildWarnings(value) {
   return warnings;
 }
 
-export function getLocalizedBuildWarnings(buildResult, t) {
+const PRICE_ITEMS_UNAVAILABLE_CODE = 'PRICE_ITEMS_UNAVAILABLE';
+
+function isPriceItemsUnavailableWarning(warning) {
+  return warning?.code === PRICE_ITEMS_UNAVAILABLE_CODE
+    || warning?.key === BUILD_WARNING_MESSAGE_KEYS[PRICE_ITEMS_UNAVAILABLE_CODE];
+}
+
+// `omitMissingPrices` drops the calculator's generic missing-price warning
+// where per-item price diagnostics, which know about owned items, replace it.
+export function getLocalizedBuildWarnings(buildResult, t, { omitMissingPrices = false } = {}) {
   let warnings;
 
   if (Array.isArray(buildResult?.warnings)) {
@@ -141,6 +151,7 @@ export function getLocalizedBuildWarnings(buildResult, t) {
 
   const localized = warnings
     .filter(Boolean)
+    .filter(warning => !(omitMissingPrices && isPriceItemsUnavailableWarning(warning)))
     .map((warning) => {
       if (warning.key) {
         const translated = normalizeNotificationText(t(warning.key, warning.params || {}));

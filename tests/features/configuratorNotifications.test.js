@@ -130,6 +130,21 @@ test('structured warning arrays preserve order, ignore empty entries, and remove
   ]);
 });
 
+test('the generic missing-price warning can be left to per-item price diagnostics', () => {
+  const t = translator('en');
+  const options = { omitMissingPrices: true };
+
+  assert.deepEqual(getLocalizedBuildWarnings({
+    warnings: [
+      { code: 'PRICE_ITEMS_UNAVAILABLE', params: { count: 2 } },
+      { code: 'REQUIREMENTS_UNMET_CLOSEST_BUILD' },
+    ],
+  }, t, options), ['Not all selected values are reachable. Showing the closest build found.']);
+  assert.deepEqual(getLocalizedBuildWarnings({
+    warning: 'One or more selected items have no available price under the active price policy.',
+  }, t, options), []);
+});
+
 test('unknown warning code uses safe original text and rejects technical payloads', () => {
   const t = translator('en');
 

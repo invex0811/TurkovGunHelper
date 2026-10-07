@@ -937,16 +937,52 @@ export function _calculateWeighted(
   if (characteristicConstraints && options.includeFlashlight && !hasFlashlightDevice(installedIds)) {
     addError(BUILD_ERROR_CODES.FLASHLIGHT_UNAVAILABLE, {}, 'No compatible flashlight could be installed with the current constraints.');
   }
+  // Short names repeat across a weapon's parts ("416A5" is a receiver and a gas block).
+  const getModuleName = itemId => modMap[itemId]?.name || modMap[itemId]?.shortName || itemId;
   const missingRequiredIds = [...requiredItemIds].filter(itemId => !installedIds.has(itemId));
-  if (missingRequiredIds.length > 0) {
-    const missingNames = missingRequiredIds
-      .map(itemId => modMap[itemId]?.shortName || modMap[itemId]?.name || itemId);
+  // A pinned module is installed even when it cannot be bought, but the parts
+  // its required slots need are not: name the slot that nothing can fill.
+  const blockedSlotsByRequiredId = new Map();
+  missingRequiredIds.forEach(itemId => {
+    const blockedSlots = (modMap[itemId].properties?.slots || []).filter(slot => (
+      slot.required === true
+      && !Number.isFinite(getMinimumRequiredSlotWeight(slot, new Set([weapon.id, itemId])))
+    ));
+    if (blockedSlots.length > 0) blockedSlotsByRequiredId.set(itemId, blockedSlots);
+  });
+  const blockedRequiredIds = new Set(blockedSlotsByRequiredId.keys());
+  const holdsBlockedRequiredItem = slot => (slot.filters?.allowedItems || [])
+    .some(allowedItem => blockedRequiredIds.has(allowedItem.id));
+  blockedSlotsByRequiredId.forEach((blockedSlots, itemId) => {
+    // A slot that is empty only because another pinned module is blocked is
+    // explained by that module's own message. A slot with no part on sale at
+    // all is a clearer reason than one whose parts are blocked further down.
+    const ownBlockedSlots = blockedSlots.filter(slot => !holdsBlockedRequiredItem(slot));
+    const reasonSlots = ownBlockedSlots.length > 0 ? ownBlockedSlots : blockedSlots;
+    const blockedSlot = reasonSlots.find(slot => (slot.filters?.allowedItems || [])
+      .every(allowedItem => !modMap[allowedItem.id])) ?? reasonSlots[0];
+    const moduleName = getModuleName(itemId);
+    const slotName = blockedSlot.name || blockedSlot.nameId || 'Unknown slot';
+    addError(
+      BUILD_ERROR_CODES.REQUIRED_MODULE_PARTS_UNAVAILABLE,
+      { module: moduleName, slot: slotName },
+      `${moduleName} cannot be installed: no part for its required ${slotName} slot can be bought with the current price settings.`,
+    );
+  });
+  const unexplainedMissingIds = missingRequiredIds.filter(itemId => !blockedRequiredIds.has(itemId));
+  if (unexplainedMissingIds.length > 0) {
+    const missingNames = unexplainedMissingIds.map(getModuleName);
     addError(
       BUILD_ERROR_CODES.REQUIRED_MODULES_MISSING,
       { modules: missingNames },
       `Required modules could not be installed with the current weapon and constraints: ${missingNames.join(', ')}.`,
     );
   }
+  // A required slot left empty because its pinned module was blocked is
+  // already explained above.
+  [...(weapon.properties?.slots || []), ...build.flatMap(part => part.item.properties?.slots || [])]
+    .filter(holdsBlockedRequiredItem)
+    .forEach(slot => missingRequiredSlotNames.delete(slot.name || slot.nameId || 'Unknown slot'));
   if (missingRequiredSlotNames.size > 0) {
     const slotNames = [...missingRequiredSlotNames];
     addError(

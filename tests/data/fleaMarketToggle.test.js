@@ -176,6 +176,62 @@ test('a pinned Flea-only part stays available when the Flea Market is off', () =
   assert.deepEqual(result.build.map(part => part.item.id), ['flea-mod']);
 });
 
+function withRequiredSlot(mod, allowedIds) {
+  return {
+    ...mod,
+    properties: {
+      ...mod.properties,
+      slots: [{
+        name: 'Handguard',
+        nameId: 'mod_handguard',
+        required: true,
+        filters: { allowedItems: allowedIds.map(id => ({ id })) },
+      }],
+    },
+  };
+}
+
+test('a pinned part whose required slot has no part for sale names that slot', () => {
+  const handguard = createMod('flea-handguard', { buyFor: [flea(8_000)] });
+  const receiver = withRequiredSlot(
+    createMod('receiver', { buyFor: [flea(20_000)] }),
+    [handguard.id],
+  );
+  const weapon = createWeapon([receiver.id]);
+  weapon.properties = {
+    ...weapon.properties,
+    slots: weapon.properties.slots.map(slot => ({ ...slot, required: true })),
+  };
+
+  const result = calculate(weapon, [receiver, handguard], {
+    includeFleaMarket: false,
+    traderLevels: LL1,
+    requiredItemIds: [receiver.id],
+  });
+  // The pinned receiver itself is not for sale either, but stays allowed.
+  assert.deepEqual(result.errorDetails, [{
+    code: 'REQUIRED_MODULE_PARTS_UNAVAILABLE',
+    params: { module: 'receiver', slot: 'Handguard' },
+  }]);
+});
+
+test('a pinned part uses a part traders sell when one fits its required slot', () => {
+  const fleaHandguard = createMod('flea-handguard', { ergonomics: 30, buyFor: [flea(8_000)] });
+  const traderHandguard = createMod('trader-handguard', { ergonomics: 5, buyFor: [trader(9_000)] });
+  const receiver = withRequiredSlot(
+    createMod('receiver', { buyFor: [flea(20_000)] }),
+    [fleaHandguard.id, traderHandguard.id],
+  );
+  const weapon = createWeapon([receiver.id]);
+
+  const result = calculate(weapon, [receiver, fleaHandguard, traderHandguard], {
+    includeFleaMarket: false,
+    traderLevels: LL1,
+    requiredItemIds: [receiver.id],
+  });
+  assert.deepEqual(result.build.map(part => part.item.id), ['receiver', 'trader-handguard']);
+});
+
 function createMagazine(id, capacity, buyFor) {
   const magazine = createMod(id, { ergonomics: 0, buyFor });
   return {

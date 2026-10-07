@@ -677,7 +677,9 @@ function collectBuildPriceDiagnostics(
   const entries = (instances || getBuildItemInstances(weapon, buildResult.build)).map(instance => ({
     label: instance.isWeapon
       ? t('config.weapon')
-      : getItemDisplayName(instance.item, instance.buildPart?.slotName),
+      // Short names repeat across a weapon's parts ("M4A1" is also its upper
+      // receiver), so price messages name each part in full.
+      : instance.item?.name || getItemDisplayName(instance.item, instance.buildPart?.slotName),
     item: instance.item,
     instanceKey: instance.key,
     isOwned: ownedKeys.has(instance.key),
@@ -2394,7 +2396,7 @@ function Configurator() {
             buildWarnings={buildResult
               && !hasCalculationError
               && (buildResult.warning || buildResult.warningCode || buildResult.warnings)
-              ? getLocalizedBuildWarnings(buildResult, t)
+              ? getLocalizedBuildWarnings(buildResult, t, { omitMissingPrices: canShowBuildDetails })
               : []}
             priceWarnings={canShowBuildDetails ? priceDiagnostics.warningMessages : []}
             priceInfos={canShowBuildDetails ? priceDiagnostics.infoMessages : []}
