@@ -7,6 +7,7 @@ import PwaUpdatePrompt from './features/pwa/PwaUpdatePrompt.jsx';
 import PriceModeProvider from './features/priceMode/PriceModeProvider.jsx';
 import PriceModeSwitch from './features/priceMode/PriceModeSwitch.jsx';
 import TraderLevelsProvider from './features/traderLevels/TraderLevelsProvider.jsx';
+import FavoriteWeaponsProvider from './features/favorites/FavoriteWeaponsProvider.jsx';
 import CatalogStatusProvider from './features/dataStatus/CatalogStatusProvider.jsx';
 import CatalogStatus from './features/dataStatus/CatalogStatus.jsx';
 import { usePageviewTracking } from './features/analytics/usePageviewTracking.js';
@@ -170,9 +171,11 @@ function App() {
     <I18nProvider>
       <PriceModeProvider>
         <TraderLevelsProvider>
-          <CatalogStatusProvider>
-            <Router><MainLayout /></Router>
-          </CatalogStatusProvider>
+          <FavoriteWeaponsProvider>
+            <CatalogStatusProvider>
+              <Router><MainLayout /></Router>
+            </CatalogStatusProvider>
+          </FavoriteWeaponsProvider>
         </TraderLevelsProvider>
       </PriceModeProvider>
     </I18nProvider>

@@ -2,6 +2,10 @@ function toStableSegment(value) {
   return encodeURIComponent(String(value || 'unknown')).replaceAll('%', '_');
 }
 
+export function getBuildRootInstanceId(weapon) {
+  return `weapon:${toStableSegment(weapon?.id || weapon?.shortName || weapon?.name)}`;
+}
+
 export function getBuildSlotId(slot, slotIndex = 0) {
   const apiId = slot?.id || slot?.nameId || slot?.name || 'slot';
   return `${apiId}:${slotIndex}`;
@@ -91,7 +95,7 @@ export function rebindBuildPartsToCatalog(sourceWeapon, buildParts, localizedWea
 }
 
 export function buildWeaponAssemblyTree(weapon, buildParts = []) {
-  const rootInstanceId = `weapon:${toStableSegment(weapon?.id || weapon?.shortName || weapon?.name)}`;
+  const rootInstanceId = getBuildRootInstanceId(weapon);
   const root = {
     item: weapon,
     buildPart: null,

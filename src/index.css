@@ -3053,6 +3053,10 @@ button.weapon-diagram-node:focus-visible,
   line-height: 1.45;
 }
 
+.inline-message--dismissible {
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+}
+
 .inline-message--error {
   --inline-message-accent: var(--color-accent-red);
 }
@@ -3114,6 +3118,37 @@ button.weapon-diagram-node:focus-visible,
 .inline-message__list li {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.inline-message__dismiss {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin: -6px -8px -6px 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.inline-message__dismiss .material-symbol {
+  font-size: 18px;
+}
+
+.inline-message__dismiss:hover {
+  background: color-mix(in srgb, var(--inline-message-accent) 14%, transparent);
+  color: var(--text-primary);
+}
+
+.inline-message__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .drawer {
@@ -4988,6 +5023,34 @@ button.weapon-diagram-node:focus-visible,
   color: var(--btn-primary-text, var(--bg-darker));
 }
 
+/* The type chips form their own labelled group inside the shared row. */
+.chip-row__group {
+  display: contents;
+}
+
+.chip--favorites {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chip--favorites .material-symbol {
+  font-size: 18px;
+}
+
+.chip__count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+/* A filled star marks a favorite weapon. */
+.chip--favorites[aria-pressed="true"] .material-symbol::before,
+.favorite-btn.is-active .material-symbol::before,
+.weapon-card__favorite.is-active .material-symbol::before {
+  font-variation-settings: "FILL" 1;
+}
+
 .text-btn {
   display: inline-flex;
   align-items: center;
@@ -5093,6 +5156,53 @@ button.weapon-diagram-node:focus-visible,
   }
 }
 
+.weapon-card-shell {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.weapon-card-shell > .weapon-card {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The plate-colored star stands in for the plate's top-right reticle corner. */
+.weapon-card__favorite {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-plate);
+  color: var(--text-disabled);
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.weapon-card__favorite .material-symbol {
+  font-size: 20px;
+}
+
+.weapon-card__favorite:hover,
+.weapon-card__favorite.is-active {
+  color: var(--color-gold);
+}
+
+.weapon-card__favorite:hover {
+  background: color-mix(in srgb, var(--color-gold) 12%, var(--surface-plate));
+}
+
+.weapon-card__favorite:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+}
+
 .weapon-card {
   display: flex;
   flex-direction: column;
@@ -5127,7 +5237,7 @@ button.weapon-diagram-node:focus-visible,
   position: absolute;
   top: 7px;
   left: 28px;
-  right: 28px;
+  right: 44px;
   overflow: hidden;
   color: var(--text-disabled);
   font-family: var(--font-mono);
@@ -6144,6 +6254,33 @@ button.weapon-diagram-node:focus-visible,
   border-color: var(--color-gold);
 }
 
+/* The picker spans the price box; a long build name is cut, not overflowed. */
+.saved-build-picker {
+  display: flex;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.saved-build-picker .select-button__trigger {
+  min-width: 0;
+}
+
+.saved-build-picker .select-button__value {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.saved-build-picker .select-button__value > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* As in the catalog search, the wrapper border is the focus indicator; the
+   attribute selector outranks the global :focus-visible ring on the input. */
+.save-build-bar__field input[type="text"]:focus-visible {
+  outline: none;
+}
+
 .save-build-bar__field span {
   flex: 0 0 auto;
   color: var(--text-disabled);
@@ -6237,6 +6374,11 @@ button.weapon-diagram-node:focus-visible,
 
 .parts-panel .build-warnings {
   margin: 12px 20px 0;
+}
+
+/* With no modules below (a failed build), the messages end the panel. */
+.parts-panel .build-warnings:last-child {
+  margin-bottom: 20px;
 }
 
 .parts-group {
@@ -6516,6 +6658,22 @@ button.weapon-diagram-node:focus-visible,
   text-transform: uppercase;
 }
 
+.default-preset-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--color-gold) 45%, transparent);
+  border-radius: 3px;
+  color: var(--color-gold);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
 .critical-module-badge__icon {
   display: none;
 }
@@ -6629,6 +6787,25 @@ button.weapon-diagram-node:focus-visible,
   .config-hero__actions > * {
     flex: 1 1 0;
     justify-content: center;
+  }
+
+  /* Three actions do not fit a phone row: the favorite keeps only its star. */
+  .config-hero__actions > .favorite-btn {
+    flex: 0 0 44px;
+    padding: 0;
+  }
+
+  .favorite-btn .btn__icon {
+    margin-right: 0;
+  }
+
+  .favorite-btn__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   /* On phones the generate button sits above the bottom tab bar. */

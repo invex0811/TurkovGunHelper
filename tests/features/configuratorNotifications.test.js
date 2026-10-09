@@ -202,6 +202,33 @@ test('several calculation errors are listed instead of joined into one paragraph
   assert.deepEqual(several.details, ['First', 'Second']);
 });
 
+test('only the calculation error carries the default preset action', () => {
+  const action = { label: 'Use default modules', icon: 'inventory_2', onClick() {} };
+  const notifications = createConfiguratorNotifications({
+    calculationError: ['No build fits'],
+    calculationErrorAction: action,
+    replacementError: 'Replacement failed',
+  }, translator('en'));
+
+  assert.equal(notifications.find(notification => notification.id === 'calculation-error').action, action);
+  assert.equal(notifications.find(notification => notification.id === 'replacement-error').action, undefined);
+});
+
+test('the default preset modules warning names the modules', () => {
+  const result = {
+    warningCode: 'DEFAULT_PRESET_MODULES_USED',
+    warningParams: { modules: ['M4A1 upper receiver', 'M4A1 barrel'] },
+    warning: 'fallback',
+  };
+
+  assert.deepEqual(getLocalizedBuildWarnings(result, translator('ru')), [
+    'Взято из базовой сборки оружия: M4A1 upper receiver, M4A1 barrel. При текущих лимитах эти модули не купить.',
+  ]);
+  assert.deepEqual(getLocalizedBuildWarnings(result, translator('en')), [
+    'Taken from the weapon’s default preset: M4A1 upper receiver, M4A1 barrel. They cannot be bought with the current limits.',
+  ]);
+});
+
 test('notification types include error, warning, info, and success', () => {
   assert.deepEqual(
     CONFIGURATOR_MESSAGE_TYPES,

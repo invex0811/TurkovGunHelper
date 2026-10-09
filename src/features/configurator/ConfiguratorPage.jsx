@@ -6,7 +6,7 @@ import {
   useMemo,
   useRef,
 } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PRICE_CONFIDENCE } from '../../data/price/priceModes.js';
 import {
   isItemUnavailable,
@@ -32,9 +32,15 @@ import { useI18n } from '../../i18n/useI18n.js';
 import { trackWeaponOpen } from '../analytics/analytics.js';
 import {
   getSavedBuild,
+  readSavedBuilds,
+  readSavedBuildsSource,
   restoreBuildParts,
 } from '../../data/savedBuilds.js';
 import { calculateSightingRange, recalculateBuildStats } from '../../domain/calculator.js';
+import {
+  appendBuildWarning,
+  BUILD_WARNING_CODES,
+} from '../../domain/calculator/buildResultMessages.js';
 import {
   calculateBuildCostSummary,
   createBuildAssemblySnapshot,
@@ -43,6 +49,7 @@ import {
   toggleOwnedItem,
 } from '../../domain/ownedItems.js';
 import { categoryMatches, hasItemCategory } from '../../domain/itemCategories.js';
+import { getDefaultPresetFallbackSteps } from '../../domain/defaultPreset.js';
 import {
   buildWeaponAssemblyTree as buildAssemblyTree,
   rebindBuildPartsToCatalog,
@@ -765,6 +772,13 @@ function collectBuildPriceDiagnostics(
   };
 }
 
+// The saved build picker's option for a build that is not saved yet.
+const NEW_BUILD_OPTION = '__new__';
+
+function getItemIdsSignature(itemIds) {
+  return [...itemIds].sort().join('|');
+}
+
 const SUPPRESSOR_MODE_OPTIONS = [
   { value: 'allow', label: 'config.suppressorAllow' },
   { value: 'forbid', label: 'config.suppressorForbid' },
@@ -903,6 +917,20 @@ function getReplacementConstraintErrors({
   return { errors, stats };
 }
 
+// Marks the modules a run took from the default preset; a successful build
+// names them in a warning.
+function markDefaultPresetFallback(result, fallbackItemIds, allMods) {
+  const marked = { ...result, defaultPresetItemIds: fallbackItemIds };
+  if (result.error) return marked;
+
+  const modules = fallbackItemIds.map(itemId => allMods[itemId]?.name || allMods[itemId]?.shortName || itemId);
+  return appendBuildWarning(marked, {
+    code: BUILD_WARNING_CODES.DEFAULT_PRESET_MODULES_USED,
+    params: { modules },
+    fallback: `Taken from the weapon’s default preset: ${modules.join(', ')}. They cannot be bought with the current limits.`,
+  });
+}
+
 function getUnattachedBuildPartError(weapon, buildParts, t) {
   const tree = buildAssemblyTree(weapon, buildParts);
   let attachedPartCount = 0;
@@ -1023,6 +1051,7 @@ function Configurator() {
     [priceMode, traderLevels],
   );
   const { weaponId } = useParams();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const requestedSavedBuildId = searchParams.get('build');
   const requestedSavedBuild = useMemo(
@@ -1106,6 +1135,8 @@ function Configurator() {
     ...(scopeMode === SCOPE_MODES.MANUAL && scopeItemId ? [scopeItemId] : []),
   ]), [flashlightItemId, includeFlashlight, includeLaser, requiredModuleIds, scopeItemId, scopeMode, tblItemId]);
   const [replacementError, setReplacementError] = useState(null);
+  // The saved build picker's choice waiting for the unsaved build to be dropped.
+  const [pendingSavedBuildId, setPendingSavedBuildId] = useState(null);
   const [pricePolicyWarning, setPricePolicyWarning] = useState(null);
   const [priceModeNotice, setPriceModeNotice] = useState(null);
   const [maxPriceDraft, setMaxPriceDraft] = useState(null);
@@ -1461,7 +1492,10 @@ function Configurator() {
 
     setReplacementError(null);
     setOwnedItems(current => reconcileOwnedItems(current, weapon, updatedBuild));
-    setBuildResult(stats);
+    // Preset modules that stay installed keep their mark.
+    setBuildResult(buildResult.defaultPresetItemIds
+      ? { ...stats, defaultPresetItemIds: buildResult.defaultPresetItemIds }
+      : stats);
     setActiveReplacePartId(null);
   };
 
@@ -1745,7 +1779,10 @@ function Configurator() {
     priorityWeights: normalizePriorityWeights(priorityWeights),
   }), [buildGoalMode, customProfile, priorityAttributes, prioritySelectionMode, priorityWeights]);
 
-  const handleGenerate = useCallback(async () => {
+  // Fallback modules from the default preset are pinned for this run only:
+  // pinned modules stay in the search even when they cannot be bought. Each
+  // step pins more of the preset and runs only if the previous one failed.
+  const runGeneration = useCallback(async (fallbackSteps = []) => {
     if (!allMods) return;
     const canonicalPriorityWeights = normalizePriorityWeights(priorityWeights);
     const isWeightedPrioritySelection = characteristicMode === 'priorities'
@@ -1769,24 +1806,37 @@ function Configurator() {
     let requestId = null;
 
     try {
-      const calculation = runBuildCalculation({
-        weapon,
-        targetType,
-        customProfile: {
-          ...customProfile,
-          price: maxPrice,
-        },
-        characteristicMode,
-        priorityAttributes,
-        prioritySelectionMode,
-        priorityWeights: canonicalPriorityWeights,
-        allMods,
-        options: calculationOptions,
-      });
-      requestId = calculation.requestId;
-      const result = await calculation.promise;
-      if (requestId !== latestCalculationRequestIdRef.current) return;
-      setBuildResult(result);
+      let result = null;
+      let fallbackItemIds = [];
+      for (const stepItemIds of fallbackSteps.length > 0 ? fallbackSteps : [[]]) {
+        fallbackItemIds = stepItemIds;
+        const calculation = runBuildCalculation({
+          weapon,
+          targetType,
+          customProfile: {
+            ...customProfile,
+            price: maxPrice,
+          },
+          characteristicMode,
+          priorityAttributes,
+          prioritySelectionMode,
+          priorityWeights: canonicalPriorityWeights,
+          allMods,
+          options: fallbackItemIds.length > 0
+            ? {
+              ...calculationOptions,
+              requiredItemIds: [...calculationOptions.requiredItemIds, ...fallbackItemIds],
+            }
+            : calculationOptions,
+        });
+        requestId = calculation.requestId;
+        result = await calculation.promise;
+        if (requestId !== latestCalculationRequestIdRef.current) return;
+        if (!result.error) break;
+      }
+      setBuildResult(fallbackItemIds.length > 0
+        ? markDefaultPresetFallback(result, fallbackItemIds, allMods)
+        : result);
     } catch (err) {
       if (err?.name === 'AbortError') return;
       if (requestId !== null && requestId !== latestCalculationRequestIdRef.current) return;
@@ -1812,8 +1862,45 @@ function Configurator() {
     targetType,
     weapon,
   ]);
+  const handleGenerate = useCallback(() => runGeneration(), [runGeneration]);
 
   const hasCalculationError = buildResult ? Boolean(buildResult.error) : false;
+  // Saved builds of this weapon; a save changes the stored list and so the picker.
+  const savedBuildsSource = readSavedBuildsSource();
+  const savedWeaponBuilds = useMemo(
+    () => (weapon
+      ? readSavedBuilds({ getItem: () => savedBuildsSource })
+        .filter(build => build.weapon.id === weapon.id)
+      : []),
+    [savedBuildsSource, weapon],
+  );
+  const savedBuildOptions = useMemo(() => {
+    if (savedWeaponBuilds.length === 0) return [];
+    const nameCounts = new Map();
+    savedWeaponBuilds.forEach(build => nameCounts.set(build.name, (nameCounts.get(build.name) || 0) + 1));
+    const formatDate = new Intl.DateTimeFormat(language, { dateStyle: 'short', timeStyle: 'short' });
+    return [
+      { value: NEW_BUILD_OPTION, label: t('config.savedBuildNew') },
+      ...savedWeaponBuilds.map(build => ({
+        value: build.id,
+        // Builds with the same name are told apart by when they were saved.
+        label: nameCounts.get(build.name) > 1 && build.updatedAt
+          ? `${build.name} · ${formatDate.format(new Date(build.updatedAt))}`
+          : build.name,
+      })),
+    ];
+  }, [language, savedWeaponBuilds, t]);
+  // A run that already took preset modules and still failed offers no retry.
+  const defaultPresetFallbackSteps = useMemo(
+    () => (hasCalculationError && !buildResult.defaultPresetItemIds
+      ? getDefaultPresetFallbackSteps(weapon, allMods, calculationOptions)
+      : []),
+    [allMods, buildResult, calculationOptions, hasCalculationError, weapon],
+  );
+  const defaultPresetItemIds = useMemo(
+    () => new Set(buildResult?.defaultPresetItemIds || []),
+    [buildResult],
+  );
   // Pickers and the required-module search only offer modules this weapon can mount.
   const reachableModuleIds = useMemo(
     () => getReachableModuleIds(weapon, allMods),
@@ -1836,6 +1923,45 @@ function Configurator() {
   const scopeZoomLevels = useMemo(() => getScopeZoomOptions(scopeItems), [scopeItems]);
   const hasBuildParts = buildResult ? (Array.isArray(buildResult.build) && buildResult.build.length > 0) : false;
   const canShowBuildDetails = Boolean(buildResult && !hasCalculationError && hasBuildParts);
+  // A build on screen is unsaved when it was never saved or its modules
+  // differ from the saved build it was opened as.
+  const activeSavedBuild = savedWeaponBuilds.find(build => build.id === activeSavedBuildId) || null;
+  const hasUnsavedBuild = canShowBuildDetails && (
+    !activeSavedBuild
+    || getItemIdsSignature(buildResult.build.map(part => part.item.id))
+      !== getItemIdsSignature(activeSavedBuild.parts.map(part => part.itemId))
+  );
+  const openSavedBuildOption = buildId => {
+    setPendingSavedBuildId(null);
+    const weaponPath = `/configure/${encodeURIComponent(weapon.id)}`;
+    if (buildId !== NEW_BUILD_OPTION) {
+      navigate(`${weaponPath}?build=${encodeURIComponent(buildId)}`);
+      return;
+    }
+    if (requestedSavedBuildId) {
+      navigate(weaponPath);
+      return;
+    }
+    // A build saved on this page has no id in the URL: start over in place.
+    setBuildResult(null);
+    setOwnedItems([]);
+    setActiveSavedBuildId(null);
+    setSaveName(t('config.defaultBuildName', { weapon: weapon.shortName || weapon.name }));
+    setSaveFeedback(null);
+    setGenerationError(null);
+    setReplacementError(null);
+  };
+  const handleSelectSavedBuild = buildId => {
+    if (!weapon || buildId === (activeSavedBuildId || NEW_BUILD_OPTION)) return;
+    if (hasUnsavedBuild) {
+      setPendingSavedBuildId(buildId);
+      return;
+    }
+    openSavedBuildOption(buildId);
+  };
+  const pendingSavedBuild = pendingSavedBuildId
+    ? savedWeaponBuilds.find(build => build.id === pendingSavedBuildId) || null
+    : null;
   const buildCostSummary = useMemo(
     () => canShowBuildDetails
       ? calculateBuildCostSummary({
@@ -2168,6 +2294,7 @@ function Configurator() {
       .map(part => ({
         ...part,
         isOwned: reconciledOwnedItems.some(item => item.key === part.ownershipKey),
+        isFromDefaultPreset: Boolean(part.item && defaultPresetItemIds.has(part.item.id)),
         priceInfo: part.item
           ? getSelectedPriceInfo(
             part.item,
@@ -2336,6 +2463,7 @@ function Configurator() {
           marketPrice={toFiniteStatNumber(buildCostSummary?.marketTotal)}
           moduleCount={moduleCount}
           onSave={handleSaveBuild}
+          onSelectSavedBuild={handleSelectSavedBuild}
           priceSourceLabel={`${t(`config.price.${priceMode}Short`)} · ${priceDiagnostics.summaryStatus}`}
           onSaveNameChange={value => {
             setSaveName(value);
@@ -2344,6 +2472,8 @@ function Configurator() {
           remainingPrice={remainingPrice}
           saveFeedback={saveFeedback}
           saveName={saveName}
+          savedBuildOptions={savedBuildOptions}
+          selectedSavedBuildId={activeSavedBuildId || NEW_BUILD_OPTION}
           statMeters={statMeters}
           t={t}
           weapon={weapon}
@@ -2393,6 +2523,13 @@ function Configurator() {
             calculationError={buildResult && hasCalculationError
               ? getLocalizedBuildErrors(buildResult, t)
               : null}
+            calculationErrorAction={defaultPresetFallbackSteps.length > 0
+              ? {
+                label: t('config.useDefaultPreset'),
+                icon: 'inventory_2',
+                onClick: () => runGeneration(defaultPresetFallbackSteps),
+              }
+              : null}
             buildWarnings={buildResult
               && !hasCalculationError
               && (buildResult.warning || buildResult.warningCode || buildResult.warnings)
@@ -2402,6 +2539,7 @@ function Configurator() {
             priceInfos={canShowBuildDetails ? priceDiagnostics.infoMessages : []}
             hasFallbackPrice={priceDiagnostics.fallbackEntries?.length > 0}
             priceModeNotice={priceModeNotice}
+            dismissScope={buildResult}
             t={t}
           />
 
@@ -2441,6 +2579,36 @@ function Configurator() {
           chainOptions={calculationOptions}
           validateBuild={getBuildChangeErrors}
         />
+      )}
+
+      {pendingSavedBuildId && (
+        <ModalDialog
+          backdropClassName="comparison-modal"
+          className="delete-confirm"
+          role="alertdialog"
+          aria-labelledby="unsavedBuildTitle"
+          aria-describedby="unsavedBuildDescription"
+          initialFocus="[autofocus]"
+          onClose={() => setPendingSavedBuildId(null)}
+        >
+          <div className="delete-confirm__icon" aria-hidden="true"><MaterialSymbol name="warning" /></div>
+          <div className="delete-confirm__content">
+            <h2 id="unsavedBuildTitle">{t('config.unsavedBuildTitle')}</h2>
+            <p id="unsavedBuildDescription">
+              {pendingSavedBuild
+                ? t('config.unsavedBuildOpen', { name: pendingSavedBuild.name })
+                : t('config.unsavedBuildNew')}
+            </p>
+          </div>
+          <div className="delete-confirm__actions">
+            <button className="btn btn--ghost" type="button" onClick={() => setPendingSavedBuildId(null)} autoFocus>
+              {t('common.cancel')}
+            </button>
+            <button className="btn btn--danger" type="button" onClick={() => openSavedBuildOption(pendingSavedBuildId)}>
+              {t('config.unsavedBuildReplace')}
+            </button>
+          </div>
+        </ModalDialog>
       )}
 
       {/* Оверлей бокового слайдера (Drawer) для замены деталей */}

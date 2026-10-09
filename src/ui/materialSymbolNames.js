@@ -1,5 +1,5 @@
 // Icons bundled in the self-hosted Material Symbols Outlined subset
-// (FILL 0, wght 200, GRAD -25, opsz 24). After adding a name here, run
+// (FILL 0–1, wght 200, GRAD -25, opsz 24). After adding a name here, run
 // `npm run icons` to download the matching font subset.
 export const MATERIAL_SYMBOL_NAMES = Object.freeze([
   'account_tree',
@@ -25,6 +25,7 @@ export const MATERIAL_SYMBOL_NAMES = Object.freeze([
   'search',
   'settings',
   'sort',
+  'star',
   'swap_horiz',
   'unfold_more',
   'view_column',

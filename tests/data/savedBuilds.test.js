@@ -10,6 +10,7 @@ import {
   getSavedBuild,
   importSavedBuildSnapshots,
   readSavedBuilds,
+  readSavedBuildsSource,
   restoreBuildParts,
   saveBuildSnapshot,
 } from '../../src/data/savedBuilds.js';
@@ -36,6 +37,21 @@ function createSnapshot(overrides = {}) {
     ...overrides,
   };
 }
+
+test('the stored source changes with each save and parses to the same builds', () => {
+  const storage = createStorage();
+  assert.equal(readSavedBuildsSource(storage), null);
+
+  saveBuildSnapshot(createSnapshot(), storage, { id: 'build-1', now: '2026-07-11T10:00:00.000Z' });
+  const firstSource = readSavedBuildsSource(storage);
+  saveBuildSnapshot(createSnapshot({ name: 'Second' }), storage, { id: 'build-2', now: '2026-07-11T11:00:00.000Z' });
+  const secondSource = readSavedBuildsSource(storage);
+
+  assert.notEqual(firstSource, secondSource);
+  assert.deepEqual(readSavedBuilds({ getItem: () => secondSource }), readSavedBuilds(storage));
+  assert.equal(readSavedBuildsSource({ getItem: () => { throw new Error('blocked'); } }), null);
+  assert.equal(readSavedBuildsSource(null), null);
+});
 
 test('saved builds can be created, updated, read, and deleted', () => {
   const storage = createStorage();
