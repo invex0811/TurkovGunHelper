@@ -19,6 +19,7 @@ export const MATERIAL_SYMBOL_NAMES = Object.freeze([
   'info',
   'inventory_2',
   'layers',
+  'link',
   'my_location',
   'open_in_new',
   'refresh',

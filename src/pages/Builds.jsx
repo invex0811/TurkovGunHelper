@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import {
   MAX_COMPARE_BUILDS,
@@ -7,7 +7,15 @@ import {
   readSavedBuilds,
 } from '../data/savedBuilds.js';
 import { loadItemsCatalog } from '../data/tarkovApi/index.js';
-import { downloadAllBuilds, downloadBuildFile } from '../features/buildTransfer/index.js';
+import {
+  BUILD_SHARE_PARAM,
+  copyTextToClipboard,
+  createBuildShareUrl,
+  decodeBuildShareParam,
+  downloadAllBuilds,
+  downloadBuildFile,
+  encodeBuildShareParam,
+} from '../features/buildTransfer/index.js';
 import BuildImportModal from '../ui/BuildImportModal.jsx';
 import ModalDialog from '../ui/ModalDialog.jsx';
 import { useI18n } from '../i18n/useI18n.js';
@@ -48,6 +56,9 @@ function Builds() {
   const [isComparisonOpen, setIsComparisonOpen] = useState(false);
   const [buildPendingDeletion, setBuildPendingDeletion] = useState(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const shareParam = searchParams.get(BUILD_SHARE_PARAM);
+  const [sharedImport, setSharedImport] = useState(null);
   const comparisonTriggerRef = useRef(null);
   const deleteTriggerRef = useRef(null);
   const importTriggerRef = useRef(null);
@@ -61,6 +72,22 @@ function Builds() {
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
+
+  useEffect(() => {
+    if (!shareParam) return undefined;
+    let isCurrent = true;
+    decodeBuildShareParam(shareParam).then(
+      parsed => {
+        if (isCurrent) setSharedImport({ param: shareParam, builds: parsed.builds, isInvalid: false });
+      },
+      () => {
+        if (isCurrent) setSharedImport({ param: shareParam, builds: null, isInvalid: true });
+      },
+    );
+    return () => {
+      isCurrent = false;
+    };
+  }, [shareParam]);
 
   useEffect(() => {
     const gameModes = [...new Set(builds.map(getBuildGameMode))];
@@ -164,6 +191,35 @@ function Builds() {
     } catch {
       setNotice(t('builds.exportError'));
     }
+  };
+
+  const handleShare = async (event, build) => {
+    event.stopPropagation();
+    setNotice(t('builds.preparingShare', { name: build.name }));
+    // The copy starts inside the click so Safari keeps the user gesture while
+    // the catalog loads and the link is encoded.
+    const shareUrl = (async () => {
+      const gameMode = getBuildGameMode(build);
+      const catalog = await loadItemsCatalog(gameMode, {
+        priceMode: gameMode === 'pve' ? 'pve' : 'pvp',
+        language,
+      });
+      return createBuildShareUrl(await encodeBuildShareParam(build, { catalog }));
+    })();
+    try {
+      await copyTextToClipboard(shareUrl);
+      setNotice(t('builds.shareCopied', { name: build.name }));
+    } catch {
+      setNotice(t('builds.shareError'));
+    }
+  };
+
+  const closeSharedImport = () => {
+    setSharedImport(null);
+    setSearchParams(params => {
+      params.delete(BUILD_SHARE_PARAM);
+      return params;
+    }, { replace: true });
   };
 
   const handleExportAll = async () => {
@@ -276,6 +332,7 @@ function Builds() {
                 <div className="build-card__footer">
                   <span>{formatSavedDate(build.updatedAt, language)}</span>
                   <div className="build-card__actions">
+                    <button type="button" onClick={event => handleShare(event, build)}>{t('builds.share')}</button>
                     <button type="button" onClick={event => handleExport(event, build)}>{t('builds.export')}</button>
                     <button className="is-danger" type="button" onClick={event => handleDelete(event, build)}>{t('builds.delete')}</button>
                   </div>
@@ -406,6 +463,21 @@ function Builds() {
           language={language}
           onClose={() => setIsImportOpen(false)}
           returnFocusRef={importTriggerRef}
+          onImported={nextBuilds => {
+            setBuilds(nextBuilds);
+            setSelectedIds([]);
+          }}
+        />
+      )}
+
+      {sharedImport && sharedImport.param === shareParam && (
+        <BuildImportModal
+          key={sharedImport.param}
+          existingBuilds={builds}
+          language={language}
+          onClose={closeSharedImport}
+          sharedBuilds={sharedImport.builds}
+          sharedError={sharedImport.isInvalid ? t('builds.shareInvalid') : ''}
           onImported={nextBuilds => {
             setBuilds(nextBuilds);
             setSelectedIds([]);

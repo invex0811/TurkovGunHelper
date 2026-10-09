@@ -1043,3 +1043,42 @@ test('exports, deletes, imports, and opens a saved build', async ({ page }) => {
   await openSavedBuild(page, 'Portable build');
   await expect(page.locator('.part-card').filter({ hasText: 'Starter Grip' })).toBeVisible();
 });
+
+test('shares a build by link and imports it from the link', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await createBuild(page);
+  await page.getByRole('button', { name: 'Copy link', exact: true }).click();
+  await expect(page.getByText('Link copied', { exact: true })).toBeVisible();
+  const configuratorLink = await page.evaluate(() => navigator.clipboard.readText());
+  expect(configuratorLink).toMatch(/#\/builds\?share=1\.[A-Za-z0-9_-]+$/);
+
+  await saveBuild(page, 'Linked build');
+  await page.getByRole('link', { name: 'Builds', exact: true }).click();
+  const card = page.locator('article[role="link"]').filter({ hasText: 'Linked build' });
+  await card.getByRole('button', { name: 'Link', exact: true }).click();
+  await expect(page.getByText('Link to "Linked build" copied.', { exact: true })).toBeVisible();
+  const shareLink = await page.evaluate(() => navigator.clipboard.readText());
+
+  await card.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete build', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'No saved builds yet', exact: true })).toBeVisible();
+
+  await page.goto(shareLink);
+  const sharedDialog = page.getByRole('dialog', { name: 'Shared build', exact: true });
+  await expect(sharedDialog.getByText('Ready to import', { exact: true })).toBeVisible();
+  await sharedDialog.getByRole('button', { name: 'Import 1', exact: true }).click();
+  await sharedDialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(page).toHaveURL(/#\/builds$/);
+
+  await openSavedBuild(page, 'Linked build');
+  await expect(page.locator('.part-card').filter({ hasText: 'Starter Grip' })).toBeVisible();
+});
+
+test('reports a damaged build link', async ({ page }) => {
+  await page.goto('/#/builds?share=1.damaged');
+  const sharedDialog = page.getByRole('dialog', { name: 'Shared build', exact: true });
+  await expect(sharedDialog.getByText('This build link is damaged or out of date.', { exact: true })).toBeVisible();
+  await sharedDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(sharedDialog).toBeHidden();
+  await expect(page).toHaveURL(/#\/builds$/);
+});

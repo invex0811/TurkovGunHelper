@@ -1154,6 +1154,7 @@ function Configurator() {
     saveFeedback,
     saveName,
     saveBuild: handleSaveBuild,
+    shareBuild: handleShareBuild,
     setActiveSavedBuildId,
     setSaveFeedback,
     setSaveName,
@@ -2463,6 +2464,7 @@ function Configurator() {
           marketPrice={toFiniteStatNumber(buildCostSummary?.marketTotal)}
           moduleCount={moduleCount}
           onSave={handleSaveBuild}
+          onShare={handleShareBuild}
           onSelectSavedBuild={handleSelectSavedBuild}
           priceSourceLabel={`${t(`config.price.${priceMode}Short`)} · ${priceDiagnostics.summaryStatus}`}
           onSaveNameChange={value => {

@@ -32,6 +32,7 @@ export default function WeaponSummary({
   moduleCount,
   onSave,
   onSaveNameChange,
+  onShare,
   onSelectSavedBuild,
   priceSourceLabel,
   remainingPrice,
@@ -140,15 +141,19 @@ export default function WeaponSummary({
               <MaterialSymbol name="bookmark" className="btn__icon" />
               {activeSavedBuildId ? t('config.update') : t('config.save')}
             </button>
+            <button className="btn btn--ghost" type="button" onClick={onShare}>
+              <MaterialSymbol name="link" className="btn__icon" />
+              {t('config.share')}
+            </button>
           </div>
         )}
 
         {saveFeedback && (
           <InlineMessage
             type={saveFeedback.type}
-            title={saveFeedback.type === 'error'
+            title={saveFeedback.title || (saveFeedback.type === 'error'
               ? t('config.saveFailedTitle')
-              : t('config.savedLocalTitle')}
+              : t('config.savedLocalTitle'))}
           >
             {saveFeedback.message}
           </InlineMessage>

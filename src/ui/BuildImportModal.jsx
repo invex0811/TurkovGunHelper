@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { importSavedBuildSnapshots } from '../data/savedBuilds.js';
 import { loadItemsCatalog } from '../data/tarkovApi/index.js';
@@ -84,11 +84,15 @@ function BuildImportModal({
   onClose,
   onImported,
   returnFocusRef,
+  sharedBuilds = null,
+  sharedError = '',
 }) {
   const { t } = useI18n();
-  const [phase, setPhase] = useState('select');
+  const isShared = Boolean(sharedBuilds?.length || sharedError);
+  const [phase, setPhase] = useState(() => (sharedBuilds?.length ? 'loading' : 'select'));
   const [results, setResults] = useState([]);
   const [fileErrors, setFileErrors] = useState([]);
+  const visibleErrors = sharedError ? [sharedError, ...fileErrors] : fileErrors;
   const [summary, setSummary] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const importRequestIdRef = useRef(0);
@@ -129,6 +133,40 @@ function BuildImportModal({
     if (status === 'duplicate') return t('page.import.statusDuplicate');
     return t('page.import.statusError');
   };
+
+  const preparePreview = useCallback(async parsedBuilds => {
+    const modes = [...new Set(parsedBuilds.map(build => build.gameMode))];
+    const catalogEntries = await Promise.all(modes.map(async gameMode => [
+      gameMode,
+      await loadItemsCatalog(gameMode, { priceMode: gameMode === 'pve' ? 'pve' : 'pvp', language }),
+    ]));
+    return prepareImportedBuilds({
+      builds: parsedBuilds,
+      catalogs: new Map(catalogEntries),
+      existingBuilds,
+    }).map((result, index) => ({ ...result, key: `${index}:${result.fingerprint}` }));
+  }, [existingBuilds, language]);
+
+  // A shared link arrives already parsed; rebuild its preview whenever the
+  // language changes so item names follow the selected catalog language.
+  useEffect(() => {
+    if (!sharedBuilds?.length || !['loading', 'ready'].includes(phaseRef.current)) return undefined;
+    const requestId = ++importRequestIdRef.current;
+    const isCurrentRequest = () => importRequestIdRef.current === requestId;
+    preparePreview(sharedBuilds).then(
+      prepared => {
+        if (!isCurrentRequest()) return;
+        setResults(prepared);
+        setPhase('ready');
+      },
+      () => {
+        if (!isCurrentRequest()) return;
+        setFileErrors([t('error.load')]);
+        setPhase('select');
+      },
+    );
+    return undefined;
+  }, [preparePreview, sharedBuilds, t]);
 
   const readFiles = async selectedFiles => {
     const requestId = ++importRequestIdRef.current;
@@ -176,16 +214,7 @@ function BuildImportModal({
 
     setPhase('loading');
     try {
-      const modes = [...new Set(parsedBuilds.map(build => build.gameMode))];
-      const catalogEntries = await Promise.all(modes.map(async gameMode => [
-        gameMode,
-        await loadItemsCatalog(gameMode, { priceMode: gameMode === 'pve' ? 'pve' : 'pvp', language }),
-      ]));
-      const prepared = prepareImportedBuilds({
-        builds: parsedBuilds,
-        catalogs: new Map(catalogEntries),
-        existingBuilds,
-      }).map((result, index) => ({ ...result, key: `${index}:${result.fingerprint}` }));
+      const prepared = await preparePreview(parsedBuilds);
       if (!isCurrentRequest()) return;
       setResults(prepared);
       setPhase('ready');
@@ -231,14 +260,14 @@ function BuildImportModal({
     >
         <header className="build-import-modal__head">
           <div>
-            <span className="builds-hero__eyebrow">{t('import.eyebrow')}</span>
-            <h2 id="buildImportTitle">{t('import.title')}</h2>
-            <p id="buildImportDescription">{t('import.description')}</p>
+            <span className="builds-hero__eyebrow">{isShared ? t('import.sharedEyebrow') : t('import.eyebrow')}</span>
+            <h2 id="buildImportTitle">{isShared ? t('import.sharedTitle') : t('import.title')}</h2>
+            <p id="buildImportDescription">{isShared ? t('import.sharedDescription') : t('import.description')}</p>
           </div>
           <button className="btn btn--ghost" type="button" onClick={onClose} disabled={phase === 'importing'}>{t('common.close')}</button>
         </header>
 
-        {phase !== 'success' && (
+        {phase !== 'success' && !isShared && (
           <div
             className={`build-import-dropzone${isDragging ? ' is-dragging' : ''}`}
             onDragEnter={event => { event.preventDefault(); setIsDragging(true); }}
@@ -273,10 +302,10 @@ function BuildImportModal({
           </div>
         )}
 
-        {fileErrors.length > 0 && (
+        {visibleErrors.length > 0 && (
           <div className="build-import-errors" role="alert" aria-live="assertive">
-            <strong>{t('import.errors')}</strong>
-            <ul>{fileErrors.map((error, index) => <li key={`${index}:${error}`}>{error}</li>)}</ul>
+            <strong>{isShared ? t('import.sharedErrors') : t('import.errors')}</strong>
+            <ul>{visibleErrors.map((error, index) => <li key={`${index}:${error}`}>{error}</li>)}</ul>
           </div>
         )}
 
