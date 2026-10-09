@@ -2539,6 +2539,7 @@ function Configurator() {
             priceInfos={canShowBuildDetails ? priceDiagnostics.infoMessages : []}
             hasFallbackPrice={priceDiagnostics.fallbackEntries?.length > 0}
             priceModeNotice={priceModeNotice}
+            dismissScope={buildResult}
             t={t}
           />
 

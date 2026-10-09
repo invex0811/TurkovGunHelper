@@ -3053,6 +3053,10 @@ button.weapon-diagram-node:focus-visible,
   line-height: 1.45;
 }
 
+.inline-message--dismissible {
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+}
+
 .inline-message--error {
   --inline-message-accent: var(--color-accent-red);
 }
@@ -3114,6 +3118,30 @@ button.weapon-diagram-node:focus-visible,
 .inline-message__list li {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.inline-message__dismiss {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin: -6px -8px -6px 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.inline-message__dismiss .material-symbol {
+  font-size: 18px;
+}
+
+.inline-message__dismiss:hover {
+  background: color-mix(in srgb, var(--inline-message-accent) 14%, transparent);
+  color: var(--text-primary);
 }
 
 .inline-message__actions {
@@ -6346,6 +6374,11 @@ button.weapon-diagram-node:focus-visible,
 
 .parts-panel .build-warnings {
   margin: 12px 20px 0;
+}
+
+/* With no modules below (a failed build), the messages end the panel. */
+.parts-panel .build-warnings:last-child {
+  margin-bottom: 20px;
 }
 
 .parts-group {

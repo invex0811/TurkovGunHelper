@@ -82,6 +82,8 @@ export function InlineMessage({
   children,
   details = [],
   action = null,
+  onDismiss = null,
+  dismissLabel,
 }) {
   const titleId = useId();
   const { role, ariaLive } = getInlineMessageA11y(type);
@@ -89,7 +91,7 @@ export function InlineMessage({
 
   return (
     <div
-      className={`inline-message inline-message--${type}`}
+      className={`inline-message inline-message--${type}${onDismiss ? ' inline-message--dismissible' : ''}`}
       role={role}
       aria-live={ariaLive}
       aria-labelledby={title ? titleId : undefined}
@@ -116,6 +118,17 @@ export function InlineMessage({
           </div>
         )}
       </div>
+      {onDismiss && (
+        <button
+          className="inline-message__dismiss"
+          type="button"
+          aria-label={dismissLabel}
+          title={dismissLabel}
+          onClick={onDismiss}
+        >
+          <MaterialSymbol name="close" />
+        </button>
+      )}
     </div>
   );
 }
