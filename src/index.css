@@ -4995,6 +4995,34 @@ button.weapon-diagram-node:focus-visible,
   color: var(--btn-primary-text, var(--bg-darker));
 }
 
+/* The type chips form their own labelled group inside the shared row. */
+.chip-row__group {
+  display: contents;
+}
+
+.chip--favorites {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chip--favorites .material-symbol {
+  font-size: 18px;
+}
+
+.chip__count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+/* A filled star marks a favorite weapon. */
+.chip--favorites[aria-pressed="true"] .material-symbol::before,
+.favorite-btn.is-active .material-symbol::before,
+.weapon-card__favorite.is-active .material-symbol::before {
+  font-variation-settings: "FILL" 1;
+}
+
 .text-btn {
   display: inline-flex;
   align-items: center;
@@ -5100,6 +5128,53 @@ button.weapon-diagram-node:focus-visible,
   }
 }
 
+.weapon-card-shell {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.weapon-card-shell > .weapon-card {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The plate-colored star stands in for the plate's top-right reticle corner. */
+.weapon-card__favorite {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-plate);
+  color: var(--text-disabled);
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.weapon-card__favorite .material-symbol {
+  font-size: 20px;
+}
+
+.weapon-card__favorite:hover,
+.weapon-card__favorite.is-active {
+  color: var(--color-gold);
+}
+
+.weapon-card__favorite:hover {
+  background: color-mix(in srgb, var(--color-gold) 12%, var(--surface-plate));
+}
+
+.weapon-card__favorite:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+}
+
 .weapon-card {
   display: flex;
   flex-direction: column;
@@ -5134,7 +5209,7 @@ button.weapon-diagram-node:focus-visible,
   position: absolute;
   top: 7px;
   left: 28px;
-  right: 28px;
+  right: 44px;
   overflow: hidden;
   color: var(--text-disabled);
   font-family: var(--font-mono);
@@ -6652,6 +6727,25 @@ button.weapon-diagram-node:focus-visible,
   .config-hero__actions > * {
     flex: 1 1 0;
     justify-content: center;
+  }
+
+  /* Three actions do not fit a phone row: the favorite keeps only its star. */
+  .config-hero__actions > .favorite-btn {
+    flex: 0 0 44px;
+    padding: 0;
+  }
+
+  .favorite-btn .btn__icon {
+    margin-right: 0;
+  }
+
+  .favorite-btn__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   /* On phones the generate button sits above the bottom tab bar. */

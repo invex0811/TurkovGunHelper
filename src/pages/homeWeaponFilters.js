@@ -61,6 +61,7 @@ export const HOME_SEARCH_PARAM = 'q';
 export const HOME_SORT_PARAM = 'sort';
 export const HOME_CALIBER_PARAM = 'caliber';
 export const HOME_TRADER_PARAM = 'trader';
+export const HOME_FAVORITES_PARAM = 'favorites';
 
 export function getHomeTypeFilterPath(type) {
   return type ? `/?${new URLSearchParams({ [HOME_TYPE_PARAM]: type })}` : '/';
@@ -102,6 +103,8 @@ export function filterHomeWeapons(weapons, {
   type = 'All',
   caliber = 'All',
   trader = 'All',
+  favoritesOnly = false,
+  isFavorite = () => false,
 } = {}) {
   const normalizedSearch = search.trim().toLowerCase();
 
@@ -119,8 +122,9 @@ export function filterHomeWeapons(weapons, {
     const matchesType = type === 'All' || weapon.categories?.some(category => category?.name === type);
     const matchesCaliber = caliber === 'All' || weaponCaliber === caliber;
     const matchesTrader = trader === 'All' || getWeaponTraders(weapon).some(item => item.id === trader);
+    const matchesFavorites = !favoritesOnly || isFavorite(weapon.id);
 
-    return matchesSearch && matchesType && matchesCaliber && matchesTrader;
+    return matchesSearch && matchesType && matchesCaliber && matchesTrader && matchesFavorites;
   });
 }
 
@@ -135,7 +139,13 @@ function compareNumbers(left, right, direction) {
 }
 
 // getPrice(weapon) returns the displayed base price, or NaN when unknown.
-export function sortHomeWeapons(weapons, sort = 'name', getPrice = () => Number.NaN) {
+// Favorite weapons come first, each group in the selected order.
+export function sortHomeWeapons(
+  weapons,
+  sort = 'name',
+  getPrice = () => Number.NaN,
+  isFavorite = () => false,
+) {
   const byName = (left, right) => String(left.shortName || left.name || '')
     .localeCompare(String(right.shortName || right.name || ''));
   const compare = {
@@ -152,7 +162,11 @@ export function sortHomeWeapons(weapons, sort = 'name', getPrice = () => Number.
     ),
   }[sort];
 
-  return [...weapons].sort((left, right) => (compare?.(left, right) || 0) || byName(left, right));
+  const byFavorite = (left, right) => Number(isFavorite(right.id)) - Number(isFavorite(left.id));
+
+  return [...weapons].sort((left, right) => byFavorite(left, right)
+    || (compare?.(left, right) || 0)
+    || byName(left, right));
 }
 
 export function formatCaliberLabel(caliber) {

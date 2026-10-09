@@ -6,11 +6,15 @@ import {
   getWeaponTypeLabel,
 } from '../../../pages/homeWeaponFilters.js';
 import { MaterialSymbol } from '../../../ui/MaterialSymbol.js';
+import { useFavoriteWeapons } from '../../favorites/useFavoriteWeapons.js';
 import { TarkovDevItemLink } from '../../../ui/TarkovDevItemLink.js';
 
 // Page header above the three columns: breadcrumbs, the weapon name, its
-// tags, and the build diagram and tarkov.dev actions.
+// tags, and the favorite, build diagram and tarkov.dev actions.
 export default function ConfiguratorHero({ onOpenDiagram, t, weapon }) {
+  const { isFavoriteWeapon, toggleFavoriteWeapon } = useFavoriteWeapons();
+  const isFavorite = isFavoriteWeapon(weapon.id);
+  const weaponName = weapon.name || weapon.shortName;
   const type = getWeaponTypeLabel(weapon);
   const caliber = weapon.properties?.caliber;
   const fireModes = formatWeaponFireModes(weapon);
@@ -38,6 +42,16 @@ export default function ConfiguratorHero({ onOpenDiagram, t, weapon }) {
         </ul>
       </div>
       <div className="config-hero__actions">
+        <button
+          className={`btn btn--ghost favorite-btn${isFavorite ? ' is-active' : ''}`}
+          type="button"
+          aria-pressed={isFavorite}
+          title={t(isFavorite ? 'favorite.remove' : 'favorite.add', { weapon: weaponName })}
+          onClick={() => toggleFavoriteWeapon(weapon.id)}
+        >
+          <MaterialSymbol name="star" className="btn__icon btn__icon--gold" />
+          <span className="favorite-btn__label">{t('favorite.button')}</span>
+        </button>
         <button className="btn btn--ghost" type="button" onClick={onOpenDiagram}>
           <MaterialSymbol name="account_tree" className="btn__icon btn__icon--gold" />
           {t('config.diagram')}

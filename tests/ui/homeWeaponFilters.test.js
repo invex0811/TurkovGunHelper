@@ -126,6 +126,30 @@ test('sorts by name, price, ergonomics and recoil with missing values last', () 
   assert.deepEqual(names(sortHomeWeapons(list, 'recoil', getPrice)), ['B', 'A', 'C']);
 });
 
+test('favorite weapons come first, each group in the selected order', () => {
+  const list = [
+    { id: 'b', shortName: 'B', price: 300 },
+    { id: 'a', shortName: 'A', price: 200 },
+    { id: 'd', shortName: 'D', price: 100 },
+    { id: 'c', shortName: 'C', price: 400 },
+  ];
+  const names = items => items.map(item => item.shortName);
+  const getPrice = item => item.price;
+  const isFavorite = id => id === 'c' || id === 'd';
+
+  assert.deepEqual(names(sortHomeWeapons(list, 'name', getPrice, isFavorite)), ['C', 'D', 'A', 'B']);
+  assert.deepEqual(names(sortHomeWeapons(list, 'price', getPrice, isFavorite)), ['D', 'C', 'A', 'B']);
+});
+
+test('the favorites filter keeps only favorite weapons', () => {
+  const list = weapons.map((weapon, index) => ({ ...weapon, id: `weapon-${index}` }));
+  const isFavorite = id => id === 'weapon-1';
+
+  assert.deepEqual(filterHomeWeapons(list, { favoritesOnly: true, isFavorite }), [list[1]]);
+  assert.deepEqual(filterHomeWeapons(list, { favoritesOnly: false, isFavorite }), list);
+  assert.deepEqual(filterHomeWeapons(list, { favoritesOnly: true }), []);
+});
+
 test('builds a catalog link narrowed to one weapon type', () => {
   assert.equal(getHomeTypeFilterPath('Assault rifle'), '/?type=Assault+rifle');
   assert.equal(

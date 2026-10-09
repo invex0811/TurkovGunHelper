@@ -6,7 +6,8 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MATERIAL_SYMBOL_NAMES } from '../src/ui/materialSymbolNames.js';
 
-const AXES = 'opsz,wght,FILL,GRAD@24,200,0,-25';
+// FILL is a range so an icon can switch to its filled form (a favorite star).
+const AXES = 'opsz,wght,FILL,GRAD@24,200,0..1,-25';
 const OUTPUT = fileURLToPath(new URL('../src/assets/fonts/material-symbols-outlined.woff2', import.meta.url));
 // Google Fonts serves woff2 only to browsers it recognizes.
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';

@@ -8,6 +8,7 @@ import {
   getHomeWeaponFilterOptions,
   getWeaponTypeLabel,
   HOME_CALIBER_PARAM,
+  HOME_FAVORITES_PARAM,
   HOME_SEARCH_PARAM,
   HOME_SORT_PARAM,
   HOME_TRADER_PARAM,
@@ -23,6 +24,7 @@ import { MaterialSymbol } from '../ui/MaterialSymbol.js';
 import { useCatalogStatus } from '../features/dataStatus/useCatalogStatus.js';
 import { usePriceMode } from '../features/priceMode/usePriceMode.js';
 import { useTraderLevels } from '../features/traderLevels/useTraderLevels.js';
+import { useFavoriteWeapons } from '../features/favorites/useFavoriteWeapons.js';
 
 // Marks the catalog's own URL updates, so they are told apart from a link or
 // history step that brings a different search.
@@ -47,56 +49,71 @@ function WeaponStat({ abbreviation, label, value }) {
   );
 }
 
-function WeaponCard({ language, price, t, weapon }) {
+function WeaponCard({ isFavorite, language, onToggleFavorite, price, t, weapon }) {
   const type = getWeaponTypeLabel(weapon);
   const caliber = weapon.properties?.caliber;
   const ergonomics = weapon.properties?.ergonomics;
   const recoil = weapon.properties?.recoilVertical;
   const image = weapon.properties?.defaultPreset?.image512pxLink || weapon.image512pxLink;
+  const weaponName = weapon.name || weapon.shortName;
 
+  // The star sits beside the link, not inside it: a button cannot be nested
+  // in a link.
   return (
-    <Link to={`/configure/${weapon.id}`} className="weapon-card">
-      <div className="weapon-card__plate reticle">
-        {type && <span className="weapon-card__type">{type}</span>}
-        <AsyncImage
-          key={image || `${weapon.id}-missing-image`}
-          src={image}
-          alt=""
-          unavailableLabel={t('image.unavailable')}
-          unavailableStyle={{ fontSize: '0.75rem' }}
-          shimmerBorderRadius="var(--radius-sm)"
-          className="weapon-card__image"
-          containerStyle={{ width: '100%', height: '100%' }}
-        />
-      </div>
-      <div className="weapon-card__body">
-        <div className="weapon-card__title">
-          <h3>{weapon.shortName}</h3>
-          {caliber && <span className="tag tag--gold">{formatCaliberLabel(caliber)}</span>}
+    <div className="weapon-card-shell">
+      <Link to={`/configure/${weapon.id}`} className="weapon-card">
+        <div className="weapon-card__plate reticle">
+          {type && <span className="weapon-card__type">{type}</span>}
+          <AsyncImage
+            key={image || `${weapon.id}-missing-image`}
+            src={image}
+            alt=""
+            unavailableLabel={t('image.unavailable')}
+            unavailableStyle={{ fontSize: '0.75rem' }}
+            shimmerBorderRadius="var(--radius-sm)"
+            className="weapon-card__image"
+            containerStyle={{ width: '100%', height: '100%' }}
+          />
         </div>
-        <p className="weapon-card__name">{weapon.name}</p>
-        <div className="weapon-card__footer">
-          <span className="weapon-card__stats">
-            {Number.isFinite(ergonomics) && (
-              <WeaponStat abbreviation={t('home.card.ergonomicsShort')} label={t('config.stat.ergonomics')} value={ergonomics} />
-            )}
-            {Number.isFinite(recoil) && (
-              <WeaponStat abbreviation={t('home.card.recoilShort')} label={t('config.stat.verticalRecoil')} value={recoil} />
-            )}
-          </span>
-          {Number.isFinite(price) && (
-            <span className="weapon-card__price">
-              <span className="visually-hidden">{t('home.card.basePrice')} </span>
-              {formatRubles(price, language)}
+        <div className="weapon-card__body">
+          <div className="weapon-card__title">
+            <h3>{weapon.shortName}</h3>
+            {caliber && <span className="tag tag--gold">{formatCaliberLabel(caliber)}</span>}
+          </div>
+          <p className="weapon-card__name">{weapon.name}</p>
+          <div className="weapon-card__footer">
+            <span className="weapon-card__stats">
+              {Number.isFinite(ergonomics) && (
+                <WeaponStat abbreviation={t('home.card.ergonomicsShort')} label={t('config.stat.ergonomics')} value={ergonomics} />
+              )}
+              {Number.isFinite(recoil) && (
+                <WeaponStat abbreviation={t('home.card.recoilShort')} label={t('config.stat.verticalRecoil')} value={recoil} />
+              )}
             </span>
-          )}
-          <span className="weapon-card__cta" aria-hidden="true">
-            {t('home.card.build')}
-            <MaterialSymbol name="arrow_forward" />
-          </span>
+            {Number.isFinite(price) && (
+              <span className="weapon-card__price">
+                <span className="visually-hidden">{t('home.card.basePrice')} </span>
+                {formatRubles(price, language)}
+              </span>
+            )}
+            <span className="weapon-card__cta" aria-hidden="true">
+              {t('home.card.build')}
+              <MaterialSymbol name="arrow_forward" />
+            </span>
+          </div>
         </div>
-      </div>
-    </Link>
+      </Link>
+      <button
+        className={`weapon-card__favorite${isFavorite ? ' is-active' : ''}`}
+        type="button"
+        aria-pressed={isFavorite}
+        aria-label={t('favorite.toggle', { weapon: weaponName })}
+        title={t(isFavorite ? 'favorite.remove' : 'favorite.add', { weapon: weaponName })}
+        onClick={() => onToggleFavorite(weapon.id)}
+      >
+        <MaterialSymbol name="star" />
+      </button>
+    </div>
   );
 }
 
@@ -105,6 +122,7 @@ function Home() {
   const { priceMode } = usePriceMode();
   const { traderLevels, strictTraderLevels, includeRefOffers, includeFleaMarket } = useTraderLevels();
   const { refreshVersion } = useCatalogStatus();
+  const { favoriteWeaponIds, isFavoriteWeapon, toggleFavoriteWeapon } = useFavoriteWeapons();
   const [weapons, setWeapons] = useState([]);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -147,6 +165,8 @@ function Home() {
   const requestedCaliber = searchParams.get(HOME_CALIBER_PARAM) || 'All';
   const requestedTrader = searchParams.get(HOME_TRADER_PARAM) || 'All';
   const setSelectedType = useCallback(type => updateParams({ [HOME_TYPE_PARAM]: type }), [updateParams]);
+  const favoritesOnly = searchParams.get(HOME_FAVORITES_PARAM) === '1';
+  const toggleFavoritesOnly = () => updateParams({ [HOME_FAVORITES_PARAM]: favoritesOnly ? '' : '1' });
   const loadedLanguageRef = useRef(null);
   const searchRef = useRef(null);
 
@@ -263,15 +283,32 @@ function Home() {
         type: selectedType,
         caliber: selectedCaliber,
         trader: selectedTrader,
+        favoritesOnly,
+        isFavorite: isFavoriteWeapon,
       }),
       sort,
       weapon => prices.get(weapon.id),
+      isFavoriteWeapon,
     ),
-    [prices, search, selectedCaliber, selectedTrader, selectedType, sort, weapons],
+    [
+      favoritesOnly,
+      isFavoriteWeapon,
+      prices,
+      search,
+      selectedCaliber,
+      selectedTrader,
+      selectedType,
+      sort,
+      weapons,
+    ],
   );
 
   const activeFacetFilterCount = Number(selectedCaliber !== 'All') + Number(selectedTrader !== 'All');
-  const hasActiveFilters = search.trim().length > 0 || selectedType !== 'All' || activeFacetFilterCount > 0;
+  const hasActiveFilters = search.trim().length > 0
+    || selectedType !== 'All'
+    || activeFacetFilterCount > 0
+    || favoritesOnly;
+  const hasNoFavorites = favoritesOnly && favoriteWeaponIds.size === 0;
   const showInitialLoading = loading && weapons.length === 0;
   const showInitialError = error && weapons.length === 0;
 
@@ -282,6 +319,7 @@ function Home() {
       [HOME_TYPE_PARAM]: '',
       [HOME_CALIBER_PARAM]: '',
       [HOME_TRADER_PARAM]: '',
+      [HOME_FAVORITES_PARAM]: '',
     });
   };
 
@@ -326,18 +364,30 @@ function Home() {
       </div>
 
       <div className="catalog__filters">
-        <div className="chip-row" role="group" aria-label={t('filter.weaponType')}>
-          {['All', ...weaponTypes].map(type => (
-            <button
-              key={type}
-              className="chip"
-              type="button"
-              aria-pressed={selectedType === type}
-              onClick={() => setSelectedType(type)}
-            >
-              {type === 'All' ? t('filter.allTypes') : type}
-            </button>
-          ))}
+        <div className="chip-row">
+          <button
+            className="chip chip--favorites"
+            type="button"
+            aria-pressed={favoritesOnly}
+            onClick={toggleFavoritesOnly}
+          >
+            <MaterialSymbol name="star" />
+            {t('home.favorites')}
+            {favoriteWeaponIds.size > 0 && <span className="chip__count">{favoriteWeaponIds.size}</span>}
+          </button>
+          <div className="chip-row__group" role="group" aria-label={t('filter.weaponType')}>
+            {['All', ...weaponTypes].map(type => (
+              <button
+                key={type}
+                className="chip"
+                type="button"
+                aria-pressed={selectedType === type}
+                onClick={() => setSelectedType(type)}
+              >
+                {type === 'All' ? t('filter.allTypes') : type}
+              </button>
+            ))}
+          </div>
         </div>
         <button
           className={`text-btn catalog__filter-trigger${activeFacetFilterCount ? ' is-active' : ''}`}
@@ -393,7 +443,11 @@ function Home() {
 
           {visibleWeapons.length === 0 ? (
             <section className="catalog__message" aria-live="polite">
-              <p>{hasActiveFilters ? t('home.emptyFiltered') : t('home.empty')}</p>
+              <p>
+                {hasNoFavorites
+                  ? t('home.emptyFavorites')
+                  : hasActiveFilters ? t('home.emptyFiltered') : t('home.empty')}
+              </p>
               {hasActiveFilters && (
                 <button className="btn btn--ghost" type="button" onClick={resetFilters}>
                   {t('home.clearFilters')}
@@ -405,7 +459,9 @@ function Home() {
               {visibleWeapons.map(weapon => (
                 <WeaponCard
                   key={weapon.id}
+                  isFavorite={favoriteWeaponIds.has(weapon.id)}
                   language={language}
+                  onToggleFavorite={toggleFavoriteWeapon}
                   price={prices.get(weapon.id)}
                   t={t}
                   weapon={weapon}
