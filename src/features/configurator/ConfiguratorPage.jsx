@@ -6,7 +6,7 @@ import {
   useMemo,
   useRef,
 } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PRICE_CONFIDENCE } from '../../data/price/priceModes.js';
 import {
   isItemUnavailable,
@@ -1052,11 +1052,20 @@ function Configurator() {
   );
   const { weaponId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const requestedSavedBuildId = searchParams.get('build');
+  // A build opened from a share link without saving arrives in the navigation
+  // state. It is read once, so a reload or a later "new build" starts clean.
+  const [sharedBuild, setSharedBuild] = useState(() => {
+    const candidate = location.state?.sharedBuild;
+    return !requestedSavedBuildId && candidate?.weapon?.id === weaponId && Array.isArray(candidate.parts)
+      ? candidate
+      : null;
+  });
   const requestedSavedBuild = useMemo(
-    () => getSavedBuild(requestedSavedBuildId),
-    [requestedSavedBuildId],
+    () => (requestedSavedBuildId ? getSavedBuild(requestedSavedBuildId) : sharedBuild),
+    [requestedSavedBuildId, sharedBuild],
   );
   const [weapon, setWeapon] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1193,6 +1202,11 @@ function Configurator() {
     },
     t,
   });
+
+  useEffect(() => {
+    if (!location.state?.sharedBuild) return;
+    navigate({ pathname: location.pathname, search: location.search }, { replace: true, state: null });
+  }, [location, navigate]);
 
   useLayoutEffect(() => {
     if (requestedSavedBuild?.settings.priceMode
@@ -1372,7 +1386,7 @@ function Configurator() {
             : null,
         ]));
         setRememberedModulesWeaponId(null);
-        setActiveSavedBuildId(requestedSavedBuild.id);
+        setActiveSavedBuildId(requestedSavedBuild.id ?? null);
         setSaveName(requestedSavedBuild.name);
       } else {
         setBuildResult(null);
@@ -1435,7 +1449,16 @@ function Configurator() {
           : null,
       );
       setReplacementError(null);
-      setSaveFeedback(null);
+      if (requestedSavedBuild && requestedSavedBuild === sharedBuild) {
+        setSharedBuild(null);
+        setSaveFeedback({
+          type: 'info',
+          title: t('config.sharedOpenTitle'),
+          message: t('config.sharedOpen'),
+        });
+      } else {
+        setSaveFeedback(null);
+      }
       setLoading(false);
     },
     onError: (error, { isCatalogReload }) => {

@@ -478,6 +478,10 @@ function Builds() {
           onClose={closeSharedImport}
           sharedBuilds={sharedImport.builds}
           sharedError={sharedImport.isInvalid ? t('builds.shareInvalid') : ''}
+          onOpenShared={snapshot => navigate(
+            `/configure/${encodeURIComponent(snapshot.weapon.id)}`,
+            { state: { sharedBuild: snapshot } },
+          )}
           onImported={nextBuilds => {
             setBuilds(nextBuilds);
             setSelectedIds([]);

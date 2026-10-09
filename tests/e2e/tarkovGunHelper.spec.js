@@ -1082,3 +1082,30 @@ test('reports a damaged build link', async ({ page }) => {
   await expect(sharedDialog).toBeHidden();
   await expect(page).toHaveURL(/#\/builds$/);
 });
+
+test('opens a shared build in the configurator without saving it', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await createBuild(page);
+  await saveBuild(page, 'Viewed build');
+  await page.getByRole('button', { name: 'Copy link', exact: true }).click();
+  await expect(page.getByText('Link copied', { exact: true })).toBeVisible();
+  const shareLink = await page.evaluate(() => navigator.clipboard.readText());
+
+  await page.goto(shareLink);
+  const sharedDialog = page.getByRole('dialog', { name: 'Shared build', exact: true });
+  await expect(sharedDialog.getByText('Already exists', { exact: true })).toBeVisible();
+  await expect(sharedDialog.getByRole('combobox')).toHaveValue('open');
+  await sharedDialog.getByRole('button', { name: 'Open in configurator', exact: true }).click();
+
+  await expect(page.getByText('Opened from a link', { exact: true })).toBeVisible();
+  await expect(page.locator('.part-card').filter({ hasText: 'Starter Grip' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save build', exact: true })).toBeVisible();
+  const savedCount = await page.evaluate(() => (
+    JSON.parse(localStorage.getItem('tarkov-gun-helper:saved-builds') || '[]').length
+  ));
+  expect(savedCount).toBe(1);
+
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Generate Build', exact: true })).toBeVisible();
+  await expect(page.locator('.part-card')).toHaveCount(0);
+});

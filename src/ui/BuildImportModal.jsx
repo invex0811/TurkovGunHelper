@@ -74,6 +74,9 @@ function formatImportIssue(issue, t) {
   return t('page.import.issue.details', { message });
 }
 
+// Shared links only: show the build in the configurator without saving it.
+const OPEN_WITHOUT_SAVING = 'open';
+
 function shouldResetImportForLanguageChange(phase) {
   return phase === 'reading' || phase === 'loading' || phase === 'ready';
 }
@@ -86,6 +89,7 @@ function BuildImportModal({
   returnFocusRef,
   sharedBuilds = null,
   sharedError = '',
+  onOpenShared,
 }) {
   const { t } = useI18n();
   const isShared = Boolean(sharedBuilds?.length || sharedError);
@@ -124,9 +128,17 @@ function BuildImportModal({
   }, [language]);
 
   const importableCount = useMemo(
-    () => results.filter(result => result.status !== 'error' && result.strategy !== DUPLICATE_STRATEGIES.SKIP).length,
+    () => results.filter(result => (
+      result.status !== 'error'
+      && result.strategy !== DUPLICATE_STRATEGIES.SKIP
+      && result.strategy !== OPEN_WITHOUT_SAVING
+    )).length,
     [results],
   );
+  const sharedResultToOpen = isShared && results.length === 1 && results[0].status !== 'error'
+    && results[0].strategy === OPEN_WITHOUT_SAVING
+    ? results[0]
+    : null;
 
   const getStatusLabel = status => {
     if (status === 'ready') return t('page.import.statusReady');
@@ -156,7 +168,11 @@ function BuildImportModal({
     preparePreview(sharedBuilds).then(
       prepared => {
         if (!isCurrentRequest()) return;
-        setResults(prepared);
+        // Saving a copy of a build you already have is rarely wanted, so a
+        // duplicate link opens for viewing unless the user picks otherwise.
+        setResults(prepared.map(result => (
+          result.status === 'duplicate' ? { ...result, strategy: OPEN_WITHOUT_SAVING } : result
+        )));
         setPhase('ready');
       },
       () => {
@@ -232,6 +248,10 @@ function BuildImportModal({
   };
 
   const confirmImport = () => {
+    if (sharedResultToOpen) {
+      onOpenShared(sharedResultToOpen.snapshot);
+      return;
+    }
     if (phase === 'importing' || importableCount === 0) return;
     setPhase('importing');
     try {
@@ -334,7 +354,11 @@ function BuildImportModal({
                   <label className="build-import-row__strategy">
                     <span>{result.status === 'duplicate' ? t('import.strategyDuplicate') : t('import.strategyImport')}</span>
                     <select value={result.strategy} onChange={event => updateStrategy(result.key, event.target.value)}>
-                      <option value={DUPLICATE_STRATEGIES.SKIP}>{t('import.skip')}</option>
+                      {isShared ? (
+                        <option value={OPEN_WITHOUT_SAVING}>{t('import.openWithoutSaving')}</option>
+                      ) : (
+                        <option value={DUPLICATE_STRATEGIES.SKIP}>{t('import.skip')}</option>
+                      )}
                       <option value={DUPLICATE_STRATEGIES.COPY}>{result.status === 'duplicate' ? t('page.import.copy') : t('page.import.import')}</option>
                       {result.status === 'duplicate' && result.duplicateOf?.id && (
                         <option value={DUPLICATE_STRATEGIES.REPLACE}>{t('import.replace')}</option>
@@ -360,8 +384,12 @@ function BuildImportModal({
           ) : (
             <>
               <button className="btn btn--ghost" type="button" onClick={onClose} disabled={phase === 'importing'}>{t('common.cancel')}</button>
-              <button className="btn btn--primary" type="button" onClick={confirmImport} disabled={phase !== 'ready' || importableCount === 0}>
-                {phase === 'importing' ? t('import.importing') : t('import.submit', { count: importableCount })}
+              <button className="btn btn--primary" type="button" onClick={confirmImport} disabled={phase !== 'ready' || (importableCount === 0 && !sharedResultToOpen)}>
+                {phase === 'importing'
+                  ? t('import.importing')
+                  : sharedResultToOpen
+                    ? t('import.openInConfigurator')
+                    : t('import.submit', { count: importableCount })}
               </button>
             </>
           )}
