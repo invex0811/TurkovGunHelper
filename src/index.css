@@ -4417,7 +4417,7 @@ button.weapon-diagram-node:focus-visible,
 }
 
 .build-import-row__main div span,
-.build-import-row__strategy span {
+.build-import-row__strategy > label {
   color: var(--muted);
   font-size: .76rem;
 }
@@ -4438,7 +4438,8 @@ button.weapon-diagram-node:focus-visible,
   color: var(--red);
 }
 
-.build-import-row__strategy select {
+.build-import-row__strategy .select-button {
+  flex: 1 1 auto;
   min-width: 210px;
 }
 
@@ -4724,7 +4725,7 @@ button.weapon-diagram-node:focus-visible,
     align-self: flex-end;
   }
 
-  .build-import-row__strategy select {
+  .build-import-row__strategy .select-button {
     width: 100%;
     min-width: 0;
   }

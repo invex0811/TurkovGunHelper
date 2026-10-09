@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { importSavedBuildSnapshots } from '../data/savedBuilds.js';
 import { loadItemsCatalog } from '../data/tarkovApi/index.js';
@@ -10,6 +10,7 @@ import {
 } from '../features/buildTransfer/index.js';
 import { useI18n } from '../i18n/useI18n.js';
 import ModalDialog from './ModalDialog.jsx';
+import SelectButton from './SelectButton.jsx';
 
 function getGameModeLabel(gameMode, t) {
   return gameMode === 'pve' ? t('page.import.modePve') : t('page.import.modePvp');
@@ -92,6 +93,7 @@ function BuildImportModal({
   onOpenShared,
 }) {
   const { t } = useI18n();
+  const strategyIdPrefix = useId();
   const isShared = Boolean(sharedBuilds?.length || sharedError);
   const [phase, setPhase] = useState(() => (sharedBuilds?.length ? 'loading' : 'select'));
   const [results, setResults] = useState([]);
@@ -139,6 +141,19 @@ function BuildImportModal({
     && results[0].strategy === OPEN_WITHOUT_SAVING
     ? results[0]
     : null;
+
+  const getStrategyOptions = result => [
+    isShared
+      ? { value: OPEN_WITHOUT_SAVING, label: t('import.openWithoutSaving') }
+      : { value: DUPLICATE_STRATEGIES.SKIP, label: t('import.skip') },
+    {
+      value: DUPLICATE_STRATEGIES.COPY,
+      label: result.status === 'duplicate' ? t('page.import.copy') : t('page.import.import'),
+    },
+    ...(result.status === 'duplicate' && result.duplicateOf?.id
+      ? [{ value: DUPLICATE_STRATEGIES.REPLACE, label: t('import.replace') }]
+      : []),
+  ];
 
   const getStatusLabel = status => {
     if (status === 'ready') return t('page.import.statusReady');
@@ -331,7 +346,7 @@ function BuildImportModal({
 
         {results.length > 0 && phase !== 'success' && (
           <div className="build-import-preview" aria-label={t('import.preview')}>
-            {results.map(result => (
+            {results.map((result, index) => (
               <article className={`build-import-row is-${result.status}`} key={result.key}>
                 <div className="build-import-row__main">
                   <div>
@@ -351,20 +366,18 @@ function BuildImportModal({
                   </ul>
                 )}
                 {result.status !== 'error' && (
-                  <label className="build-import-row__strategy">
-                    <span>{result.status === 'duplicate' ? t('import.strategyDuplicate') : t('import.strategyImport')}</span>
-                    <select value={result.strategy} onChange={event => updateStrategy(result.key, event.target.value)}>
-                      {isShared ? (
-                        <option value={OPEN_WITHOUT_SAVING}>{t('import.openWithoutSaving')}</option>
-                      ) : (
-                        <option value={DUPLICATE_STRATEGIES.SKIP}>{t('import.skip')}</option>
-                      )}
-                      <option value={DUPLICATE_STRATEGIES.COPY}>{result.status === 'duplicate' ? t('page.import.copy') : t('page.import.import')}</option>
-                      {result.status === 'duplicate' && result.duplicateOf?.id && (
-                        <option value={DUPLICATE_STRATEGIES.REPLACE}>{t('import.replace')}</option>
-                      )}
-                    </select>
-                  </label>
+                  <div className="build-import-row__strategy">
+                    <label id={`${strategyIdPrefix}-${index}-label`} htmlFor={`${strategyIdPrefix}-${index}`}>
+                      {result.status === 'duplicate' ? t('import.strategyDuplicate') : t('import.strategyImport')}
+                    </label>
+                    <SelectButton
+                      id={`${strategyIdPrefix}-${index}`}
+                      labelId={`${strategyIdPrefix}-${index}-label`}
+                      options={getStrategyOptions(result)}
+                      value={result.strategy}
+                      onChange={strategy => updateStrategy(result.key, strategy)}
+                    />
+                  </div>
                 )}
               </article>
             ))}

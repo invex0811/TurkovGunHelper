@@ -1094,7 +1094,7 @@ test('opens a shared build in the configurator without saving it', async ({ page
   await page.goto(shareLink);
   const sharedDialog = page.getByRole('dialog', { name: 'Shared build', exact: true });
   await expect(sharedDialog.getByText('Already exists', { exact: true })).toBeVisible();
-  await expect(sharedDialog.getByRole('combobox')).toHaveValue('open');
+  await expect(sharedDialog.getByRole('button', { name: 'Duplicate action Open without saving', exact: true })).toBeVisible();
   await sharedDialog.getByRole('button', { name: 'Open in configurator', exact: true }).click();
 
   await expect(page.getByText('Opened from a link', { exact: true })).toBeVisible();
