@@ -62,6 +62,9 @@ export const configMessages = {
     'config.warning.requirementsUnmet': 'Not all selected values are reachable. Showing the closest build found.',
     'config.warning.baseWeaponMaxWeight': 'The base weapon already exceeds the selected maximum weight of {maxWeight} kg.',
     'config.warning.buildMaxPriceExceeded': 'The build costs more than the selected budget of {maxPrice}.',
+    'config.warning.defaultPresetModulesUsed': 'Taken from the weapon’s default preset: {modules}. They cannot be bought with the current limits.',
+    'config.defaultPresetModule': 'Default preset',
+    'config.useDefaultPreset': 'Use default modules',
     'config.stat.weight': 'Weight', 'config.stat.ergonomics': 'Ergonomics', 'config.stat.accuracy': 'Accuracy', 'config.stat.sightingRange': 'Sighting range', 'config.stat.metersUnit': 'm', 'config.stat.verticalRecoil': 'Vertical recoil', 'config.stat.horizontalRecoil': 'Horizontal recoil',
   },
   ru: {
@@ -127,6 +130,9 @@ export const configMessages = {
     'config.warning.requirementsUnmet': 'Не все заданные значения достижимы. Показана ближайшая найденная сборка.',
     'config.warning.baseWeaponMaxWeight': 'Базовое оружие уже превышает выбранное ограничение веса {maxWeight} кг.',
     'config.warning.buildMaxPriceExceeded': 'Сборка дороже выбранного бюджета {maxPrice}.',
+    'config.warning.defaultPresetModulesUsed': 'Взято из базовой сборки оружия: {modules}. При текущих лимитах эти модули не купить.',
+    'config.defaultPresetModule': 'Из базовой сборки',
+    'config.useDefaultPreset': 'Использовать базовые модули',
     'config.stat.weight': 'Вес', 'config.stat.ergonomics': 'Эргономика', 'config.stat.accuracy': 'Точность', 'config.stat.sightingRange': 'Прицельная дальность', 'config.stat.metersUnit': 'м', 'config.stat.verticalRecoil': 'В. отдача', 'config.stat.horizontalRecoil': 'Г. отдача',
   },
 };

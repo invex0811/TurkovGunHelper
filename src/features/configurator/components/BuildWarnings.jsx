@@ -4,6 +4,7 @@ import { createConfiguratorNotifications } from '../configuratorNotifications.js
 export default function BuildWarnings({
   generationError,
   calculationError,
+  calculationErrorAction,
   replacementError,
   buildWarnings,
   pricePolicyWarning,
@@ -16,6 +17,7 @@ export default function BuildWarnings({
   const notifications = createConfiguratorNotifications({
     generationError,
     calculationError,
+    calculationErrorAction,
     replacementError,
     buildWarnings,
     pricePolicyWarning,
@@ -33,6 +35,7 @@ export default function BuildWarnings({
           type={notification.type}
           title={notification.title}
           details={notification.details}
+          action={notification.action}
         >
           {notification.message}
         </InlineMessage>

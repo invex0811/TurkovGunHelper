@@ -36,6 +36,10 @@ import {
 } from '../../data/savedBuilds.js';
 import { calculateSightingRange, recalculateBuildStats } from '../../domain/calculator.js';
 import {
+  appendBuildWarning,
+  BUILD_WARNING_CODES,
+} from '../../domain/calculator/buildResultMessages.js';
+import {
   calculateBuildCostSummary,
   createBuildAssemblySnapshot,
   getBuildItemInstances,
@@ -43,6 +47,7 @@ import {
   toggleOwnedItem,
 } from '../../domain/ownedItems.js';
 import { categoryMatches, hasItemCategory } from '../../domain/itemCategories.js';
+import { getDefaultPresetFallbackSteps } from '../../domain/defaultPreset.js';
 import {
   buildWeaponAssemblyTree as buildAssemblyTree,
   rebindBuildPartsToCatalog,
@@ -903,6 +908,20 @@ function getReplacementConstraintErrors({
   return { errors, stats };
 }
 
+// Marks the modules a run took from the default preset; a successful build
+// names them in a warning.
+function markDefaultPresetFallback(result, fallbackItemIds, allMods) {
+  const marked = { ...result, defaultPresetItemIds: fallbackItemIds };
+  if (result.error) return marked;
+
+  const modules = fallbackItemIds.map(itemId => allMods[itemId]?.name || allMods[itemId]?.shortName || itemId);
+  return appendBuildWarning(marked, {
+    code: BUILD_WARNING_CODES.DEFAULT_PRESET_MODULES_USED,
+    params: { modules },
+    fallback: `Taken from the weapon’s default preset: ${modules.join(', ')}. They cannot be bought with the current limits.`,
+  });
+}
+
 function getUnattachedBuildPartError(weapon, buildParts, t) {
   const tree = buildAssemblyTree(weapon, buildParts);
   let attachedPartCount = 0;
@@ -1461,7 +1480,10 @@ function Configurator() {
 
     setReplacementError(null);
     setOwnedItems(current => reconcileOwnedItems(current, weapon, updatedBuild));
-    setBuildResult(stats);
+    // Preset modules that stay installed keep their mark.
+    setBuildResult(buildResult.defaultPresetItemIds
+      ? { ...stats, defaultPresetItemIds: buildResult.defaultPresetItemIds }
+      : stats);
     setActiveReplacePartId(null);
   };
 
@@ -1745,7 +1767,10 @@ function Configurator() {
     priorityWeights: normalizePriorityWeights(priorityWeights),
   }), [buildGoalMode, customProfile, priorityAttributes, prioritySelectionMode, priorityWeights]);
 
-  const handleGenerate = useCallback(async () => {
+  // Fallback modules from the default preset are pinned for this run only:
+  // pinned modules stay in the search even when they cannot be bought. Each
+  // step pins more of the preset and runs only if the previous one failed.
+  const runGeneration = useCallback(async (fallbackSteps = []) => {
     if (!allMods) return;
     const canonicalPriorityWeights = normalizePriorityWeights(priorityWeights);
     const isWeightedPrioritySelection = characteristicMode === 'priorities'
@@ -1769,24 +1794,37 @@ function Configurator() {
     let requestId = null;
 
     try {
-      const calculation = runBuildCalculation({
-        weapon,
-        targetType,
-        customProfile: {
-          ...customProfile,
-          price: maxPrice,
-        },
-        characteristicMode,
-        priorityAttributes,
-        prioritySelectionMode,
-        priorityWeights: canonicalPriorityWeights,
-        allMods,
-        options: calculationOptions,
-      });
-      requestId = calculation.requestId;
-      const result = await calculation.promise;
-      if (requestId !== latestCalculationRequestIdRef.current) return;
-      setBuildResult(result);
+      let result = null;
+      let fallbackItemIds = [];
+      for (const stepItemIds of fallbackSteps.length > 0 ? fallbackSteps : [[]]) {
+        fallbackItemIds = stepItemIds;
+        const calculation = runBuildCalculation({
+          weapon,
+          targetType,
+          customProfile: {
+            ...customProfile,
+            price: maxPrice,
+          },
+          characteristicMode,
+          priorityAttributes,
+          prioritySelectionMode,
+          priorityWeights: canonicalPriorityWeights,
+          allMods,
+          options: fallbackItemIds.length > 0
+            ? {
+              ...calculationOptions,
+              requiredItemIds: [...calculationOptions.requiredItemIds, ...fallbackItemIds],
+            }
+            : calculationOptions,
+        });
+        requestId = calculation.requestId;
+        result = await calculation.promise;
+        if (requestId !== latestCalculationRequestIdRef.current) return;
+        if (!result.error) break;
+      }
+      setBuildResult(fallbackItemIds.length > 0
+        ? markDefaultPresetFallback(result, fallbackItemIds, allMods)
+        : result);
     } catch (err) {
       if (err?.name === 'AbortError') return;
       if (requestId !== null && requestId !== latestCalculationRequestIdRef.current) return;
@@ -1812,8 +1850,20 @@ function Configurator() {
     targetType,
     weapon,
   ]);
+  const handleGenerate = useCallback(() => runGeneration(), [runGeneration]);
 
   const hasCalculationError = buildResult ? Boolean(buildResult.error) : false;
+  // A run that already took preset modules and still failed offers no retry.
+  const defaultPresetFallbackSteps = useMemo(
+    () => (hasCalculationError && !buildResult.defaultPresetItemIds
+      ? getDefaultPresetFallbackSteps(weapon, allMods, calculationOptions)
+      : []),
+    [allMods, buildResult, calculationOptions, hasCalculationError, weapon],
+  );
+  const defaultPresetItemIds = useMemo(
+    () => new Set(buildResult?.defaultPresetItemIds || []),
+    [buildResult],
+  );
   // Pickers and the required-module search only offer modules this weapon can mount.
   const reachableModuleIds = useMemo(
     () => getReachableModuleIds(weapon, allMods),
@@ -2168,6 +2218,7 @@ function Configurator() {
       .map(part => ({
         ...part,
         isOwned: reconciledOwnedItems.some(item => item.key === part.ownershipKey),
+        isFromDefaultPreset: Boolean(part.item && defaultPresetItemIds.has(part.item.id)),
         priceInfo: part.item
           ? getSelectedPriceInfo(
             part.item,
@@ -2392,6 +2443,13 @@ function Configurator() {
             replacementError={replacementError}
             calculationError={buildResult && hasCalculationError
               ? getLocalizedBuildErrors(buildResult, t)
+              : null}
+            calculationErrorAction={defaultPresetFallbackSteps.length > 0
+              ? {
+                label: t('config.useDefaultPreset'),
+                icon: 'inventory_2',
+                onClick: () => runGeneration(defaultPresetFallbackSteps),
+              }
               : null}
             buildWarnings={buildResult
               && !hasCalculationError

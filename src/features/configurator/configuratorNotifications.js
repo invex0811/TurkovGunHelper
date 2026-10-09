@@ -10,6 +10,7 @@ export const CONFIGURATOR_MESSAGE_TYPES = Object.freeze([
 const BUILD_WARNING_MESSAGE_KEYS = Object.freeze({
   BASE_WEAPON_MAX_WEIGHT: 'config.warning.baseWeaponMaxWeight',
   BUILD_MAX_PRICE_EXCEEDED: 'config.warning.buildMaxPriceExceeded',
+  DEFAULT_PRESET_MODULES_USED: 'config.warning.defaultPresetModulesUsed',
   MAGAZINE_CAPACITY_SUBSTITUTED: 'config.warning.magazineCapacitySubstituted',
   PRICE_ITEMS_UNAVAILABLE: 'config.warning.priceItemsUnavailable',
   REQUIREMENTS_UNMET_CLOSEST_BUILD: 'config.warning.requirementsUnmet',
@@ -207,6 +208,7 @@ export function normalizeConfiguratorNotification(notification, index = 0) {
     title,
     message,
     details,
+    ...(value.action ? { action: value.action } : {}),
   };
 }
 
@@ -238,6 +240,7 @@ export function dedupeConfiguratorNotifications(notifications) {
 export function createConfiguratorNotifications({
   generationError,
   calculationError,
+  calculationErrorAction,
   replacementError,
   buildWarning,
   buildWarnings,
@@ -267,6 +270,7 @@ export function createConfiguratorNotifications({
       // Several reasons read better as a list than as one run-on paragraph.
       message: calculationErrors.length === 1 ? calculationErrors[0] : '',
       details: calculationErrors.length > 1 ? calculationErrors : [],
+      action: calculationErrorAction,
     },
     {
       id: 'replacement-error',

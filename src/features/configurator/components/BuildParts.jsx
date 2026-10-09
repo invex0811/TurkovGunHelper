@@ -91,10 +91,13 @@ function PartRow({
           />
         </div>
         <div className="part-card__body">
-          {(slot || part.isCritical) && (
+          {(slot || part.isCritical || part.isFromDefaultPreset) && (
             <div className="part-card__slotline">
               {slot && <span className="part-card__slot">{slot}</span>}
               {part.isCritical && <CriticalModuleBadge t={t} />}
+              {part.isFromDefaultPreset && (
+                <span className="default-preset-badge">{t('config.defaultPresetModule')}</span>
+              )}
             </div>
           )}
           <h4 title={itemName}>{title}</h4>

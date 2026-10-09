@@ -3116,6 +3116,13 @@ button.weapon-diagram-node:focus-visible,
   overflow-wrap: anywhere;
 }
 
+.inline-message__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .drawer {
   position: fixed;
   inset: 0;
@@ -6508,6 +6515,22 @@ button.weapon-diagram-node:focus-visible,
   border-radius: 3px;
   background: transparent;
   color: var(--color-orange);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.default-preset-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--color-gold) 45%, transparent);
+  border-radius: 3px;
+  color: var(--color-gold);
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 600;

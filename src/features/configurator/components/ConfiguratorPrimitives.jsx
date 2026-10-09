@@ -81,6 +81,7 @@ export function InlineMessage({
   title,
   children,
   details = [],
+  action = null,
 }) {
   const titleId = useId();
   const { role, ariaLive } = getInlineMessageA11y(type);
@@ -106,6 +107,14 @@ export function InlineMessage({
             </ul>
           )}
         </div>
+        {action && (
+          <div className="inline-message__actions">
+            <button className="btn btn--outline" type="button" onClick={action.onClick}>
+              {action.icon && <MaterialSymbol name={action.icon} className="btn__icon" />}
+              {action.label}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
