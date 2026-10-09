@@ -4417,7 +4417,7 @@ button.weapon-diagram-node:focus-visible,
 }
 
 .build-import-row__main div span,
-.build-import-row__strategy span {
+.build-import-row__strategy > label {
   color: var(--muted);
   font-size: .76rem;
 }
@@ -4438,7 +4438,8 @@ button.weapon-diagram-node:focus-visible,
   color: var(--red);
 }
 
-.build-import-row__strategy select {
+.build-import-row__strategy .select-button {
+  flex: 1 1 auto;
   min-width: 210px;
 }
 
@@ -4724,7 +4725,7 @@ button.weapon-diagram-node:focus-visible,
     align-self: flex-end;
   }
 
-  .build-import-row__strategy select {
+  .build-import-row__strategy .select-button {
     width: 100%;
     min-width: 0;
   }
@@ -6231,14 +6232,17 @@ button.weapon-diagram-node:focus-visible,
   opacity: 0.8;
 }
 
+/* The center column is narrow, so the name field takes its own row and the
+   buttons share the row below it. */
 .save-build-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
 .save-build-bar__field {
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 1 100%;
   align-items: center;
   gap: 10px;
   min-width: 0;
@@ -6303,6 +6307,7 @@ button.weapon-diagram-node:focus-visible,
 }
 
 .save-build-bar .btn {
+  flex: 1 0 auto;
   min-height: 44px;
   white-space: nowrap;
 }

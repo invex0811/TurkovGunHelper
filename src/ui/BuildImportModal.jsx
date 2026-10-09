@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { importSavedBuildSnapshots } from '../data/savedBuilds.js';
 import { loadItemsCatalog } from '../data/tarkovApi/index.js';
@@ -10,6 +10,7 @@ import {
 } from '../features/buildTransfer/index.js';
 import { useI18n } from '../i18n/useI18n.js';
 import ModalDialog from './ModalDialog.jsx';
+import SelectButton from './SelectButton.jsx';
 
 function getGameModeLabel(gameMode, t) {
   return gameMode === 'pve' ? t('page.import.modePve') : t('page.import.modePvp');
@@ -74,6 +75,9 @@ function formatImportIssue(issue, t) {
   return t('page.import.issue.details', { message });
 }
 
+// Shared links only: show the build in the configurator without saving it.
+const OPEN_WITHOUT_SAVING = 'open';
+
 function shouldResetImportForLanguageChange(phase) {
   return phase === 'reading' || phase === 'loading' || phase === 'ready';
 }
@@ -84,11 +88,17 @@ function BuildImportModal({
   onClose,
   onImported,
   returnFocusRef,
+  sharedBuilds = null,
+  sharedError = '',
+  onOpenShared,
 }) {
   const { t } = useI18n();
-  const [phase, setPhase] = useState('select');
+  const strategyIdPrefix = useId();
+  const isShared = Boolean(sharedBuilds?.length || sharedError);
+  const [phase, setPhase] = useState(() => (sharedBuilds?.length ? 'loading' : 'select'));
   const [results, setResults] = useState([]);
   const [fileErrors, setFileErrors] = useState([]);
+  const visibleErrors = sharedError ? [sharedError, ...fileErrors] : fileErrors;
   const [summary, setSummary] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const importRequestIdRef = useRef(0);
@@ -120,15 +130,74 @@ function BuildImportModal({
   }, [language]);
 
   const importableCount = useMemo(
-    () => results.filter(result => result.status !== 'error' && result.strategy !== DUPLICATE_STRATEGIES.SKIP).length,
+    () => results.filter(result => (
+      result.status !== 'error'
+      && result.strategy !== DUPLICATE_STRATEGIES.SKIP
+      && result.strategy !== OPEN_WITHOUT_SAVING
+    )).length,
     [results],
   );
+  const sharedResultToOpen = isShared && results.length === 1 && results[0].status !== 'error'
+    && results[0].strategy === OPEN_WITHOUT_SAVING
+    ? results[0]
+    : null;
+
+  const getStrategyOptions = result => [
+    isShared
+      ? { value: OPEN_WITHOUT_SAVING, label: t('import.openWithoutSaving') }
+      : { value: DUPLICATE_STRATEGIES.SKIP, label: t('import.skip') },
+    {
+      value: DUPLICATE_STRATEGIES.COPY,
+      label: result.status === 'duplicate' ? t('page.import.copy') : t('page.import.import'),
+    },
+    ...(result.status === 'duplicate' && result.duplicateOf?.id
+      ? [{ value: DUPLICATE_STRATEGIES.REPLACE, label: t('import.replace') }]
+      : []),
+  ];
 
   const getStatusLabel = status => {
     if (status === 'ready') return t('page.import.statusReady');
     if (status === 'duplicate') return t('page.import.statusDuplicate');
     return t('page.import.statusError');
   };
+
+  const preparePreview = useCallback(async parsedBuilds => {
+    const modes = [...new Set(parsedBuilds.map(build => build.gameMode))];
+    const catalogEntries = await Promise.all(modes.map(async gameMode => [
+      gameMode,
+      await loadItemsCatalog(gameMode, { priceMode: gameMode === 'pve' ? 'pve' : 'pvp', language }),
+    ]));
+    return prepareImportedBuilds({
+      builds: parsedBuilds,
+      catalogs: new Map(catalogEntries),
+      existingBuilds,
+    }).map((result, index) => ({ ...result, key: `${index}:${result.fingerprint}` }));
+  }, [existingBuilds, language]);
+
+  // A shared link arrives already parsed; rebuild its preview whenever the
+  // language changes so item names follow the selected catalog language.
+  useEffect(() => {
+    if (!sharedBuilds?.length || !['loading', 'ready'].includes(phaseRef.current)) return undefined;
+    const requestId = ++importRequestIdRef.current;
+    const isCurrentRequest = () => importRequestIdRef.current === requestId;
+    preparePreview(sharedBuilds).then(
+      prepared => {
+        if (!isCurrentRequest()) return;
+        // Saving a copy of a build you already have is rarely wanted, so a
+        // duplicate link opens for viewing unless the user picks otherwise.
+        setResults(prepared.map(result => (
+          result.status === 'duplicate' ? { ...result, strategy: OPEN_WITHOUT_SAVING } : result
+        )));
+        setPhase('ready');
+      },
+      () => {
+        if (!isCurrentRequest()) return;
+        setFileErrors([t('error.load')]);
+        setPhase('select');
+      },
+    );
+    return undefined;
+  }, [preparePreview, sharedBuilds, t]);
 
   const readFiles = async selectedFiles => {
     const requestId = ++importRequestIdRef.current;
@@ -176,16 +245,7 @@ function BuildImportModal({
 
     setPhase('loading');
     try {
-      const modes = [...new Set(parsedBuilds.map(build => build.gameMode))];
-      const catalogEntries = await Promise.all(modes.map(async gameMode => [
-        gameMode,
-        await loadItemsCatalog(gameMode, { priceMode: gameMode === 'pve' ? 'pve' : 'pvp', language }),
-      ]));
-      const prepared = prepareImportedBuilds({
-        builds: parsedBuilds,
-        catalogs: new Map(catalogEntries),
-        existingBuilds,
-      }).map((result, index) => ({ ...result, key: `${index}:${result.fingerprint}` }));
+      const prepared = await preparePreview(parsedBuilds);
       if (!isCurrentRequest()) return;
       setResults(prepared);
       setPhase('ready');
@@ -203,6 +263,10 @@ function BuildImportModal({
   };
 
   const confirmImport = () => {
+    if (sharedResultToOpen) {
+      onOpenShared(sharedResultToOpen.snapshot);
+      return;
+    }
     if (phase === 'importing' || importableCount === 0) return;
     setPhase('importing');
     try {
@@ -231,14 +295,14 @@ function BuildImportModal({
     >
         <header className="build-import-modal__head">
           <div>
-            <span className="builds-hero__eyebrow">{t('import.eyebrow')}</span>
-            <h2 id="buildImportTitle">{t('import.title')}</h2>
-            <p id="buildImportDescription">{t('import.description')}</p>
+            <span className="builds-hero__eyebrow">{isShared ? t('import.sharedEyebrow') : t('import.eyebrow')}</span>
+            <h2 id="buildImportTitle">{isShared ? t('import.sharedTitle') : t('import.title')}</h2>
+            <p id="buildImportDescription">{isShared ? t('import.sharedDescription') : t('import.description')}</p>
           </div>
           <button className="btn btn--ghost" type="button" onClick={onClose} disabled={phase === 'importing'}>{t('common.close')}</button>
         </header>
 
-        {phase !== 'success' && (
+        {phase !== 'success' && !isShared && (
           <div
             className={`build-import-dropzone${isDragging ? ' is-dragging' : ''}`}
             onDragEnter={event => { event.preventDefault(); setIsDragging(true); }}
@@ -273,16 +337,16 @@ function BuildImportModal({
           </div>
         )}
 
-        {fileErrors.length > 0 && (
+        {visibleErrors.length > 0 && (
           <div className="build-import-errors" role="alert" aria-live="assertive">
-            <strong>{t('import.errors')}</strong>
-            <ul>{fileErrors.map((error, index) => <li key={`${index}:${error}`}>{error}</li>)}</ul>
+            <strong>{isShared ? t('import.sharedErrors') : t('import.errors')}</strong>
+            <ul>{visibleErrors.map((error, index) => <li key={`${index}:${error}`}>{error}</li>)}</ul>
           </div>
         )}
 
         {results.length > 0 && phase !== 'success' && (
           <div className="build-import-preview" aria-label={t('import.preview')}>
-            {results.map(result => (
+            {results.map((result, index) => (
               <article className={`build-import-row is-${result.status}`} key={result.key}>
                 <div className="build-import-row__main">
                   <div>
@@ -302,16 +366,18 @@ function BuildImportModal({
                   </ul>
                 )}
                 {result.status !== 'error' && (
-                  <label className="build-import-row__strategy">
-                    <span>{result.status === 'duplicate' ? t('import.strategyDuplicate') : t('import.strategyImport')}</span>
-                    <select value={result.strategy} onChange={event => updateStrategy(result.key, event.target.value)}>
-                      <option value={DUPLICATE_STRATEGIES.SKIP}>{t('import.skip')}</option>
-                      <option value={DUPLICATE_STRATEGIES.COPY}>{result.status === 'duplicate' ? t('page.import.copy') : t('page.import.import')}</option>
-                      {result.status === 'duplicate' && result.duplicateOf?.id && (
-                        <option value={DUPLICATE_STRATEGIES.REPLACE}>{t('import.replace')}</option>
-                      )}
-                    </select>
-                  </label>
+                  <div className="build-import-row__strategy">
+                    <label id={`${strategyIdPrefix}-${index}-label`} htmlFor={`${strategyIdPrefix}-${index}`}>
+                      {result.status === 'duplicate' ? t('import.strategyDuplicate') : t('import.strategyImport')}
+                    </label>
+                    <SelectButton
+                      id={`${strategyIdPrefix}-${index}`}
+                      labelId={`${strategyIdPrefix}-${index}-label`}
+                      options={getStrategyOptions(result)}
+                      value={result.strategy}
+                      onChange={strategy => updateStrategy(result.key, strategy)}
+                    />
+                  </div>
                 )}
               </article>
             ))}
@@ -331,8 +397,12 @@ function BuildImportModal({
           ) : (
             <>
               <button className="btn btn--ghost" type="button" onClick={onClose} disabled={phase === 'importing'}>{t('common.cancel')}</button>
-              <button className="btn btn--primary" type="button" onClick={confirmImport} disabled={phase !== 'ready' || importableCount === 0}>
-                {phase === 'importing' ? t('import.importing') : t('import.submit', { count: importableCount })}
+              <button className="btn btn--primary" type="button" onClick={confirmImport} disabled={phase !== 'ready' || (importableCount === 0 && !sharedResultToOpen)}>
+                {phase === 'importing'
+                  ? t('import.importing')
+                  : sharedResultToOpen
+                    ? t('import.openInConfigurator')
+                    : t('import.submit', { count: importableCount })}
               </button>
             </>
           )}

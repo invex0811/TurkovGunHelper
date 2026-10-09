@@ -20,3 +20,11 @@ export const DUPLICATE_STRATEGIES = Object.freeze({
   COPY: 'copy',
   REPLACE: 'replace',
 });
+
+export const BUILD_SHARE_PARAM = 'share';
+export const BUILD_SHARE_VERSION = '1';
+
+export const BUILD_SHARE_LIMITS = Object.freeze({
+  maxParamLength: 16_000,
+  maxJsonBytes: 256 * 1024,
+});
