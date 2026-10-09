@@ -6226,6 +6226,33 @@ button.weapon-diagram-node:focus-visible,
   border-color: var(--color-gold);
 }
 
+/* The picker spans the price box; a long build name is cut, not overflowed. */
+.saved-build-picker {
+  display: flex;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.saved-build-picker .select-button__trigger {
+  min-width: 0;
+}
+
+.saved-build-picker .select-button__value {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.saved-build-picker .select-button__value > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* As in the catalog search, the wrapper border is the focus indicator; the
+   attribute selector outranks the global :focus-visible ring on the input. */
+.save-build-bar__field input[type="text"]:focus-visible {
+  outline: none;
+}
+
 .save-build-bar__field span {
   flex: 0 0 auto;
   color: var(--text-disabled);

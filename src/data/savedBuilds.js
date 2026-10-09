@@ -104,6 +104,16 @@ function createUniqueBuildName(name, builds) {
   return `${name} Copy ${suffix}`;
 }
 
+// The stored list as saved: cheap to read on every render and compare, so a
+// view parses the builds again only after they change.
+export function readSavedBuildsSource(storage = getDefaultStorage()) {
+  try {
+    return storage?.getItem(SAVED_BUILDS_STORAGE_KEY) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function readSavedBuilds(storage = getDefaultStorage()) {
   if (!storage) return [];
 

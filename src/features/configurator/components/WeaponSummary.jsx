@@ -1,4 +1,5 @@
 import AsyncImage from '../../../ui/AsyncImage.jsx';
+import SelectButton from '../../../ui/SelectButton.jsx';
 import { MaterialSymbol } from '../../../ui/MaterialSymbol.js';
 import {
   InlineMessage,
@@ -31,10 +32,13 @@ export default function WeaponSummary({
   moduleCount,
   onSave,
   onSaveNameChange,
+  onSelectSavedBuild,
   priceSourceLabel,
   remainingPrice,
   saveFeedback,
   saveName,
+  savedBuildOptions = [],
+  selectedSavedBuildId,
   statMeters,
   t,
   weapon,
@@ -104,6 +108,17 @@ export default function WeaponSummary({
             {ownedShare > 0 && <span className="price-split__owned" style={{ width: `${ownedShare}%` }} />}
             {ownedShare < 100 && <span className="price-split__buy" />}
           </div>
+        )}
+
+        {/* Saved builds of this weapon open right here, before or after a build is made. */}
+        {savedBuildOptions.length > 0 && (
+          <SelectButton
+            className="saved-build-picker"
+            label={t('config.savedBuildPicker')}
+            options={savedBuildOptions}
+            value={selectedSavedBuildId}
+            onChange={onSelectSavedBuild}
+          />
         )}
 
         {canSave && (
