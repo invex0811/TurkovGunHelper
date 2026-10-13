@@ -53,7 +53,7 @@ npx playwright install chromium
 
 Деплой автоматический: каждый push в `main` запускает [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml), который собирает проект и публикует `dist/` через GitHub Pages Actions. Тесты при деплое не повторяются: они проходят в CI на pull request (см. [Тестирование и CI](testing.md#cicd)).
 
-Публичный адрес: <https://invex0811.github.io/TurkovGunHelper/>.
+Публичный адрес: <https://tarkovgunhelper.com/>.
 
 ## Отладка
 
@@ -61,7 +61,7 @@ npx playwright install chromium
 - **Сбросить кэш каталога:** DevTools → Application → IndexedDB → база `tarkov-gun-helper`, хранилище `catalogs`.
 - **Сбросить настройки и билды:** DevTools → Application → Local Storage, ключи `tarkovGunHelper.*` и `tarkov-gun-helper:saved-builds` (полный список — в [Хранение](storage.md#localstorage)).
 - **Предупреждения в консоли** в dev-режиме: недоступность IndexedDB и иконки, которых нет в подмножестве шрифта.
-- **Аналитика** в dev-режиме не отправляется: Umami подключается только на `invex0811.github.io`.
+- **Аналитика** в dev-режиме не отправляется: Umami подключается только на `tarkovgunhelper.com`.
 
 ## Каталог `research/`
 
