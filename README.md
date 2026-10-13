@@ -4,7 +4,7 @@
 
 It helps players quickly find compatible modules for their preferred weapon characteristics, estimate the total build cost, and save completed builds.
 
-[Open Tarkov Gun Helper](https://invex0811.github.io/TurkovGunHelper/)
+[Open Tarkov Gun Helper](https://tarkovgunhelper.com/)
 
 ## Features
 

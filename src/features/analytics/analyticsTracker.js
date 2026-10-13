@@ -5,7 +5,7 @@ export const UMAMI_WEBSITE_ID = '6a2dd6ee-d153-4597-bf9b-6a41d20dcd5f';
 
 // Only the public site is counted, so dev servers, previews and e2e runs
 // do not spend the monthly event limit.
-export const TRACKED_HOSTS = ['invex0811.github.io'];
+export const TRACKED_HOSTS = ['tarkovgunhelper.com', 'www.tarkovgunhelper.com', 'invex0811.github.io'];
 
 export function isTrackedHost(hostname) {
   return TRACKED_HOSTS.includes(hostname);

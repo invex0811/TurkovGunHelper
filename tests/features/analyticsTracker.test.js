@@ -29,6 +29,8 @@ function createFakeWindow(hostname) {
 }
 
 test('counts only the public site', () => {
+  assert.equal(isTrackedHost('tarkovgunhelper.com'), true);
+  assert.equal(isTrackedHost('www.tarkovgunhelper.com'), true);
   assert.equal(isTrackedHost('invex0811.github.io'), true);
   assert.equal(isTrackedHost('localhost'), false);
   assert.equal(isTrackedHost('127.0.0.1'), false);
