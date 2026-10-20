@@ -2722,8 +2722,9 @@ function Configurator({ weaponId }) {
 
                 <div className="drawer__part">
                   <AsyncImage
-                    src={activePart.item.image512pxLink || activePart.item.iconLink || 'https://via.placeholder.com/70'}
+                    src={activePart.item.image512pxLink || activePart.item.iconLink}
                     alt={activePart.item.shortName}
+                    unavailableLabel="—"
                     style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                     containerStyle={{ width: '70px', height: '70px', minWidth: 0, minHeight: 0, padding: '6px', background: '#101310', border: '1px solid rgba(204, 194, 158, 0.1)', borderRadius: '6px', boxSizing: 'border-box' }}
                   />
@@ -2868,9 +2869,9 @@ function Configurator({ weaponId }) {
                                   (getAlternativeSight(alt) && (getAlternativeSight(alt).image512pxLink || getAlternativeSight(alt).iconLink))
                                   || alt.image512pxLink
                                   || alt.iconLink
-                                  || 'https://via.placeholder.com/30'
                                 }
                                 alt=""
+                                unavailableLabel="—"
                                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                                 containerStyle={{ width: '40px', height: '40px', minWidth: 0, minHeight: 0, padding: '4px', marginRight: '0.75rem', background: '#101310', border: '1px solid rgba(204, 194, 158, 0.1)', borderRadius: '6px', boxSizing: 'border-box' }}
                               />

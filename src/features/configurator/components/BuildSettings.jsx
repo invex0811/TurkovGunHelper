@@ -47,8 +47,9 @@ function ConfigSection({ children, className = '', index, title }) {
 function ModuleRow({ view, action, actionLabel, onAction }) {
   const media = (
     <AsyncImage
-      src={view.item.image512pxLink || view.item.iconLink || 'https://via.placeholder.com/48'}
+      src={view.item.image512pxLink || view.item.iconLink}
       alt=""
+      unavailableLabel="—"
       style={{ width: '100%', height: '100%', objectFit: 'contain' }}
       containerStyle={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0 }}
     />
