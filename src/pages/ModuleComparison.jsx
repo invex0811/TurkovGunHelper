@@ -73,7 +73,7 @@ export default function ModuleComparison() {
   const toggleColumn = key => setVisibleColumns(current => { const next = new Set(current || availableMetrics.map(metric => metric.key)); if (next.has(key)) next.delete(key); else next.add(key); return next; });
 
   return <div className="module-comparison-page">
-    <header className="module-comparison-page__head"><div><p className="eyebrow">{t('moduleComparison.eyebrow')}</p><h2>{t('moduleComparison.title')}</h2><p>{t('moduleComparison.description')}</p></div><span className="comparison-count">{t('moduleComparison.selectedCount', { count: selected.length })}</span></header>
+    <header className="module-comparison-page__head"><div><p className="eyebrow">{t('moduleComparison.eyebrow')}</p><h1>{t('moduleComparison.title')}</h1><p>{t('moduleComparison.description')}</p></div><span className="comparison-count">{t('moduleComparison.selectedCount', { count: selected.length })}</span></header>
     {loading ? <p className="comparison-empty">{t('common.loading')}</p> : error ? <p className="comparison-empty" role="alert">{t('error.load')}</p> : <>
       <section className="comparison-controls glass-panel">
         <label>{t('moduleComparison.weaponSearch')}<input className="input-field" type="search" value={weaponSearch} onChange={event => setWeaponSearch(event.target.value)} /></label>

@@ -249,7 +249,7 @@ function Builds() {
       <section className="builds-hero">
         <div>
           <span className="builds-hero__eyebrow">{t('builds.localArmory')}</span>
-          <h2>{t('builds.saved')}</h2>
+          <h1>{t('builds.saved')}</h1>
           <p>{t('builds.description')}</p>
         </div>
         <div className="builds-hero__tools">

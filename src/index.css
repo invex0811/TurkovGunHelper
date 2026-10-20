@@ -3717,7 +3717,7 @@ button.weapon-diagram-node:focus-visible,
   padding: 24px;
 }
 
-.builds-hero h2,
+.builds-hero h1,
 .comparison-panel h2,
 .builds-empty h3 {
   margin: 4px 0 8px;
@@ -3940,7 +3940,7 @@ button.weapon-diagram-node:focus-visible,
   margin-bottom: 22px;
 }
 
-.settings-page__header h2 {
+.settings-page__header h1 {
   margin: 4px 0 0;
   font-family: var(--font-display);
   font-size: clamp(1.8rem, 4vw, 2.7rem);
@@ -4624,7 +4624,7 @@ button.weapon-diagram-node:focus-visible,
 }
 
 .module-comparison-page__head { margin-bottom: 22px; align-items: flex-end; }
-.module-comparison-page__head h2 { margin: 4px 0 8px; color: var(--text); font-family: var(--font-display); font-size: clamp(1.8rem, 4vw, 2.7rem); text-transform: uppercase; }
+.module-comparison-page__head h1 { margin: 4px 0 8px; color: var(--text); font-family: var(--font-display); font-size: clamp(1.8rem, 4vw, 2.7rem); text-transform: uppercase; }
 .module-comparison-page__head p { margin: 0; color: var(--muted); }
 .eyebrow { color: var(--gold) !important; font-size: .72rem; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
 .comparison-count { flex: 0 0 auto; padding: 8px 11px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--gold); font-size: .8rem; font-weight: 800; }
@@ -4870,6 +4870,14 @@ button.weapon-diagram-node:focus-visible,
   line-height: 1;
   letter-spacing: 0.02em;
   text-transform: uppercase;
+}
+
+.catalog__intro {
+  max-width: 640px;
+  margin: 12px 0 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .tag {
@@ -5662,19 +5670,31 @@ button.weapon-diagram-node:focus-visible,
   gap: 16px;
   flex-wrap: wrap;
   min-width: 0;
+  margin: 0;
 }
 
-.config-hero__title h1 {
-  margin: 0;
+.config-hero__short-name {
   color: var(--text-primary);
   font-size: 52px;
   line-height: 1;
 }
 
+/* Part of the <h1>, but it keeps the look of body text. */
 .config-hero__full-name {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1.5;
+}
+
+.config-hero__intro {
+  max-width: 720px;
   margin: 0;
   color: var(--text-muted);
-  font-size: 15px;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .config-hero__tags {
@@ -6868,7 +6888,7 @@ button.weapon-diagram-node:focus-visible,
     grid-column: auto;
   }
 
-  .config-hero__title h1 {
+  .config-hero__short-name {
     font-size: 40px;
   }
 }
@@ -7034,9 +7054,9 @@ body {
   letter-spacing: 0.12em;
 }
 
-.builds-hero h2,
-.module-comparison-page__head h2,
-.settings-page__header h2 {
+.builds-hero h1,
+.module-comparison-page__head h1,
+.settings-page__header h1 {
   color: var(--color-gold);
   font-size: clamp(30px, 4vw, 44px);
   line-height: 1;

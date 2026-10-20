@@ -51,14 +51,16 @@
   </head>
 
   <body>
-    <!-- The static text is for crawlers and the first paint; the app replaces it. -->
+    <!-- The static text is for crawlers and the first paint; the app replaces it.
+         The <h1> and the first paragraph are the app's home.selectWeapon and
+         home.intro, checked by tests/scripts/prerenderHtml.test.js. -->
     <div id="root"><!--prerender--><div class="prerender">
       <header class="topbar">
         <a href="/" class="brand"><img class="brand__mark" src="/tgh-logo-96.png" alt="" width="36" height="36" /><span class="brand__name">Tarkov Gun Helper</span></a>
       </header>
       <main class="app__main prerender__main">
         <p class="eyebrow-mono">Escape from Tarkov weapon builds</p>
-        <h1 class="page-title">Escape from Tarkov weapon build generator</h1>
+        <h1 class="page-title">Select a weapon</h1>
         <p>Tarkov Gun Helper finds the optimal build for any Escape from Tarkov weapon: the lowest recoil, the best ergonomics, a build within your budget or under a weight limit. Every module is priced with live flea market and trader offers, for PvP and PvE.</p>
         <p>Pick a weapon, generate a build, swap modules by hand, compare saved builds and share them as a link. Everything runs in your browser.</p>
         <p><a href="/builds/">Saved builds</a> · <a href="/module-comparison/">Module comparison</a></p>

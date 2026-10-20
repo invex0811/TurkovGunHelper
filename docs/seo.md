@@ -42,6 +42,11 @@ Slug — `normalizedName` оружия из tarkov.dev (`colt-m4a1-556x45-assaul
 - Страницы разделов: `useStaticRouteMeta()` в [`App.jsx`](../src/App.jsx) при смене пути вызывает [`applyPageMeta()`](../src/features/seo/documentMeta.js), который обновляет `<title>`, `description`, `canonical`, `og:*` и `twitter:*`.
 - Страница оружия: [`WeaponRoute`](../src/features/routing/WeaponRoutes.jsx) ставит мета-теги, когда оружие найдено в каталоге. Название берётся из каталога на текущем языке.
 - Заголовок оружия строится по короткому названию и держит слово Tarkov ближе к началу: `M4A1 Build – Tarkov Meta & Budget Builds | Tarkov Gun Helper` (60 символов; поисковая выдача показывает примерно столько). Полное название остаётся в `description` и в `<h1>`. Если короткое название есть у нескольких оружий (`MDR` в двух калибрах, цветные варианты вроде `HK 416A5`), заголовок берёт полное название — иначе заголовки совпали бы (`getAmbiguousShortNames()`).
+- **Один видимый `<h1>` на странице, одинаковый до и после загрузки JS.** Поисковик индексирует страницу уже после выполнения JS, поэтому заголовок и вводный абзац показывает и само приложение, а статический HTML повторяет их дословно (английские тексты берутся из `src/i18n` через `appText()` в `prerenderHtml.mjs`):
+  - главная — `<h1>Select a weapon</h1>` и абзац `home.intro` под ним;
+  - оружие — `<h1>` в шапке конфигуратора: крупное короткое название и рядом обычным текстом «{полное название} build» (`config.heroHeading`), под тегами — абзац `config.heroIntro`. Это один `<h1>`, внешне шапка та же, что раньше;
+  - разделы — `<h1>` вместо прежних `<h2>` с теми же стилями: Saved builds, Module comparison, Settings.
+  Тесты проверяют, что `index.html` и пререндер совпадают с этими текстами, и что после рендера на каждой странице ровно один видимый `<h1>`.
 - `index.html` содержит мета-теги главной, Open Graph, Twitter Card и JSON-LD `WebApplication`. JSON-LD остаётся только на главной.
 - Картинка для превью ссылок — [`public/og-image.png`](../public/og-image.png) (1200×630). Её рисует `npm run og-image` ([`scripts/render-og-image.mjs`](../scripts/render-og-image.mjs)) в Chromium из Playwright; после изменения дизайна PNG нужно перегенерировать и закоммитить. Скриншот Chromium весит ~280 КБ, поэтому перед коммитом PNG сжимается: `pngquant --quality=85-98 --strip --force --ext .png public/og-image.png` (~100 КБ, на глаз без потерь).
 
@@ -51,13 +56,13 @@ Slug — `normalizedName` оружия из tarkov.dev (`colt-m4a1-556x45-assaul
 
 1. Читает `dist/index.html` и проверяет, что в нём нет относительных путей (`./assets/…` сломались бы на `/weapon/<slug>/`).
 2. Загружает список оружия из того же JSON API tarkov.dev, что и приложение (`regular/items` + `regular/items_en`), той же нормализацией и тем же фильтром `isBuildableWeapon()` ([`scripts/lib/weaponCatalog.mjs`](../scripts/lib/weaponCatalog.mjs)).
-3. Для каждого оружия пишет `dist/weapon/<slug>/index.html`: свои `title`, `description`, `canonical`, `og:*`, `twitter:*` и статический блок внутри `#root` — `<h1>{Название} build</h1>`, два абзаца (тип, калибр, что можно сделать на странице) и ссылки на главную.
+3. Для каждого оружия пишет `dist/weapon/<slug>/index.html`: свои `title`, `description`, `canonical`, `og:*`, `twitter:*` и статический блок внутри `#root` — тот же `<h1>`, что в шапке конфигуратора, абзац `config.heroIntro`, абзац про тип, калибр и возможности страницы и ссылки на главную.
 4. Дописывает в статический блок главной (`dist/index.html`, на место комментария `<!--weapon-links-->`) ссылки на все страницы оружия, сгруппированные по типу: `<h2>` с типом и список `<a href="/weapon/<slug>/">`. Так поисковик находит каждую страницу оружия с главной. В `404.html` этого списка нет: это чистая копия шаблона, страницы с кодом 404 не индексируются, и 172 ссылки только утяжелили бы ответ на любой неизвестный адрес. Precache service worker хранит `index.html` с ревизией, посчитанной до этого шага, поэтому список в закэшированной оболочке может отставать на одну сборку. Это безвредно: список нужен только до запуска приложения.
 5. Пишет `index.html` для `/builds/`, `/module-comparison/`, `/settings/`, затем `404.html`, `sitemap.xml` (главная, `/builds/`, `/module-comparison/` и все страницы оружия) и `robots.txt`.
 
 Замены в HTML ([`scripts/lib/prerenderHtml.mjs`](../scripts/lib/prerenderHtml.mjs)) требуют ровно одного совпадения: если шаблон `index.html` изменится и, например, пропадёт `<link rel="canonical">`, сборка упадёт, а не выпустит страницы с заголовком главной. Блок `#root` ограничен комментариями `<!--prerender-->…<!--/prerender-->`, JSON-LD — `<!--json-ld-->…<!--/json-ld-->`.
 
-Статический блок использует те же классы, что приложение (`.topbar`, `.brand`, `.app__main`, `.page-title`), плюс `.prerender__main` в [`index.css`](../src/index.css), поэтому шапка и заголовок не прыгают, когда `createRoot()` заменяет блок. Небольшой inline-скрипт в `<head>` заранее ставит `data-theme` из `localStorage`, чтобы светлая тема не мигала тёмной.
+Статический блок использует те же классы, что приложение (`.topbar`, `.brand`, `.app__main`, `.page-title`, а у оружия — `.config-hero__title`), плюс `.prerender__main` в [`index.css`](../src/index.css), поэтому шапка и заголовок не прыгают, когда `createRoot()` заменяет блок. Небольшой inline-скрипт в `<head>` заранее ставит `data-theme` из `localStorage`, чтобы светлая тема не мигала тёмной.
 
 ### Снимок данных
 

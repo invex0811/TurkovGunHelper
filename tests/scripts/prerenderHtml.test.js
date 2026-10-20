@@ -12,6 +12,7 @@ import {
   renderWeaponLinks,
 } from '../../scripts/lib/prerenderHtml.mjs';
 import { getWeaponPageMeta, HOME_META } from '../../src/features/seo/pageMeta.js';
+import { messages } from '../../src/i18n/messages.js';
 
 const template = await readFile(new URL('../../index.html', import.meta.url), 'utf8');
 const weapon = {
@@ -29,6 +30,12 @@ test('index.html carries the home meta the app sets', () => {
   assert.match(template, /<div id="root"><!--prerender-->[\s\S]*<h1 class="page-title">/);
 });
 
+test('the static home heading and intro are the ones the app shows', () => {
+  const block = template.match(/<!--prerender-->([\s\S]*)<!--\/prerender-->/)[1];
+  assert.equal(block.match(/<h1 class="page-title">([^<]+)<\/h1>/)[1], messages.en['home.selectWeapon']);
+  assert.equal(block.match(/<\/h1>\s*<p>([^<]+)<\/p>/)[1], messages.en['home.intro']);
+});
+
 test('a weapon page replaces the title, meta, canonical and static text', () => {
   const meta = getWeaponPageMeta({ ...weapon, slug: 'colt-m4a1-556x45-assault-rifle' });
   assert.equal(meta.title, 'M4A1 Build – Tarkov Meta & Budget Builds | Tarkov Gun Helper');
@@ -40,10 +47,15 @@ test('a weapon page replaces the title, meta, canonical and static text', () => 
   assert.ok(html.includes(`<meta property="og:url" content="${url}" />`));
   assert.ok(html.includes(`<meta property="og:title" content="${escapeHtml(meta.title)}" />`));
   assert.ok(html.includes('<meta name="twitter:card" content="summary_large_image" />'));
-  assert.ok(html.includes('<h1 class="page-title">Colt M4A1 5.56x45 assault rifle build</h1>'));
+  // The same heading and intro as the app's ConfiguratorHero.
+  assert.ok(html.includes(
+    '<h1 class="config-hero__title"><span class="config-hero__short-name">M4A1</span> '
+      + '<span class="config-hero__full-name">Colt M4A1 5.56x45 assault rifle build</span></h1>',
+  ));
+  assert.ok(html.includes(`<p>${messages.en['config.heroIntro'].replace('{weapon}', 'M4A1')}</p>`));
   assert.ok(html.includes('This assault rifle is chambered in 5.56x45 NATO.'));
   assert.ok(!html.includes('application/ld+json'), 'the WebApplication data stays on the home page');
-  assert.ok(!html.includes('Escape from Tarkov weapon build generator'), 'the home text is gone');
+  assert.ok(!html.includes(messages.en['home.intro']), 'the home text is gone');
   assert.ok(!html.includes('<!--weapon-links-->'), 'the weapon list marker belongs to the home text');
 });
 

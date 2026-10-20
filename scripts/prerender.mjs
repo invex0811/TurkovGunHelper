@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { createWeaponSlugIndex } from '../src/domain/weaponSlugs.js';
 import { HOME_META, STATIC_PAGE_META, getAmbiguousShortNames, getWeaponPageMeta } from '../src/features/seo/pageMeta.js';
 import {
+  appText,
   assertAbsoluteAssetPaths,
   insertWeaponLinks,
   renderPage,
@@ -28,10 +29,12 @@ const DIST = fileURLToPath(new URL('../dist/', import.meta.url));
 // A list this much shorter than the snapshot is a broken response, not a patch.
 const MIN_API_SHARE_OF_SNAPSHOT = 0.9;
 
+// Eyebrows and headings are the app's English ones, so they stay the same
+// once it renders.
 const SECTION_BODIES = {
   '/builds/': {
-    eyebrow: 'Saved builds',
-    heading: 'Saved weapon builds',
+    eyebrow: appText('builds.localArmory'),
+    heading: appText('builds.saved'),
     paragraphs: [
       'Your Escape from Tarkov weapon builds, saved in this browser. Compare up to four builds side by side: '
         + 'recoil, ergonomics, weight and price.',
@@ -39,16 +42,16 @@ const SECTION_BODIES = {
     ],
   },
   '/module-comparison/': {
-    eyebrow: 'Module comparison',
-    heading: 'Weapon mod comparison',
+    eyebrow: appText('moduleComparison.eyebrow'),
+    heading: appText('moduleComparison.title'),
     paragraphs: [
       'Compare Escape from Tarkov weapon mods of one category side by side: recoil, ergonomics, weight '
         + 'and the flea market or trader price, for PvP and PvE.',
     ],
   },
   '/settings/': {
-    eyebrow: 'Settings',
-    heading: 'Settings',
+    eyebrow: appText('settings.eyebrow'),
+    heading: appText('settings.title'),
     paragraphs: [
       'Language, theme, trader levels, flea market access and the price rules used for generated builds.',
     ],

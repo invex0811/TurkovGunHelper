@@ -2,6 +2,8 @@
 // replacement must match exactly once, so a changed template fails the build
 // instead of shipping pages with the home page's title.
 import { getCanonicalUrl, SITE_NAME, SITE_URL } from '../../src/features/seo/pageMeta.js';
+import { interpolateMessage } from '../../src/i18n/interpolate.js';
+import { messages } from '../../src/i18n/messages.js';
 
 const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
@@ -24,6 +26,14 @@ function setMeta(html, attribute, key, content) {
     `<meta ${attribute}="${key}" content="${escapeHtml(content)}" />`,
     `${key} meta tag`,
   );
+}
+
+// The static pages are in English, with the app's own English texts, so a
+// heading or intro reads the same before and after the app renders.
+export function appText(key, values) {
+  const message = messages.en[key];
+  if (message === undefined) throw new Error(`No English message "${key}".`);
+  return interpolateMessage(message, values, 'en');
 }
 
 // Relative asset paths would break on nested pages such as /weapon/<slug>/.
@@ -60,7 +70,8 @@ export function renderPage(template, { meta, body, keepJsonLd = false }) {
 }
 
 // The same header and layout classes as the app, see .prerender__main.
-export function renderStaticBody({ eyebrow, heading, paragraphs, links }) {
+// headingHtml: a ready <h1>, for a heading with inner markup.
+export function renderStaticBody({ eyebrow, heading, headingHtml, paragraphs, links }) {
   const linkHtml = links
     .map(link => `<a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>`)
     .join(' · ');
@@ -71,7 +82,7 @@ export function renderStaticBody({ eyebrow, heading, paragraphs, links }) {
     '      </header>',
     '      <main class="app__main prerender__main">',
     `        <p class="eyebrow-mono">${escapeHtml(eyebrow)}</p>`,
-    `        <h1 class="page-title">${escapeHtml(heading)}</h1>`,
+    headingHtml ? `        ${headingHtml}` : `        <h1 class="page-title">${escapeHtml(heading)}</h1>`,
     ...paragraphs.map(text => `        <p>${escapeHtml(text)}</p>`),
     `        <p>${linkHtml}</p>`,
     '      </main>',
@@ -84,16 +95,24 @@ function lowerTypeName(type) {
   return type.split(' ').map(word => (word === word.toUpperCase() ? word : word.toLowerCase())).join(' ');
 }
 
+// The heading is the app's one (ConfiguratorHero): the short name large,
+// then "<full name> build" in the same <h1>, with the same classes.
+export function renderWeaponHeading({ name, shortName }) {
+  const fullName = name || shortName;
+  return '<h1 class="config-hero__title">'
+    + `<span class="config-hero__short-name">${escapeHtml(shortName || fullName)}</span> `
+    + `<span class="config-hero__full-name">${escapeHtml(appText('config.heroHeading', { weapon: fullName }))}</span>`
+    + '</h1>';
+}
+
 export function renderWeaponBody({ name, shortName, caliber, type }) {
   const subject = type ? `This ${lowerTypeName(type)}` : 'This weapon';
   const ammo = caliber ? `${subject} is chambered in ${caliber}. ` : '';
   return renderStaticBody({
     eyebrow: [type, caliber].filter(Boolean).join(' · ') || 'Escape from Tarkov weapon',
-    heading: `${name} build`,
+    headingHtml: renderWeaponHeading({ name, shortName }),
     paragraphs: [
-      `Tarkov Gun Helper generates the optimal ${shortName || name} build for Escape from Tarkov: `
-        + 'the lowest recoil, the best ergonomics, a budget build or one under a weight limit. '
-        + 'Every module is priced with live flea market and trader offers, for PvP and PvE.',
+      appText('config.heroIntro', { weapon: shortName || name }),
       `${ammo}On this page you can generate a build, swap any module by hand, compare recoil, `
         + 'ergonomics, weight and price, save the build in your browser and share it as a link.',
     ],

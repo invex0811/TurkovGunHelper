@@ -29,17 +29,19 @@ export default function ConfiguratorHero({ onOpenDiagram, t, weapon }) {
             <li aria-current="page">{weapon.shortName}</li>
           </ol>
         </nav>
-        <div className="config-hero__title">
-          <h1 id="configHeroTitle">{weapon.shortName}</h1>
-          {weapon.name && weapon.name !== weapon.shortName && (
-            <p className="config-hero__full-name">{weapon.name}</p>
-          )}
-        </div>
+        {/* One heading for both lines: the large short name and, beside it,
+            "<full name> build". The static page has the same text. */}
+        <h1 className="config-hero__title" id="configHeroTitle">
+          <span className="config-hero__short-name">{weapon.shortName || weaponName}</span>
+          {' '}
+          <span className="config-hero__full-name">{t('config.heroHeading', { weapon: weaponName })}</span>
+        </h1>
         <ul className="config-hero__tags" aria-label={t('config.weaponTags')}>
           {caliber && <li className="tag tag--gold">{formatCaliberLabel(caliber)}</li>}
           {type && <li className="tag">{type}</li>}
           {fireModes && <li className="tag">{fireModes}</li>}
         </ul>
+        <p className="config-hero__intro">{t('config.heroIntro', { weapon: weapon.shortName || weaponName })}</p>
       </div>
       <div className="config-hero__actions">
         <button

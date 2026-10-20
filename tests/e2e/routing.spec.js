@@ -41,6 +41,23 @@ test('opens a weapon page directly and after a reload', async ({ page }) => {
   await expect(page).toHaveTitle(WEAPON_TITLE);
 });
 
+test('every page keeps one visible <h1> and the static intro once the app renders', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Select a weapon');
+  await expect(page.getByText(/^Tarkov Gun Helper finds the optimal build for any Escape from Tarkov weapon/)).toBeVisible();
+
+  await page.goto('/weapon/test-weapon/');
+  const heading = page.getByRole('heading', { level: 1 });
+  await expect(heading).toHaveText('TW Test weapon build');
+  await expect(heading).toBeVisible();
+  await expect(page.getByText(/^Generate the optimal TW build for Escape from Tarkov/)).toBeVisible();
+
+  for (const [path, text] of [['/builds/', 'Saved builds'], ['/module-comparison/', 'Module comparison'], ['/settings/', 'Settings']]) {
+    await page.goto(path);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(text);
+  }
+});
+
 test('the title follows client-side navigation', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveTitle('Tarkov Gun Helper - Optimal Weapon Builds');
@@ -146,7 +163,7 @@ test('the home and weapon pages carry their meta in the HTML itself', async ({ r
   expect(getDescription(weaponPage)).toMatch(/^Optimal .+ builds for Escape from Tarkov/);
   expect(getCanonical(weaponPage)).toBe(weaponUrl);
   expect(weaponPage).toContain(`<meta property="og:url" content="${weaponUrl}" />`);
-  expect(weaponPage).toMatch(/<h1 class="page-title">[^<]+ build<\/h1>/);
+  expect(weaponPage).toMatch(/<h1 class="config-hero__title"><span class="config-hero__short-name">[^<]+<\/span> <span class="config-hero__full-name">[^<]+ build<\/span><\/h1>/);
   expect(weaponPage).not.toMatch(/(?:src|href)="\.\//);
   expect(weaponPage).toMatch(/<script type="module" crossorigin src="\/assets\//);
 

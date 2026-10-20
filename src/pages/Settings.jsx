@@ -108,7 +108,7 @@ export default function Settings({ theme, setTheme }) {
     <div className="settings-page page-shell">
       <header className="settings-page__header">
         <p className="eyebrow">{t('settings.eyebrow')}</p>
-        <h2>{t('settings.title')}</h2>
+        <h1>{t('settings.title')}</h1>
       </header>
 
       <section className="settings-card" aria-labelledby="interface-settings-title">

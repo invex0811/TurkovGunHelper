@@ -341,6 +341,7 @@ function Home() {
               })}
           </p>
           <h1 id="catalogTitle" className="page-title">{t('home.selectWeapon')}</h1>
+          <p className="catalog__intro">{t('home.intro')}</p>
         </div>
         <div className="catalog__tools">
           <label className="search-field">

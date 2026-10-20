@@ -103,7 +103,7 @@ async function expectEscapeRestoresModal(page, dialog, trigger, bodyOverflowBefo
 test('creates a weapon build from the catalog', async ({ page }) => {
   await createBuild(page);
 
-  await expect(page.locator('.config-hero').getByRole('heading', { level: 1, name: 'TW', exact: true })).toBeVisible();
+  await expect(page.locator('.config-hero').getByRole('heading', { level: 1, name: 'TW Test weapon build', exact: true })).toBeVisible();
   await expect(page.getByText(/^Remaining to buy/)).toBeVisible();
   await expect(page.locator('.stat-compare').getByText('Accuracy', { exact: true })).toBeVisible();
   const accuracyRow = page.locator('.stat-compare .stat-row--lower-is-better.stat-row--inverted-fill').filter({
@@ -835,7 +835,7 @@ test('header price switch persists without resetting Home or the current build',
 
   await page.reload();
   await expect(priceModeGroup.getByRole('button', { name: 'PvP', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByRole('heading', { name: 'TW', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'TW Test weapon build', exact: true })).toBeVisible();
 });
 
 test('provides an installable manifest and restores the catalog offline', async ({ page, context, request }) => {
