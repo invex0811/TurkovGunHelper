@@ -23,6 +23,8 @@ const ModuleComparison = lazy(() => import('./pages/ModuleComparison'));
 const NotFound = lazy(() => import('./pages/NotFound.jsx'));
 
 const THEME_STORAGE_KEY = 'tarkov-gun-helper-theme';
+// Browser UI color (mobile address bar), matching the header in each theme.
+const THEME_COLORS = { dark: '#0a0c0b', light: '#ffffff' };
 
 // Storage throws when the browser blocks it for the site (cookies off), and
 // a throw here would stop the whole app from rendering.
@@ -39,6 +41,8 @@ function useTheme() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
+    document.querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', THEME_COLORS[theme] ?? THEME_COLORS.dark);
     try {
       localStorage.setItem(THEME_STORAGE_KEY, theme);
     } catch {

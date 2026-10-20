@@ -127,6 +127,8 @@ test('the home and weapon pages carry their meta in the HTML itself', async ({ r
   expect(getDescription(home)).toMatch(/Escape from Tarkov weapon builds/);
   expect(getCanonical(home)).toBe(`${SITE_URL}/`);
   expect(home).toContain('"@type": "WebApplication"');
+  expect(home).toContain('<link rel="apple-touch-icon" href="/apple-touch-icon.png" />');
+  expect(home).toContain('<meta name="theme-color" content="#0a0c0b" />');
   expect(home).toMatch(/<div id="root"><!--prerender-->[\s\S]*<h1[^>]*>/);
   const homeWeaponLinks = home.match(/<a href="\/weapon\/[^"]+\/">/g) ?? [];
 
@@ -177,5 +179,6 @@ test('the app still opens when the browser blocks storage for the site', async (
   await page.goto('/settings/');
   await page.getByRole('button', { name: 'Light', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#ffffff');
   expect(errors).toEqual([]);
 });
