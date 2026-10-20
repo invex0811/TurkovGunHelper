@@ -20,6 +20,7 @@ const Configurator = lazy(() => import('./pages/Configurator'));
 const Builds = lazy(() => import('./pages/Builds'));
 const Settings = lazy(() => import('./pages/Settings'));
 const ModuleComparison = lazy(() => import('./pages/ModuleComparison'));
+const NotFound = lazy(() => import('./pages/NotFound.jsx'));
 
 function useTheme() {
   const [theme, setTheme] = useState(() => {
@@ -204,6 +205,14 @@ function MainLayout() {
                   </Suspense>
                 )}
               </LegacyConfigureRoute>
+            )}
+          />
+          <Route
+            path="*"
+            element={(
+              <Suspense fallback={<ConfiguratorLoading />}>
+                <NotFound />
+              </Suspense>
             )}
           />
         </Routes>

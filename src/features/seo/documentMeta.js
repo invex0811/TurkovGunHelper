@@ -19,17 +19,28 @@ function setMetaContent(doc, attribute, key, content) {
 }
 
 // Mirrors what scripts/prerender.mjs writes into the static pages, so the
-// rendered page keeps the same title, description and canonical URL.
+// rendered page keeps the same title, description and canonical URL. A meta
+// without a path (a "not found" page) gets noindex and no canonical URL.
 export function applyPageMeta(meta, doc = globalThis.document) {
   if (!meta || !doc?.head) return;
-  const url = getCanonicalUrl(meta.path);
   doc.title = meta.title;
   setMetaContent(doc, 'name', 'description', meta.description);
   setMetaContent(doc, 'property', 'og:title', meta.title);
   setMetaContent(doc, 'property', 'og:description', meta.description);
-  setMetaContent(doc, 'property', 'og:url', url);
   setMetaContent(doc, 'name', 'twitter:title', meta.title);
   setMetaContent(doc, 'name', 'twitter:description', meta.description);
+
+  const robots = doc.head.querySelector('meta[name="robots"]');
+  if (meta.noindex) setMetaContent(doc, 'name', 'robots', 'noindex');
+  else robots?.remove();
+
+  if (!meta.path) {
+    doc.head.querySelector('link[rel="canonical"]')?.remove();
+    doc.head.querySelector('meta[property="og:url"]')?.remove();
+    return;
+  }
+  const url = getCanonicalUrl(meta.path);
+  setMetaContent(doc, 'property', 'og:url', url);
   const canonical = upsertHeadElement(doc, 'link[rel="canonical"]', () => {
     const link = doc.createElement('link');
     link.setAttribute('rel', 'canonical');

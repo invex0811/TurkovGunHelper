@@ -521,6 +521,19 @@ a {
   }
 }
 
+/* Same distance from the header as the static page title above. */
+.not-found {
+  margin-top: 32px;
+  padding: 2rem;
+}
+
+@media (max-width: 767px) {
+  .not-found {
+    margin-top: 16px;
+    padding: 1rem;
+  }
+}
+
 .prerender__main p {
   max-width: 72ch;
   margin: 16px 0 0;

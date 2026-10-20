@@ -1,3 +1,4 @@
+import NotFoundPanel from '../../../ui/NotFoundPanel.jsx';
 import { InlineMessage } from './ConfiguratorPrimitives.jsx';
 
 export function ConfiguratorLoading({ label }) {
@@ -16,17 +17,15 @@ export function ConfiguratorLoading({ label }) {
 export function ConfiguratorUnavailable({
   error,
   errorTitle,
-  notFoundLabel,
+  notFoundTitle,
+  notFoundMessage,
 }) {
+  if (!error) return <NotFoundPanel title={notFoundTitle} message={notFoundMessage} />;
   return (
     <div className="glass-panel" style={{ padding: '2rem', textAlign: 'center' }}>
-      {error ? (
-        <InlineMessage type="error" title={errorTitle}>
-          {error}
-        </InlineMessage>
-      ) : (
-        notFoundLabel
-      )}
+      <InlineMessage type="error" title={errorTitle}>
+        {error}
+      </InlineMessage>
     </div>
   );
 }

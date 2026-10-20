@@ -5,7 +5,7 @@ import { getWeaponPath } from '../../domain/weaponSlugs.js';
 import { useI18n } from '../../i18n/useI18n.js';
 import { usePriceMode } from '../priceMode/usePriceMode.js';
 import { applyPageMeta } from '../seo/documentMeta.js';
-import { describeWeapon, getAmbiguousShortNames, getWeaponPageMeta } from '../seo/pageMeta.js';
+import { describeWeapon, getAmbiguousShortNames, getWeaponPageMeta, NOT_FOUND_META } from '../seo/pageMeta.js';
 
 // The slug index of the current catalog. A language or price mode switch keeps
 // the previous index until the next one arrives, so the page never drops back
@@ -61,9 +61,13 @@ export function WeaponRoute({ fallback, children }) {
     [index],
   );
 
+  // Known catalog, no such slug or id: the configurator shows "not found".
+  const isUnknown = Boolean(index) && !weaponId && !canonicalSlug;
+
   useEffect(() => {
     if (weapon) applyPageMeta(getWeaponPageMeta({ ...describeWeapon(weapon), slug }, { ambiguousShortNames }));
-  }, [ambiguousShortNames, slug, weapon]);
+    else if (isUnknown) applyPageMeta(NOT_FOUND_META);
+  }, [ambiguousShortNames, isUnknown, slug, weapon]);
 
   if (canonicalSlug) return <RedirectToWeapon slug={canonicalSlug} />;
   if (weaponId) return children(weaponId);

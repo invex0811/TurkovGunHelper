@@ -72,6 +72,25 @@ test('the old configurator route redirects to the weapon page and keeps the quer
   await expect(page.getByRole('button', { name: 'Generate Build', exact: true })).toBeVisible();
 });
 
+test('an unknown address and an unknown weapon show "not found" with a way back', async ({ page }) => {
+  await page.goto('/no-such-page');
+  await expect(page.getByText('Page not found', { exact: true })).toBeVisible();
+  await expect(page).toHaveTitle('Page Not Found | Tarkov Gun Helper');
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex');
+  await expect(page.locator('link[rel="canonical"]')).toHaveCount(0);
+
+  await page.goto('/weapon/no-such-weapon/');
+  await expect(page.getByText('Weapon not found', { exact: true })).toBeVisible();
+  await expect(page.getByText('Weapon loading failed')).toHaveCount(0);
+  await expect(page).toHaveTitle('Page Not Found | Tarkov Gun Helper');
+
+  await page.getByRole('link', { name: 'Go to the weapon catalog', exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveTitle('Tarkov Gun Helper - Optimal Weapon Builds');
+  await expect(page.locator('meta[name="robots"]')).toHaveCount(0);
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `${SITE_URL}/`);
+});
+
 test('old hash links open the same page on a real path', async ({ page }) => {
   await page.goto('/#/settings#traders');
   await expect(page).toHaveURL(/\/settings\/#traders$/);

@@ -117,6 +117,11 @@ export const uiMessages = {
     'ui.chain.removed': 'Will be removed: {items}',
     'ui.chain.missingRequired': 'Required slot is empty: {slots}',
     'ui.chain.appliedFeedback': 'Chain installed. Build stats and price updated.',
+    'ui.notFound.pageTitle': 'Page not found',
+    'ui.notFound.page': 'There is no page at this address. The link may be outdated or mistyped.',
+    'ui.notFound.weaponTitle': 'Weapon not found',
+    'ui.notFound.weapon': 'This weapon is not in the tarkov.dev catalog. It may have been renamed or removed from the game.',
+    'ui.notFound.back': 'Go to the weapon catalog',
   },
   ru: {
     'ui.radar.help': 'Укажите желаемые пределы характеристик: вес и отдача — не больше, эргономика — не меньше. Если выполнить все значения невозможно, будет выбрана ближайшая доступная сборка. Вес 0 — без ограничения веса.',
@@ -236,5 +241,10 @@ export const uiMessages = {
     'ui.chain.removed': 'Будут сняты: {items}',
     'ui.chain.missingRequired': 'Не заполнен обязательный слот: {slots}',
     'ui.chain.appliedFeedback': 'Цепочка установлена. Характеристики и цена сборки обновлены.',
+    'ui.notFound.pageTitle': 'Страница не найдена',
+    'ui.notFound.page': 'По этому адресу ничего нет. Возможно, ссылка устарела или в ней опечатка.',
+    'ui.notFound.weaponTitle': 'Оружие не найдено',
+    'ui.notFound.weapon': 'Этого оружия нет в каталоге tarkov.dev. Возможно, его переименовали или убрали из игры.',
+    'ui.notFound.back': 'Перейти в каталог оружия',
   },
 };

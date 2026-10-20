@@ -37,6 +37,15 @@ export const STATIC_PAGE_META = Object.freeze({
   },
 });
 
+// An unknown address or weapon. GitHub Pages already answers it with 404;
+// the app keeps it out of the index too and gives it no canonical URL.
+export const NOT_FOUND_META = Object.freeze({
+  path: null,
+  noindex: true,
+  title: `Page Not Found | ${SITE_NAME}`,
+  description: HOME_META.description,
+});
+
 export function getCanonicalUrl(path) {
   return `${SITE_URL}${path}`;
 }
@@ -52,7 +61,7 @@ export function getStaticRouteMeta(pathname) {
   const normalized = withTrailingSlash(pathname);
   if (Object.hasOwn(STATIC_PAGE_META, normalized)) return STATIC_PAGE_META[normalized];
   if (normalized.startsWith('/weapon/') || normalized.startsWith('/configure/')) return null;
-  return HOME_META;
+  return NOT_FOUND_META;
 }
 
 // The labels a weapon page shows, from a catalog weapon.
