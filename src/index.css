@@ -5326,7 +5326,7 @@ button.weapon-diagram-node:focus-visible,
   left: 28px;
   right: 44px;
   overflow: hidden;
-  color: var(--text-disabled);
+  color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.1em;
@@ -5400,7 +5400,7 @@ button.weapon-diagram-node:focus-visible,
 }
 
 .weapon-card__stat-label {
-  color: var(--text-disabled);
+  color: var(--text-muted);
   font-size: 10px;
   letter-spacing: 0.08em;
 }
@@ -5459,8 +5459,15 @@ button.weapon-diagram-node:focus-visible,
   margin-top: 16px;
   padding-top: 18px;
   border-top: 1px solid var(--divider);
-  color: var(--text-disabled);
+  color: var(--text-muted);
   font-size: 12px;
+}
+
+/* With the footer text in --text-muted the link is no longer set apart by
+   color alone, so it is underlined. */
+.catalog__footer a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 @media (max-width: 1180px) {
@@ -6056,7 +6063,7 @@ button.weapon-diagram-node:focus-visible,
 }
 
 .config__shortcut {
-  color: var(--text-disabled);
+  color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 11px;
   text-align: center;
@@ -6294,7 +6301,7 @@ button.weapon-diagram-node:focus-visible,
 
 .price-box__source {
   margin: -8px 0 0;
-  color: var(--text-disabled);
+  color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 11px;
 }
@@ -6373,7 +6380,7 @@ button.weapon-diagram-node:focus-visible,
 
 .save-build-bar__field span {
   flex: 0 0 auto;
-  color: var(--text-disabled);
+  color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.06em;
@@ -6422,7 +6429,7 @@ button.weapon-diagram-node:focus-visible,
 }
 
 .parts-panel__count {
-  color: var(--text-disabled);
+  color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 12px;
 }
@@ -6495,7 +6502,7 @@ button.weapon-diagram-node:focus-visible,
 }
 
 .parts-group__head span {
-  color: var(--text-disabled);
+  color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 11px;
 }
