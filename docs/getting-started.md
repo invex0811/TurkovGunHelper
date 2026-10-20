@@ -50,7 +50,7 @@ npx playwright install chromium
 Плагин `vite-plugin-pwa` генерирует service worker (Workbox) и манифест:
 
 - `start_url` и `scope` — `/`, `navigateFallback` — `/index.html`: оболочка отвечает на любой адрес и офлайн (кроме `sitemap.xml` и `robots.txt`).
-- `registerType: 'prompt'` — новая версия не активируется сама; пользователь видит баннер [`PwaUpdatePrompt`](../src/features/pwa/PwaUpdatePrompt.jsx) и обновляется по кнопке.
+- `skipWaiting` и `clientsClaim` — новая версия service worker активируется сразу. Если открытая страница ещё работает на старой версии, [`PwaUpdatePrompt`](../src/features/pwa/PwaUpdatePrompt.jsx) показывает баннер с кнопкой перезагрузки (почему так — в [Адресах страниц и SEO](seo.md#service-worker)).
 - В precache попадают `js`, `css`, `html` и `woff2`. Шрифты Google Fonts кэшируются во время работы.
 - Данные tarkov.dev service worker **не** кэширует — для них есть собственный кэш в IndexedDB (см. [Слой данных](data-layer.md#кэширование)).
 

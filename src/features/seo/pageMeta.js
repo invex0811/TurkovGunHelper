@@ -66,11 +66,31 @@ export function describeWeapon(weapon) {
   };
 }
 
-export function getWeaponPageMeta({ name, caliber, slug }) {
+function toShortNameKey(shortName) {
+  return (shortName || '').trim().toLowerCase();
+}
+
+// Short names that several weapons share (a variant in another color, the
+// MDR in two calibers). Their titles use the full name to stay unique.
+export function getAmbiguousShortNames(describedWeapons) {
+  const counts = new Map();
+  for (const weapon of describedWeapons) {
+    const key = toShortNameKey(weapon.shortName);
+    if (key) counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return new Set([...counts].filter(([, count]) => count > 1).map(([key]) => key));
+}
+
+// The title leads with the short name and keeps "Tarkov" early, so a typical
+// title fits the ~60 characters a search result shows. The full name stays in
+// the description and the page heading.
+export function getWeaponPageMeta({ name, shortName, caliber, slug }, { ambiguousShortNames = new Set() } = {}) {
   const caliberText = caliber ? ` (${caliber})` : '';
+  const shortKey = toShortNameKey(shortName);
+  const titleName = shortKey && !ambiguousShortNames.has(shortKey) ? shortName.trim() : name;
   return {
     path: getWeaponPath(slug),
-    title: `${name} Build – Meta & Budget Builds | ${SITE_NAME}`,
+    title: `${titleName} Build – Tarkov Meta & Budget Builds | ${SITE_NAME}`,
     description: `Optimal ${name}${caliberText} builds for Escape from Tarkov: lowest recoil, `
       + 'best ergonomics or a budget setup, priced with flea market and trader offers for PvP and PvE.',
   };

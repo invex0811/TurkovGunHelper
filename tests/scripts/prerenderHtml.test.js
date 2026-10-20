@@ -4,10 +4,12 @@ import { readFile } from 'node:fs/promises';
 import {
   assertAbsoluteAssetPaths,
   escapeHtml,
+  insertWeaponLinks,
   renderPage,
   renderRobots,
   renderSitemap,
   renderWeaponBody,
+  renderWeaponLinks,
 } from '../../scripts/lib/prerenderHtml.mjs';
 import { getWeaponPageMeta, HOME_META } from '../../src/features/seo/pageMeta.js';
 
@@ -29,6 +31,7 @@ test('index.html carries the home meta the app sets', () => {
 
 test('a weapon page replaces the title, meta, canonical and static text', () => {
   const meta = getWeaponPageMeta({ ...weapon, slug: 'colt-m4a1-556x45-assault-rifle' });
+  assert.equal(meta.title, 'M4A1 Build – Tarkov Meta & Budget Builds | Tarkov Gun Helper');
   const html = renderPage(template, { meta, body: renderWeaponBody(weapon) });
   const url = 'https://tarkovgunhelper.com/weapon/colt-m4a1-556x45-assault-rifle/';
   assert.ok(html.includes(`<title>${escapeHtml(meta.title)}</title>`));
@@ -41,6 +44,28 @@ test('a weapon page replaces the title, meta, canonical and static text', () => 
   assert.ok(html.includes('This assault rifle is chambered in 5.56x45 NATO.'));
   assert.ok(!html.includes('application/ld+json'), 'the WebApplication data stays on the home page');
   assert.ok(!html.includes('Escape from Tarkov weapon build generator'), 'the home text is gone');
+  assert.ok(!html.includes('<!--weapon-links-->'), 'the weapon list marker belongs to the home text');
+});
+
+test('the home page lists every weapon page grouped by type', () => {
+  const links = renderWeaponLinks([
+    { name: 'Glock 17 9x19 pistol', type: 'Handgun', path: '/weapon/glock-17/' },
+    { name: 'Colt M4A1 5.56x45 assault rifle', type: 'Assault rifle', path: '/weapon/colt-m4a1/' },
+    { name: 'AK-74N 5.45x39 assault rifle', type: 'Assault rifle', path: '/weapon/ak-74n/' },
+    { name: 'Toy <gun> & "co"', type: '', path: '/weapon/toy/' },
+  ]);
+  const html = insertWeaponLinks(template, links);
+  const block = html.match(/<!--prerender-->([\s\S]*)<!--\/prerender-->/)[1];
+  assert.ok(!html.includes('<!--weapon-links-->'));
+  assert.deepEqual([...block.matchAll(/<h2>([^<]+)<\/h2>/g)].map(match => match[1]), ['Assault rifle', 'Handgun', 'Other weapons']);
+  assert.deepEqual([...block.matchAll(/<a href="(\/weapon\/[^"]+)">/g)].map(match => match[1]), [
+    '/weapon/ak-74n/',
+    '/weapon/colt-m4a1/',
+    '/weapon/glock-17/',
+    '/weapon/toy/',
+  ]);
+  assert.ok(block.includes('<a href="/weapon/toy/">Toy &lt;gun&gt; &amp; &quot;co&quot;</a>'));
+  assert.ok(block.indexOf('prerender__weapons') > block.indexOf('<h1'), 'the list follows the intro');
 });
 
 test('text from the catalog is escaped', () => {

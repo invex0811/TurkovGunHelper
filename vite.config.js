@@ -26,6 +26,12 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // A new worker takes over at once instead of waiting for every tab to
+        // close. The HashRouter-era worker served a shell with ./assets/ paths
+        // that break on nested URLs; this way one reload brings the new shell.
+        // PwaUpdatePrompt then offers the reload to pages still on old code.
+        skipWaiting: true,
+        clientsClaim: true,
         cleanupOutdatedCaches: true,
         globPatterns: ['**/*.{js,css,html,woff2}'],
         // Every route is a client route; the app shell answers them offline.

@@ -540,6 +540,40 @@ a {
   text-underline-offset: 3px;
 }
 
+/* Weapon links on the static home page, grouped by type. */
+.prerender__weapons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 24px 32px;
+  margin-top: 32px;
+}
+
+.prerender__group h2 {
+  margin: 0 0 8px;
+  color: var(--color-gold-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.prerender__group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.prerender__group li {
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.prerender__main .prerender__group a {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
 /* Full-width header strip: brand, text tabs, price status and settings. */
 .topbar {
   position: sticky;

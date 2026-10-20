@@ -11,14 +11,16 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createWeaponSlugIndex } from '../src/domain/weaponSlugs.js';
-import { HOME_META, STATIC_PAGE_META, getWeaponPageMeta } from '../src/features/seo/pageMeta.js';
+import { HOME_META, STATIC_PAGE_META, getAmbiguousShortNames, getWeaponPageMeta } from '../src/features/seo/pageMeta.js';
 import {
   assertAbsoluteAssetPaths,
+  insertWeaponLinks,
   renderPage,
   renderRobots,
   renderSitemap,
   renderStaticBody,
   renderWeaponBody,
+  renderWeaponLinks,
 } from './lib/prerenderHtml.mjs';
 import { fetchWeaponSummaries, readWeaponSnapshot } from './lib/weaponCatalog.mjs';
 
@@ -80,11 +82,14 @@ assertAbsoluteAssetPaths(template);
 
 const { weapons, source } = await loadWeapons();
 const { slugById } = createWeaponSlugIndex(weapons);
+const ambiguousShortNames = getAmbiguousShortNames(weapons);
 const weaponPaths = [];
+const weaponLinks = [];
 for (const weapon of weapons) {
-  const meta = getWeaponPageMeta({ ...weapon, slug: slugById.get(weapon.id) });
+  const meta = getWeaponPageMeta({ ...weapon, slug: slugById.get(weapon.id) }, { ambiguousShortNames });
   await writePage(meta.path, renderPage(template, { meta, body: renderWeaponBody(weapon) }));
   weaponPaths.push(meta.path);
+  weaponLinks.push({ name: weapon.name, type: weapon.type, path: meta.path });
 }
 
 for (const [path, body] of Object.entries(SECTION_BODIES)) {
@@ -95,8 +100,14 @@ for (const [path, body] of Object.entries(SECTION_BODIES)) {
 }
 
 // GitHub Pages answers any other path with 404.html: the app shell then
-// shows the route (a weapon added after this build, for example).
+// shows the route (a weapon added after this build, for example). It stays
+// the plain template: a 404 is not indexed, so 172 links there would only add
+// weight to every unknown address.
 await writeFile(join(DIST, '404.html'), template);
+// Crawlers reach every weapon page from the home page. The precached shell
+// keeps the revision Workbox computed before this step; the list only matters
+// before the app renders, so a stale list there is harmless.
+await writeFile(join(DIST, 'index.html'), insertWeaponLinks(template, renderWeaponLinks(weaponLinks)));
 await writeFile(join(DIST, 'sitemap.xml'), renderSitemap([
   HOME_META.path,
   '/builds/',

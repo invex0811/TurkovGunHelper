@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { mockTarkovApi } from './fixtures/tarkovApi.js';
 
 const SITE_URL = 'https://tarkovgunhelper.com';
-const WEAPON_TITLE = 'Test weapon Build – Meta & Budget Builds | Tarkov Gun Helper';
+const WEAPON_TITLE = 'TW Build – Tarkov Meta & Budget Builds | Tarkov Gun Helper';
 
 test.beforeEach(async ({ page }) => {
   await mockTarkovApi(page);
@@ -109,22 +109,30 @@ test('the home and weapon pages carry their meta in the HTML itself', async ({ r
   expect(getCanonical(home)).toBe(`${SITE_URL}/`);
   expect(home).toContain('"@type": "WebApplication"');
   expect(home).toMatch(/<div id="root"><!--prerender-->[\s\S]*<h1[^>]*>/);
+  const homeWeaponLinks = home.match(/<a href="\/weapon\/[^"]+\/">/g) ?? [];
 
   const sitemap = await (await request.get('/sitemap.xml')).text();
   const weaponUrl = sitemap.match(/<loc>(https:\/\/tarkovgunhelper\.com\/weapon\/[^<]+\/)<\/loc>/)?.[1];
   expect(weaponUrl).toBeTruthy();
   expect(sitemap).toContain(`<loc>${SITE_URL}/builds/</loc>`);
+  expect(homeWeaponLinks.length).toBe(sitemap.match(/<loc>[^<]+\/weapon\//g).length);
+  expect(home).toContain(`<a href="${new URL(weaponUrl).pathname}">`);
 
   const weaponResponse = await request.get(new URL(weaponUrl).pathname);
   expect(weaponResponse.status()).toBe(200);
   const weaponPage = await weaponResponse.text();
-  expect(weaponPage).toMatch(/<title>[^<]+ Build – Meta &amp; Budget Builds \| Tarkov Gun Helper<\/title>/);
+  expect(weaponPage).toMatch(/<title>[^<]+ Build – Tarkov Meta &amp; Budget Builds \| Tarkov Gun Helper<\/title>/);
   expect(getDescription(weaponPage)).toMatch(/^Optimal .+ builds for Escape from Tarkov/);
   expect(getCanonical(weaponPage)).toBe(weaponUrl);
   expect(weaponPage).toContain(`<meta property="og:url" content="${weaponUrl}" />`);
   expect(weaponPage).toMatch(/<h1 class="page-title">[^<]+ build<\/h1>/);
   expect(weaponPage).not.toMatch(/(?:src|href)="\.\//);
   expect(weaponPage).toMatch(/<script type="module" crossorigin src="\/assets\//);
+
+  // The fallback for unknown paths stays the plain shell, without the list.
+  const notFound = await (await request.get('/404.html')).text();
+  expect(notFound).not.toContain('prerender__weapons');
+  expect(notFound).toContain('<h1 class="page-title">');
 
   const robots = await (await request.get('/robots.txt')).text();
   expect(robots).toContain(`Sitemap: ${SITE_URL}/sitemap.xml`);

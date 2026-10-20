@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useLocation, useParams } from 'react-router-dom';
 import { isAbortError, loadWeaponSlugIndex } from '../../data/tarkovApi/index.js';
 import { getWeaponPath } from '../../domain/weaponSlugs.js';
 import { useI18n } from '../../i18n/useI18n.js';
 import { usePriceMode } from '../priceMode/usePriceMode.js';
 import { applyPageMeta } from '../seo/documentMeta.js';
-import { describeWeapon, getWeaponPageMeta } from '../seo/pageMeta.js';
+import { describeWeapon, getAmbiguousShortNames, getWeaponPageMeta } from '../seo/pageMeta.js';
 
 // The slug index of the current catalog. A language or price mode switch keeps
 // the previous index until the next one arrives, so the page never drops back
@@ -56,10 +56,14 @@ export function WeaponRoute({ fallback, children }) {
   // An id in place of the slug: an old or hand-typed link.
   const canonicalSlug = !weaponId ? index?.slugById.get(slug) ?? null : null;
   const weapon = weaponId ? index.weaponById.get(weaponId) : null;
+  const ambiguousShortNames = useMemo(
+    () => getAmbiguousShortNames([...(index?.weaponById.values() ?? [])].map(describeWeapon)),
+    [index],
+  );
 
   useEffect(() => {
-    if (weapon) applyPageMeta(getWeaponPageMeta({ ...describeWeapon(weapon), slug }));
-  }, [slug, weapon]);
+    if (weapon) applyPageMeta(getWeaponPageMeta({ ...describeWeapon(weapon), slug }, { ambiguousShortNames }));
+  }, [ambiguousShortNames, slug, weapon]);
 
   if (canonicalSlug) return <RedirectToWeapon slug={canonicalSlug} />;
   if (weaponId) return children(weaponId);

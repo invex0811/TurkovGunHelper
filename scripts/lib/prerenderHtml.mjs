@@ -104,6 +104,40 @@ export function renderWeaponBody({ name, shortName, caliber, type }) {
   });
 }
 
+const UNTYPED_GROUP = 'Other weapons';
+
+// Links to every weapon page for the static home page, one <h2> per weapon
+// type. Weapons: { name, type, path }.
+export function renderWeaponLinks(weapons) {
+  const groups = new Map();
+  for (const weapon of weapons) {
+    const type = weapon.type || UNTYPED_GROUP;
+    groups.set(type, [...(groups.get(type) || []), weapon]);
+  }
+  const types = [...groups.keys()].sort((a, b) => {
+    if (a === UNTYPED_GROUP || b === UNTYPED_GROUP) return a === UNTYPED_GROUP ? 1 : -1;
+    return a.localeCompare(b, 'en');
+  });
+  const sections = types.map(type => {
+    const items = groups.get(type)
+      .sort((a, b) => a.name.localeCompare(b.name, 'en'))
+      .map(weapon => `            <li><a href="${escapeHtml(weapon.path)}">${escapeHtml(weapon.name)}</a></li>`);
+    return [
+      '          <section class="prerender__group">',
+      `            <h2>${escapeHtml(type)}</h2>`,
+      '            <ul>',
+      ...items,
+      '            </ul>',
+      '          </section>',
+    ].join('\n');
+  });
+  return ['<div class="prerender__weapons">', ...sections, '        </div>'].join('\n');
+}
+
+export function insertWeaponLinks(template, linksHtml) {
+  return replaceOnce(template, /<!--weapon-links-->/, linksHtml, 'weapon links marker');
+}
+
 export function renderSitemap(paths) {
   const entries = paths.map(path => `  <url><loc>${escapeHtml(getCanonicalUrl(path))}</loc></url>`);
   return [
