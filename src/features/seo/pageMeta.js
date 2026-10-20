@@ -50,7 +50,7 @@ export function getCanonicalUrl(path) {
   return `${SITE_URL}${path}`;
 }
 
-function withTrailingSlash(pathname) {
+export function withTrailingSlash(pathname) {
   return pathname.endsWith('/') ? pathname : `${pathname}/`;
 }
 

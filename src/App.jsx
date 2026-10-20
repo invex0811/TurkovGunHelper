@@ -14,7 +14,7 @@ import { usePageviewTracking } from './features/analytics/usePageviewTracking.js
 import { MaterialSymbol } from './ui/MaterialSymbol.js';
 import { LegacyConfigureRoute, WeaponRoute } from './features/routing/WeaponRoutes.jsx';
 import { applyPageMeta } from './features/seo/documentMeta.js';
-import { getStaticRouteMeta } from './features/seo/pageMeta.js';
+import { getStaticRouteMeta, withTrailingSlash } from './features/seo/pageMeta.js';
 
 const Configurator = lazy(() => import('./pages/Configurator'));
 const Builds = lazy(() => import('./pages/Builds'));
@@ -62,10 +62,6 @@ const SETTINGS_NAV_ITEM = { to: '/settings/' };
 
 function navLinkClassName({ isActive }) {
   return `topnav__link${isActive ? ' is-active' : ''}`;
-}
-
-function withTrailingSlash(pathname) {
-  return pathname.endsWith('/') ? pathname : `${pathname}/`;
 }
 
 // NavLink alone would not mark /builds/ active at /builds (a link opened
