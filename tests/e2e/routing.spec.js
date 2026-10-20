@@ -56,6 +56,9 @@ test('every page keeps one visible <h1> and the static intro once the app render
     await page.goto(path);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(text);
   }
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex');
+  await page.getByRole('link', { name: 'Builds', exact: true }).click();
+  await expect(page.locator('meta[name="robots"]')).toHaveCount(0);
 });
 
 test('the title follows client-side navigation', async ({ page }) => {
@@ -164,6 +167,12 @@ test('the home and weapon pages carry their meta in the HTML itself', async ({ r
   expect(getCanonical(weaponPage)).toBe(weaponUrl);
   expect(weaponPage).toContain(`<meta property="og:url" content="${weaponUrl}" />`);
   expect(weaponPage).toMatch(/<h1 class="config-hero__title"><span class="config-hero__short-name">[^<]+<\/span> <span class="config-hero__full-name">[^<]+ build<\/span><\/h1>/);
+  expect(weaponPage).toContain('"@type": "BreadcrumbList"');
+  expect(sitemap).toMatch(/<loc>https:\/\/tarkovgunhelper\.com\/weapon\/[^<]+<\/loc><lastmod>\d{4}-\d{2}-\d{2}<\/lastmod>/);
+
+  const settingsPage = await (await request.get('/settings/')).text();
+  expect(settingsPage).toContain('<meta name="robots" content="noindex" />');
+  expect(sitemap).not.toContain('/settings/');
   expect(weaponPage).not.toMatch(/(?:src|href)="\.\//);
   expect(weaponPage).toMatch(/<script type="module" crossorigin src="\/assets\//);
 

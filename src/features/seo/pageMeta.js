@@ -31,6 +31,8 @@ export const STATIC_PAGE_META = Object.freeze({
   },
   '/settings/': {
     path: '/settings/',
+    // Per-browser preferences: nothing for a search result.
+    noindex: true,
     title: `Settings | ${SITE_NAME}`,
     description: 'Tarkov Gun Helper settings: language, theme, trader levels, flea market access '
       + 'and how prices are picked for generated weapon builds.',
@@ -62,6 +64,20 @@ export function getStaticRouteMeta(pathname) {
   if (Object.hasOwn(STATIC_PAGE_META, normalized)) return STATIC_PAGE_META[normalized];
   if (normalized.startsWith('/weapon/') || normalized.startsWith('/configure/')) return null;
   return NOT_FOUND_META;
+}
+
+// Structured data of a weapon page: its place under the weapon catalog.
+// The weapon type is not a level: its filter is a query on the home page,
+// which has no address of its own in the index.
+export function getWeaponJsonLd({ name, path }) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Weapons', item: getCanonicalUrl(HOME_META.path) },
+      { '@type': 'ListItem', position: 2, name, item: getCanonicalUrl(path) },
+    ],
+  };
 }
 
 // The labels a weapon page shows, from a catalog weapon.

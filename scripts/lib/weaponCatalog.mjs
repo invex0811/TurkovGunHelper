@@ -16,6 +16,28 @@ function toSummary(weapon) {
   return { id: weapon.id, normalizedName: weapon.normalizedName ?? '', name, shortName, caliber, type };
 }
 
+function toDate(timestamp) {
+  return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+function contentKey(weapon) {
+  const fields = { ...weapon };
+  delete fields.lastModified;
+  return JSON.stringify(Object.keys(fields).sort().map(key => [key, fields[key]]));
+}
+
+// The day a weapon's page last changed, for the sitemap's <lastmod>: kept from
+// the previous list while the weapon's fields stay the same, today otherwise.
+// A date that moved on every deploy would teach search engines to ignore it.
+export function withLastModified(weapons, previousWeapons = [], today = toDate(Date.now())) {
+  const previousById = new Map(previousWeapons.map(weapon => [weapon.id, weapon]));
+  return weapons.map(weapon => {
+    const previous = previousById.get(weapon.id);
+    const unchanged = previous?.lastModified && contentKey(previous) === contentKey(weapon);
+    return { ...weapon, lastModified: unchanged ? previous.lastModified : today };
+  });
+}
+
 function sortById(weapons) {
   return [...weapons].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
@@ -36,14 +58,20 @@ export async function readWeaponSnapshot() {
   if (!Array.isArray(snapshot.weapons) || snapshot.weapons.length === 0) {
     throw new Error(`${SNAPSHOT_PATH} has no weapons.`);
   }
-  return snapshot;
+  const fallbackDate = toDate(snapshot.updatedAt);
+  return {
+    ...snapshot,
+    weapons: snapshot.weapons.map(weapon => ({ lastModified: fallbackDate, ...weapon })),
+  };
 }
 
-export async function writeWeaponSnapshot(weapons) {
+// previousWeapons: the snapshot being replaced, so unchanged weapons keep
+// their lastModified.
+export async function writeWeaponSnapshot(weapons, previousWeapons = []) {
   const snapshot = {
     source: 'https://json.tarkov.dev/regular/items',
     updatedAt: new Date().toISOString(),
-    weapons: sortById(weapons),
+    weapons: sortById(withLastModified(weapons, previousWeapons)),
   };
   await writeFile(SNAPSHOT_PATH, `${JSON.stringify(snapshot, null, 2)}\n`);
   return snapshot;

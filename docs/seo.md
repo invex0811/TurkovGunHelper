@@ -47,7 +47,8 @@ Slug — `normalizedName` оружия из tarkov.dev (`colt-m4a1-556x45-assaul
   - оружие — `<h1>` в шапке конфигуратора: крупное короткое название и рядом обычным текстом «{полное название} build» (`config.heroHeading`), под тегами — абзац `config.heroIntro`. Это один `<h1>`, внешне шапка та же, что раньше;
   - разделы — `<h1>` вместо прежних `<h2>` с теми же стилями: Saved builds, Module comparison, Settings.
   Тесты проверяют, что `index.html` и пререндер совпадают с этими текстами, и что после рендера на каждой странице ровно один видимый `<h1>`.
-- `index.html` содержит мета-теги главной, Open Graph, Twitter Card и JSON-LD `WebApplication`. JSON-LD остаётся только на главной.
+- `index.html` содержит мета-теги главной, Open Graph, Twitter Card и JSON-LD `WebApplication`. У страниц оружия вместо него JSON-LD `BreadcrumbList` (Weapons → оружие, `getWeaponJsonLd()`); тип оружия уровнем не считается — его фильтр это query главной без собственного адреса в индексе. У разделов JSON-LD нет.
+- `/settings/` — `noindex` (`noindex: true` в `STATIC_PAGE_META`): это настройки браузера, в выдаче им делать нечего. Мета-тег пишет и пререндер, и `applyPageMeta()` при переходе внутри приложения; в `sitemap.xml` раздела нет.
 - Картинка для превью ссылок — [`public/og-image.png`](../public/og-image.png) (1200×630). Её рисует `npm run og-image` ([`scripts/render-og-image.mjs`](../scripts/render-og-image.mjs)) в Chromium из Playwright; после изменения дизайна PNG нужно перегенерировать и закоммитить. Скриншот Chromium весит ~280 КБ, поэтому перед коммитом PNG сжимается: `pngquant --quality=85-98 --strip --force --ext .png public/og-image.png` (~100 КБ, на глаз без потерь).
 
 ## Статическая генерация
@@ -58,7 +59,7 @@ Slug — `normalizedName` оружия из tarkov.dev (`colt-m4a1-556x45-assaul
 2. Загружает список оружия из того же JSON API tarkov.dev, что и приложение (`regular/items` + `regular/items_en`), той же нормализацией и тем же фильтром `isBuildableWeapon()` ([`scripts/lib/weaponCatalog.mjs`](../scripts/lib/weaponCatalog.mjs)).
 3. Для каждого оружия пишет `dist/weapon/<slug>/index.html`: свои `title`, `description`, `canonical`, `og:*`, `twitter:*` и статический блок внутри `#root` — тот же `<h1>`, что в шапке конфигуратора, абзац `config.heroIntro`, абзац про тип, калибр и возможности страницы и ссылки на главную.
 4. Дописывает в статический блок главной (`dist/index.html`, на место комментария `<!--weapon-links-->`) ссылки на все страницы оружия, сгруппированные по типу: `<h2>` с типом и список `<a href="/weapon/<slug>/">`. Так поисковик находит каждую страницу оружия с главной. В `404.html` этого списка нет: это чистая копия шаблона, страницы с кодом 404 не индексируются, и 172 ссылки только утяжелили бы ответ на любой неизвестный адрес. Precache service worker хранит `index.html` с ревизией, посчитанной до этого шага, поэтому список в закэшированной оболочке может отставать на одну сборку. Это безвредно: список нужен только до запуска приложения.
-5. Пишет `index.html` для `/builds/`, `/module-comparison/`, `/settings/`, затем `404.html`, `sitemap.xml` (главная, `/builds/`, `/module-comparison/` и все страницы оружия) и `robots.txt`.
+5. Пишет `index.html` для `/builds/`, `/module-comparison/`, `/settings/`, затем `404.html`, `sitemap.xml` (главная, `/builds/`, `/module-comparison/` и все страницы оружия) и `robots.txt`. У страниц оружия в sitemap есть `<lastmod>` (см. ниже), у главной — самая поздняя из этих дат (на ней список оружия), у разделов даты нет: их текст не меняется.
 
 Замены в HTML ([`scripts/lib/prerenderHtml.mjs`](../scripts/lib/prerenderHtml.mjs)) требуют ровно одного совпадения: если шаблон `index.html` изменится и, например, пропадёт `<link rel="canonical">`, сборка упадёт, а не выпустит страницы с заголовком главной. Блок `#root` ограничен комментариями `<!--prerender-->…<!--/prerender-->`, JSON-LD — `<!--json-ld-->…<!--/json-ld-->`.
 
@@ -73,6 +74,12 @@ npm run weapons:snapshot
 ```
 
 Команда перезаписывает снимок свежими данными (id, `normalizedName`, название, калибр, тип). Обновляйте и коммитьте его, когда в игре появляется новое оружие.
+
+У каждого оружия в снимке есть `lastModified` — день, когда в последний раз изменились его данные. Отсюда `<lastmod>` в `sitemap.xml`. Дата не сдвигается при каждом деплое: поисковики игнорируют `lastmod`, который меняется без изменения страниц.
+
+- При сборке данные из tarkov.dev сравниваются со снимком (`withLastModified()` в [`weaponCatalog.mjs`](../scripts/lib/weaponCatalog.mjs)). Если поля оружия совпадают, остаётся дата из снимка, если нет (или оружие новое) — ставится день сборки.
+- `npm run weapons:snapshot` переносит даты так же, поэтому после изменений в игре снимок стоит обновить и закоммитить: тогда новая дата зафиксируется, а не будет сдвигаться каждый день.
+- Дата отражает данные оружия, а не шаблон страницы. Если меняется сам текст всех страниц, `lastmod` это не покажет.
 
 ```bash
 PRERENDER_OFFLINE=1 node scripts/prerender.mjs

@@ -36,21 +36,30 @@ export function appText(key, values) {
   return interpolateMessage(message, values, 'en');
 }
 
+function renderJsonLd(data) {
+  // "<" as a JSON escape, so text from the catalog cannot close the script.
+  const json = JSON.stringify(data, null, 2).replace(/</g, '\\u003c');
+  return `\n    <script type="application/ld+json">\n${json.replace(/^/gm, '      ')}\n    </script>`;
+}
+
 // Relative asset paths would break on nested pages such as /weapon/<slug>/.
 export function assertAbsoluteAssetPaths(html, file = 'dist/index.html') {
   const relative = html.match(/\s(?:src|href)="\.{1,2}\/[^"]*"/);
   if (relative) throw new Error(`${file} references a relative path:${relative[0]}`);
 }
 
-export function renderPage(template, { meta, body, keepJsonLd = false }) {
+// jsonLd: the page's structured data, replacing the home page's block; the
+// block is dropped when there is none.
+export function renderPage(template, { meta, body, jsonLd = null }) {
   const url = getCanonicalUrl(meta.path);
   let html = template;
   html = replaceOnce(html, /<title>[^<]*<\/title>/, `<title>${escapeHtml(meta.title)}</title>`, 'title');
   html = setMeta(html, 'name', 'description', meta.description);
+  const robots = meta.noindex ? '<meta name="robots" content="noindex" />\n    ' : '';
   html = replaceOnce(
     html,
     /<link rel="canonical" href="[^"]*"\s*\/?>/,
-    `<link rel="canonical" href="${escapeHtml(url)}" />`,
+    `${robots}<link rel="canonical" href="${escapeHtml(url)}" />`,
     'canonical link',
   );
   html = setMeta(html, 'property', 'og:title', meta.title);
@@ -58,9 +67,12 @@ export function renderPage(template, { meta, body, keepJsonLd = false }) {
   html = setMeta(html, 'property', 'og:url', url);
   html = setMeta(html, 'name', 'twitter:title', meta.title);
   html = setMeta(html, 'name', 'twitter:description', meta.description);
-  if (!keepJsonLd) {
-    html = replaceOnce(html, /\s*<!--json-ld-->[\s\S]*?<!--\/json-ld-->/, '', 'JSON-LD block');
-  }
+  html = replaceOnce(
+    html,
+    /\s*<!--json-ld-->[\s\S]*?<!--\/json-ld-->/,
+    jsonLd ? `\n    <!--json-ld-->${renderJsonLd(jsonLd)}\n    <!--/json-ld-->` : '',
+    'JSON-LD block',
+  );
   return replaceOnce(
     html,
     /<!--prerender-->[\s\S]*?<!--\/prerender-->/,
@@ -157,8 +169,13 @@ export function insertWeaponLinks(template, linksHtml) {
   return replaceOnce(template, /<!--weapon-links-->/, linksHtml, 'weapon links marker');
 }
 
-export function renderSitemap(paths) {
-  const entries = paths.map(path => `  <url><loc>${escapeHtml(getCanonicalUrl(path))}</loc></url>`);
+// Pages: a path, or { path, lastmod } with lastmod as YYYY-MM-DD.
+export function renderSitemap(pages) {
+  const entries = pages.map(page => {
+    const { path, lastmod } = typeof page === 'string' ? { path: page } : page;
+    const lastmodTag = lastmod ? `<lastmod>${escapeHtml(lastmod)}</lastmod>` : '';
+    return `  <url><loc>${escapeHtml(getCanonicalUrl(path))}</loc>${lastmodTag}</url>`;
+  });
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',

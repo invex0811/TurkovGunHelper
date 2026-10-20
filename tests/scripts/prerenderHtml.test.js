@@ -11,7 +11,12 @@ import {
   renderWeaponBody,
   renderWeaponLinks,
 } from '../../scripts/lib/prerenderHtml.mjs';
-import { getWeaponPageMeta, HOME_META } from '../../src/features/seo/pageMeta.js';
+import {
+  getWeaponJsonLd,
+  getWeaponPageMeta,
+  HOME_META,
+  STATIC_PAGE_META,
+} from '../../src/features/seo/pageMeta.js';
 import { messages } from '../../src/i18n/messages.js';
 
 const template = await readFile(new URL('../../index.html', import.meta.url), 'utf8');
@@ -39,7 +44,11 @@ test('the static home heading and intro are the ones the app shows', () => {
 test('a weapon page replaces the title, meta, canonical and static text', () => {
   const meta = getWeaponPageMeta({ ...weapon, slug: 'colt-m4a1-556x45-assault-rifle' });
   assert.equal(meta.title, 'M4A1 Build – Tarkov Meta & Budget Builds | Tarkov Gun Helper');
-  const html = renderPage(template, { meta, body: renderWeaponBody(weapon) });
+  const html = renderPage(template, {
+    meta,
+    body: renderWeaponBody(weapon),
+    jsonLd: getWeaponJsonLd({ name: weapon.name, path: meta.path }),
+  });
   const url = 'https://tarkovgunhelper.com/weapon/colt-m4a1-556x45-assault-rifle/';
   assert.ok(html.includes(`<title>${escapeHtml(meta.title)}</title>`));
   assert.ok(html.includes(`<meta name="description" content="${escapeHtml(meta.description)}" />`));
@@ -54,7 +63,18 @@ test('a weapon page replaces the title, meta, canonical and static text', () => 
   ));
   assert.ok(html.includes(`<p>${messages.en['config.heroIntro'].replace('{weapon}', 'M4A1')}</p>`));
   assert.ok(html.includes('This assault rifle is chambered in 5.56x45 NATO.'));
-  assert.ok(!html.includes('application/ld+json'), 'the WebApplication data stays on the home page');
+  assert.ok(!html.includes('"WebApplication"'), 'the WebApplication data stays on the home page');
+  assert.ok(!html.includes('noindex'));
+
+  const jsonLd = JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1]);
+  assert.deepEqual(jsonLd, {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Weapons', item: 'https://tarkovgunhelper.com/' },
+      { '@type': 'ListItem', position: 2, name: 'Colt M4A1 5.56x45 assault rifle', item: url },
+    ],
+  });
   assert.ok(!html.includes(messages.en['home.intro']), 'the home text is gone');
   assert.ok(!html.includes('<!--weapon-links-->'), 'the weapon list marker belongs to the home text');
 });
@@ -81,8 +101,22 @@ test('the home page lists every weapon page grouped by type', () => {
 });
 
 test('text from the catalog is escaped', () => {
-  const body = renderWeaponBody({ ...weapon, name: '<b>"Gun" & co</b>' });
-  assert.ok(body.includes('&lt;b&gt;&quot;Gun&quot; &amp; co&lt;/b&gt; build'));
+  const name = '<b>"Gun" & co</b></script>';
+  const body = renderWeaponBody({ ...weapon, name });
+  assert.ok(body.includes('&lt;b&gt;&quot;Gun&quot; &amp; co&lt;/b&gt;&lt;/script&gt; build'));
+
+  const meta = getWeaponPageMeta({ ...weapon, name, slug: 'gun' });
+  const html = renderPage(template, { meta, body, jsonLd: getWeaponJsonLd({ name, path: meta.path }) });
+  const script = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1];
+  assert.ok(!script.includes('</'), 'the name cannot close the script element');
+  assert.equal(JSON.parse(script).itemListElement[1].name, name);
+});
+
+test('the settings page is noindex; other pages are not', () => {
+  const settings = renderPage(template, { meta: STATIC_PAGE_META['/settings/'], body: '' });
+  assert.ok(settings.includes('<meta name="robots" content="noindex" />\n    <link rel="canonical" href="https://tarkovgunhelper.com/settings/" />'));
+  const builds = renderPage(template, { meta: STATIC_PAGE_META['/builds/'], body: '' });
+  assert.ok(!builds.includes('name="robots"'));
 });
 
 test('a changed template fails instead of producing wrong pages', () => {
@@ -104,6 +138,14 @@ test('the sitemap lists canonical URLs and robots.txt points at it', () => {
       + '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
       + '  <url><loc>https://tarkovgunhelper.com/</loc></url>\n'
       + '  <url><loc>https://tarkovgunhelper.com/weapon/a/</loc></url>\n'
+      + '</urlset>\n',
+  );
+  assert.equal(
+    renderSitemap([{ path: '/', lastmod: '2026-10-20' }, '/builds/']),
+    '<?xml version="1.0" encoding="UTF-8"?>\n'
+      + '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+      + '  <url><loc>https://tarkovgunhelper.com/</loc><lastmod>2026-10-20</lastmod></url>\n'
+      + '  <url><loc>https://tarkovgunhelper.com/builds/</loc></url>\n'
       + '</urlset>\n',
   );
   assert.equal(renderRobots(), 'User-agent: *\nAllow: /\n\nSitemap: https://tarkovgunhelper.com/sitemap.xml\n');

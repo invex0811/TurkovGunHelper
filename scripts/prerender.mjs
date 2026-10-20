@@ -11,7 +11,13 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createWeaponSlugIndex } from '../src/domain/weaponSlugs.js';
-import { HOME_META, STATIC_PAGE_META, getAmbiguousShortNames, getWeaponPageMeta } from '../src/features/seo/pageMeta.js';
+import {
+  HOME_META,
+  STATIC_PAGE_META,
+  getAmbiguousShortNames,
+  getWeaponJsonLd,
+  getWeaponPageMeta,
+} from '../src/features/seo/pageMeta.js';
 import {
   appText,
   assertAbsoluteAssetPaths,
@@ -23,7 +29,7 @@ import {
   renderWeaponBody,
   renderWeaponLinks,
 } from './lib/prerenderHtml.mjs';
-import { fetchWeaponSummaries, readWeaponSnapshot } from './lib/weaponCatalog.mjs';
+import { fetchWeaponSummaries, readWeaponSnapshot, withLastModified } from './lib/weaponCatalog.mjs';
 
 const DIST = fileURLToPath(new URL('../dist/', import.meta.url));
 // A list this much shorter than the snapshot is a broken response, not a patch.
@@ -67,7 +73,7 @@ async function loadWeapons() {
     if (weapons.length < minimum) {
       throw new Error(`tarkov.dev returned ${weapons.length} weapons, the snapshot has ${snapshot.weapons.length}.`);
     }
-    return { weapons, source: 'tarkov.dev' };
+    return { weapons: withLastModified(weapons, snapshot.weapons), source: 'tarkov.dev' };
   } catch (error) {
     console.warn(`prerender: ${error.message} Using the snapshot from ${snapshot.updatedAt}.`);
     return { weapons: snapshot.weapons, source: `snapshot (${snapshot.updatedAt})` };
@@ -86,12 +92,16 @@ assertAbsoluteAssetPaths(template);
 const { weapons, source } = await loadWeapons();
 const { slugById } = createWeaponSlugIndex(weapons);
 const ambiguousShortNames = getAmbiguousShortNames(weapons);
-const weaponPaths = [];
+const weaponPages = [];
 const weaponLinks = [];
 for (const weapon of weapons) {
   const meta = getWeaponPageMeta({ ...weapon, slug: slugById.get(weapon.id) }, { ambiguousShortNames });
-  await writePage(meta.path, renderPage(template, { meta, body: renderWeaponBody(weapon) }));
-  weaponPaths.push(meta.path);
+  await writePage(meta.path, renderPage(template, {
+    meta,
+    body: renderWeaponBody(weapon),
+    jsonLd: getWeaponJsonLd({ name: weapon.name, path: meta.path }),
+  }));
+  weaponPages.push({ path: meta.path, lastmod: weapon.lastModified });
   weaponLinks.push({ name: weapon.name, type: weapon.type, path: meta.path });
 }
 
@@ -111,12 +121,15 @@ await writeFile(join(DIST, '404.html'), template);
 // keeps the revision Workbox computed before this step; the list only matters
 // before the app renders, so a stale list there is harmless.
 await writeFile(join(DIST, 'index.html'), insertWeaponLinks(template, renderWeaponLinks(weaponLinks)));
+// The home page lists the weapons, so it changes with the newest of them.
+// The section pages have fixed text and no date.
+const newestWeaponDate = weaponPages.map(page => page.lastmod).sort().at(-1);
 await writeFile(join(DIST, 'sitemap.xml'), renderSitemap([
-  HOME_META.path,
+  { path: HOME_META.path, lastmod: newestWeaponDate },
   '/builds/',
   '/module-comparison/',
-  ...weaponPaths.sort(),
+  ...weaponPages.sort((a, b) => (a.path < b.path ? -1 : 1)),
 ]));
 await writeFile(join(DIST, 'robots.txt'), renderRobots());
 
-console.log(`prerender: ${weaponPaths.length} weapon pages from ${source}, 3 section pages, 404.html, sitemap.xml, robots.txt.`);
+console.log(`prerender: ${weaponPages.length} weapon pages from ${source}, 3 section pages, 404.html, sitemap.xml, robots.txt.`);
