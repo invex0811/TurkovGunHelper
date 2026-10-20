@@ -4530,6 +4530,7 @@ button.weapon-diagram-node:focus-visible,
 
 .build-import-modal__actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
 }
@@ -4794,6 +4795,12 @@ button.weapon-diagram-node:focus-visible,
   .build-import-row__strategy .select-button {
     width: 100%;
     min-width: 0;
+  }
+
+  /* Shared link actions stack full width, the main action on top. */
+  .build-import-modal__actions--shared {
+    flex-direction: column-reverse;
+    align-items: stretch;
   }
 }
 

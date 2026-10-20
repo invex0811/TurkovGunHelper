@@ -97,7 +97,7 @@ test('an old #/builds?share= link still imports the build', async ({ page, conte
   await expect(page).toHaveURL(/\/builds\/\?share=1\.[A-Za-z0-9_-]+$/);
   const sharedDialog = page.getByRole('dialog', { name: 'Shared build', exact: true });
   await expect(sharedDialog.getByText('Ready to import', { exact: true })).toBeVisible();
-  await sharedDialog.getByRole('button', { name: 'Import 1', exact: true }).click();
+  await sharedDialog.getByRole('button', { name: 'Save to my builds', exact: true }).click();
   await sharedDialog.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(page.locator('article[role="link"]').filter({ hasText: 'Legacy link build' })).toBeVisible();
 });

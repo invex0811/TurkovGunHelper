@@ -75,9 +75,6 @@ function formatImportIssue(issue, t) {
   return t('page.import.issue.details', { message });
 }
 
-// Shared links only: show the build in the configurator without saving it.
-const OPEN_WITHOUT_SAVING = 'open';
-
 function shouldResetImportForLanguageChange(phase) {
   return phase === 'reading' || phase === 'loading' || phase === 'ready';
 }
@@ -133,19 +130,17 @@ function BuildImportModal({
     () => results.filter(result => (
       result.status !== 'error'
       && result.strategy !== DUPLICATE_STRATEGIES.SKIP
-      && result.strategy !== OPEN_WITHOUT_SAVING
     )).length,
     [results],
   );
-  const sharedResultToOpen = isShared && results.length === 1 && results[0].status !== 'error'
-    && results[0].strategy === OPEN_WITHOUT_SAVING
+  // A link carries exactly one build. Its actions are plain buttons in the
+  // footer instead of a strategy dropdown: open it, or save it right away.
+  const sharedResult = isShared && results.length === 1 && results[0].status !== 'error'
     ? results[0]
     : null;
 
   const getStrategyOptions = result => [
-    isShared
-      ? { value: OPEN_WITHOUT_SAVING, label: t('import.openWithoutSaving') }
-      : { value: DUPLICATE_STRATEGIES.SKIP, label: t('import.skip') },
+    { value: DUPLICATE_STRATEGIES.SKIP, label: t('import.skip') },
     {
       value: DUPLICATE_STRATEGIES.COPY,
       label: result.status === 'duplicate' ? t('page.import.copy') : t('page.import.import'),
@@ -183,11 +178,7 @@ function BuildImportModal({
     preparePreview(sharedBuilds).then(
       prepared => {
         if (!isCurrentRequest()) return;
-        // Saving a copy of a build you already have is rarely wanted, so a
-        // duplicate link opens for viewing unless the user picks otherwise.
-        setResults(prepared.map(result => (
-          result.status === 'duplicate' ? { ...result, strategy: OPEN_WITHOUT_SAVING } : result
-        )));
+        setResults(prepared);
         setPhase('ready');
       },
       () => {
@@ -262,16 +253,12 @@ function BuildImportModal({
     )));
   };
 
-  const confirmImport = () => {
-    if (sharedResultToOpen) {
-      onOpenShared(sharedResultToOpen.snapshot);
-      return;
-    }
-    if (phase === 'importing' || importableCount === 0) return;
+  const runImport = entries => {
+    if (phase === 'importing') return;
     setPhase('importing');
     try {
-      const outcome = importSavedBuildSnapshots(results);
-      const failed = results.filter(result => result.status === 'error').length;
+      const outcome = importSavedBuildSnapshots(entries);
+      const failed = entries.filter(result => result.status === 'error').length;
       setSummary({ imported: outcome.imported.length, skipped: outcome.skipped, failed });
       onImported(outcome.builds);
       setPhase('success');
@@ -279,6 +266,53 @@ function BuildImportModal({
       setFileErrors(current => [...current, t('error.load')]);
       setPhase('ready');
     }
+  };
+
+  const confirmImport = () => {
+    if (importableCount === 0) return;
+    runImport(results);
+  };
+
+  const saveShared = strategy => {
+    if (!sharedResult) return;
+    runImport([{ ...sharedResult, strategy }]);
+  };
+
+  const isBusy = phase === 'importing';
+  const renderSharedActions = () => {
+    const isDuplicate = sharedResult.status === 'duplicate';
+    const openButton = (
+      <button
+        key="open"
+        className={`btn ${isDuplicate ? 'btn--primary' : 'btn--ghost'}`}
+        type="button"
+        onClick={() => onOpenShared(sharedResult.snapshot)}
+        disabled={isBusy}
+      >
+        {isDuplicate ? t('import.openInConfigurator') : t('import.openWithoutSaving')}
+      </button>
+    );
+    if (!isDuplicate) {
+      return [
+        openButton,
+        <button key="save" className="btn btn--primary" type="button" onClick={() => saveShared(DUPLICATE_STRATEGIES.COPY)} disabled={isBusy}>
+          {t('import.saveShared')}
+        </button>,
+      ];
+    }
+    return [
+      <button key="copy" className="btn btn--ghost" type="button" onClick={() => saveShared(DUPLICATE_STRATEGIES.COPY)} disabled={isBusy}>
+        {t('import.saveSharedCopy')}
+      </button>,
+      ...(sharedResult.duplicateOf?.id
+        ? [(
+          <button key="replace" className="btn btn--ghost" type="button" onClick={() => saveShared(DUPLICATE_STRATEGIES.REPLACE)} disabled={isBusy}>
+            {t('import.replaceShared')}
+          </button>
+        )]
+        : []),
+      openButton,
+    ];
   };
 
   return (
@@ -365,7 +399,7 @@ function BuildImportModal({
                     {result.warnings.map((warning, index) => <li key={`warning:${index}`}>{formatImportIssue(warning, t)}</li>)}
                   </ul>
                 )}
-                {result.status !== 'error' && (
+                {result.status !== 'error' && !isShared && (
                   <div className="build-import-row__strategy">
                     <label id={`${strategyIdPrefix}-${index}-label`} htmlFor={`${strategyIdPrefix}-${index}`}>
                       {result.status === 'duplicate' ? t('import.strategyDuplicate') : t('import.strategyImport')}
@@ -386,23 +420,23 @@ function BuildImportModal({
 
         {phase === 'success' && summary && (
           <div className="build-import-success" role="status">
-            <strong>{t('import.complete')}</strong>
-            <span>{t('import.summary', summary)}</span>
+            <strong>{isShared ? t('import.sharedSaved') : t('import.complete')}</strong>
+            <span>{isShared ? t('import.sharedSavedDescription') : t('import.summary', summary)}</span>
           </div>
         )}
 
-        <footer className="build-import-modal__actions">
+        <footer className={`build-import-modal__actions${isShared && sharedResult && phase !== 'success' ? ' build-import-modal__actions--shared' : ''}`}>
           {phase === 'success' ? (
             <button className="btn btn--primary" type="button" onClick={onClose} autoFocus>{t('import.done')}</button>
+          ) : isShared ? (
+            sharedResult
+              ? renderSharedActions()
+              : <button className="btn btn--ghost" type="button" onClick={onClose}>{t('common.cancel')}</button>
           ) : (
             <>
-              <button className="btn btn--ghost" type="button" onClick={onClose} disabled={phase === 'importing'}>{t('common.cancel')}</button>
-              <button className="btn btn--primary" type="button" onClick={confirmImport} disabled={phase !== 'ready' || (importableCount === 0 && !sharedResultToOpen)}>
-                {phase === 'importing'
-                  ? t('import.importing')
-                  : sharedResultToOpen
-                    ? t('import.openInConfigurator')
-                    : t('import.submit', { count: importableCount })}
+              <button className="btn btn--ghost" type="button" onClick={onClose} disabled={isBusy}>{t('common.cancel')}</button>
+              <button className="btn btn--primary" type="button" onClick={confirmImport} disabled={phase !== 'ready' || importableCount === 0}>
+                {isBusy ? t('import.importing') : t('import.submit', { count: importableCount })}
               </button>
             </>
           )}

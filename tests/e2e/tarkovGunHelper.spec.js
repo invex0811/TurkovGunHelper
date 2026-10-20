@@ -1071,7 +1071,11 @@ test('shares a build by link and imports it from the link', async ({ page, conte
   await page.goto(shareLink);
   const sharedDialog = page.getByRole('dialog', { name: 'Shared build', exact: true });
   await expect(sharedDialog.getByText('Ready to import', { exact: true })).toBeVisible();
-  await sharedDialog.getByRole('button', { name: 'Import 1', exact: true }).click();
+  // A link offers its actions as buttons, not as a dropdown.
+  await expect(sharedDialog.getByRole('button', { name: 'Import action', exact: false })).toHaveCount(0);
+  await expect(sharedDialog.getByRole('button', { name: 'Open without saving', exact: true })).toBeVisible();
+  await sharedDialog.getByRole('button', { name: 'Save to my builds', exact: true }).click();
+  await expect(sharedDialog.getByText('Build saved', { exact: true })).toBeVisible();
   await sharedDialog.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(page).toHaveURL(/\/builds\/?$/);
 
@@ -1088,6 +1092,34 @@ test('reports a damaged build link', async ({ page }) => {
   await expect(page).toHaveURL(/\/builds\/?$/);
 });
 
+test('saves a copy of or replaces a saved build from its link', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await createBuild(page);
+  await saveBuild(page, 'Linked twice');
+  await page.getByRole('button', { name: 'Copy link', exact: true }).click();
+  await expect(page.getByText('Link copied', { exact: true })).toBeVisible();
+  const shareLink = await page.evaluate(() => navigator.clipboard.readText());
+  const savedNames = () => page.evaluate(() => (
+    JSON.parse(localStorage.getItem('tarkov-gun-helper:saved-builds') || '[]').map(build => build.name)
+  ));
+
+  await page.goto(shareLink);
+  let sharedDialog = page.getByRole('dialog', { name: 'Shared build', exact: true });
+  await expect(sharedDialog.getByText('Already exists', { exact: true })).toBeVisible();
+  await sharedDialog.getByRole('button', { name: 'Replace saved build', exact: true }).click();
+  await expect(sharedDialog.getByText('Build saved', { exact: true })).toBeVisible();
+  await sharedDialog.getByRole('button', { name: 'Done', exact: true }).click();
+  expect(await savedNames()).toHaveLength(1);
+
+  await page.goto(shareLink);
+  sharedDialog = page.getByRole('dialog', { name: 'Shared build', exact: true });
+  await expect(sharedDialog.getByText('Already exists', { exact: true })).toBeVisible();
+  await sharedDialog.getByRole('button', { name: 'Save a copy', exact: true }).click();
+  await expect(sharedDialog.getByText('Build saved', { exact: true })).toBeVisible();
+  await sharedDialog.getByRole('button', { name: 'Done', exact: true }).click();
+  expect(await savedNames()).toHaveLength(2);
+});
+
 test('opens a shared build in the configurator without saving it', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await createBuild(page);
@@ -1099,7 +1131,9 @@ test('opens a shared build in the configurator without saving it', async ({ page
   await page.goto(shareLink);
   const sharedDialog = page.getByRole('dialog', { name: 'Shared build', exact: true });
   await expect(sharedDialog.getByText('Already exists', { exact: true })).toBeVisible();
-  await expect(sharedDialog.getByRole('button', { name: 'Duplicate action Open without saving', exact: true })).toBeVisible();
+  await expect(sharedDialog.getByRole('button', { name: 'Duplicate action', exact: false })).toHaveCount(0);
+  await expect(sharedDialog.getByRole('button', { name: 'Save a copy', exact: true })).toBeVisible();
+  await expect(sharedDialog.getByRole('button', { name: 'Replace saved build', exact: true })).toBeVisible();
   await sharedDialog.getByRole('button', { name: 'Open in configurator', exact: true }).click();
 
   await expect(page.getByText('Opened from a link', { exact: true })).toBeVisible();
