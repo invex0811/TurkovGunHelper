@@ -86,6 +86,7 @@ function PartRow({
           <AsyncImage
             src={part.item.image512pxLink || part.item.iconLink}
             alt=""
+            unavailableLabel="—"
             style={{ width: '100%', height: '100%', objectFit: 'contain' }}
             containerStyle={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0 }}
           />
