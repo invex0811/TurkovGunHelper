@@ -5641,6 +5641,10 @@ button.weapon-diagram-node:focus-visible,
 }
 
 .breadcrumbs a {
+  /* A 24 px tall tap target; the negative margin keeps the line where it was. */
+  display: inline-block;
+  margin: -5px 0;
+  padding: 5px 0;
   color: var(--text-muted);
 }
 
