@@ -102,6 +102,34 @@ test('an old #/builds?share= link still imports the build', async ({ page, conte
   await expect(page.locator('article[role="link"]').filter({ hasText: 'Legacy link build' })).toBeVisible();
 });
 
+test('an unknown address shows a not-found page that leads back to the weapons', async ({ page }) => {
+  await page.goto('/no-such-page');
+  await expect(page.getByRole('heading', { name: 'Page not found', exact: true })).toBeVisible();
+  await expect(page).toHaveTitle('Page Not Found | Tarkov Gun Helper');
+  await expect(page.getByRole('link', { name: 'Report a bug', exact: true }))
+    .toHaveAttribute('href', 'https://github.com/invex0811/TurkovGunHelper/issues/new');
+
+  await page.getByRole('link', { name: 'Go to weapon list', exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveTitle('Tarkov Gun Helper - Optimal Weapon Builds');
+});
+
+test('an unknown weapon shows a not-found page instead of an empty configurator', async ({ page }) => {
+  await page.goto('/weapon/no-such-weapon/');
+  await expect(page.getByRole('heading', { name: 'Weapon not found', exact: true })).toBeVisible();
+  await expect(page).toHaveTitle('Page Not Found | Tarkov Gun Helper');
+  await page.getByRole('link', { name: 'Go to weapon list', exact: true }).click();
+  await expect(page.getByRole('link').filter({ has: page.getByRole('heading', { name: 'TW', exact: true }) })).toBeVisible();
+});
+
+test('the header links to bug reports on GitHub', async ({ page }) => {
+  await page.goto('/');
+  const feedback = page.getByRole('link', { name: 'Feedback', exact: true });
+  await expect(feedback).toBeVisible();
+  await expect(feedback).toHaveAttribute('href', 'https://github.com/invex0811/TurkovGunHelper/issues/new');
+  await expect(feedback).toHaveAttribute('target', '_blank');
+});
+
 test('the home and weapon pages carry their meta in the HTML itself', async ({ request }) => {
   const home = await (await request.get('/')).text();
   expect(home).toContain('<title>Tarkov Gun Helper - Optimal Weapon Builds</title>');

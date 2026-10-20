@@ -1469,7 +1469,9 @@ function Configurator({ weaponId }) {
       setWeapon(null);
       setAllMods(null);
       setRememberedModulesWeaponId(null);
-      setLoadError(t('config.error'));
+      // A weapon the catalog does not have is not a loading failure: without
+      // an error the page shows its not-found state.
+      setLoadError(error?.code === 'NOT_FOUND' ? null : t('config.error'));
       setBuildResult(null);
       setGenerationError(null);
       setReplacementError(null);
@@ -2145,7 +2147,8 @@ function Configurator({ weaponId }) {
       <ConfiguratorUnavailable
         error={loadError}
         errorTitle={t('config.loadingFailed')}
-        notFoundLabel={t('config.notFound')}
+        notFoundTitle={t('config.notFound')}
+        notFoundDescription={t('config.notFoundDescription')}
       />
     );
   }

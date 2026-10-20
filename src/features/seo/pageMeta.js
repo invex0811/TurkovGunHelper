@@ -37,6 +37,14 @@ export const STATIC_PAGE_META = Object.freeze({
   },
 });
 
+// An unknown page or weapon. GitHub Pages serves it as 404.html with a 404
+// status, so the canonical URL only fills the tag.
+export const NOT_FOUND_META = Object.freeze({
+  path: '/',
+  title: `Page Not Found | ${SITE_NAME}`,
+  description: HOME_META.description,
+});
+
 export function getCanonicalUrl(path) {
   return `${SITE_URL}${path}`;
 }
@@ -46,13 +54,13 @@ function withTrailingSlash(pathname) {
 }
 
 // The meta of a page that does not depend on loaded data, or null for weapon
-// pages, which need the weapon first.
+// pages, which need the weapon first, and for unknown paths, whose not-found
+// page sets its own.
 export function getStaticRouteMeta(pathname) {
   if (typeof pathname !== 'string' || pathname === '/' || pathname === '') return HOME_META;
   const normalized = withTrailingSlash(pathname);
   if (Object.hasOwn(STATIC_PAGE_META, normalized)) return STATIC_PAGE_META[normalized];
-  if (normalized.startsWith('/weapon/') || normalized.startsWith('/configure/')) return null;
-  return HOME_META;
+  return null;
 }
 
 // The labels a weapon page shows, from a catalog weapon.

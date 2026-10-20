@@ -713,6 +713,32 @@ a {
   }
 }
 
+.topbar-feedback {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.topbar-feedback .material-symbol {
+  font-size: 18px;
+}
+
+.topbar-feedback:hover {
+  border-color: var(--panel-border-active);
+  color: var(--color-gold);
+}
+
 .price-mode-switch {
   display: inline-flex;
   flex: 0 0 auto;
@@ -787,7 +813,8 @@ a {
     gap: 20px;
   }
 
-  .topbar-status__text {
+  .topbar-status__text,
+  .topbar-feedback__text {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -799,6 +826,16 @@ a {
   .topbar-status {
     justify-content: center;
     width: 40px;
+  }
+
+  .topbar-feedback {
+    justify-content: center;
+    width: 40px;
+    padding: 0;
+  }
+
+  .topbar-feedback .material-symbol {
+    font-size: 20px;
   }
 
   .app__main {
@@ -823,6 +860,7 @@ a {
   }
 
   .brand {
+    flex-shrink: 1;
     gap: 10px;
     min-width: 0;
   }
@@ -919,7 +957,9 @@ a {
   }
 }
 
-@media (max-width: 360px) {
+/* The name and the header controls need about 410px; narrower phones show
+   the logo alone rather than a cut-off name. */
+@media (max-width: 419px) {
   .brand__name {
     display: none;
   }
@@ -3762,6 +3802,57 @@ button.weapon-diagram-node:focus-visible,
   gap: 12px;
   padding: 56px 24px;
   text-align: center;
+}
+
+.not-found {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  max-width: 640px;
+  margin: 48px auto 0;
+  padding: 48px 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-bg);
+  text-align: center;
+}
+
+.not-found__code {
+  margin: 0;
+  color: var(--gold);
+  font: 700 3.5rem/1 var(--font-display);
+  letter-spacing: .08em;
+}
+
+.not-found__title {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.not-found__description {
+  max-width: 480px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.not-found__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+@media (max-width: 767px) {
+  .not-found {
+    margin-top: 24px;
+    padding: 32px 16px;
+  }
 }
 
 .build-card-grid {
