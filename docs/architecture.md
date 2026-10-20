@@ -40,7 +40,7 @@
 src/
 ├── main.jsx, App.jsx           # точка входа, провайдеры, маршруты, шапка
 ├── index.css, App.css          # глобальные стили и токены темы
-├── assets/                     # шрифт Material Symbols, изображения
+├── assets/                     # шрифт Material Symbols
 ├── data/
 │   ├── tarkovApi/              # client.js (fetch), repository.js (каталог+кэш),
 │   │                           # itemMapper.js (нормализация), translations.js

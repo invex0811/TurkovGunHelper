@@ -33,7 +33,6 @@ Dev-сервер Vite поднимается на `http://localhost:5173`. На�
 | `npm run icons` | Скачивает подмножество шрифта Material Symbols для иконок из `src/ui/materialSymbolNames.js` |
 | `npm run weapons:snapshot` | Обновляет `scripts/data/weapons-snapshot.json` — список оружия, из которого строятся страницы, если tarkov.dev недоступен |
 | `npm run og-image` | Перерисовывает `public/og-image.png` (картинка превью ссылок) в Chromium из Playwright |
-| `npm run deploy` | Ручной деплой `dist/` в ветку `gh-pages` (обычно не нужен — см. ниже) |
 
 Перед первым запуском e2e установите браузер Playwright:
 
@@ -67,7 +66,3 @@ npx playwright install chromium
 - **Сбросить настройки и билды:** DevTools → Application → Local Storage, ключи `tarkovGunHelper.*` и `tarkov-gun-helper:saved-builds` (полный список — в [Хранение](storage.md#localstorage)).
 - **Предупреждения в консоли** в dev-режиме: недоступность IndexedDB и иконки, которых нет в подмножестве шрифта.
 - **Аналитика** в dev-режиме не отправляется: Umami подключается только на `tarkovgunhelper.com`.
-
-## Каталог `research/`
-
-`research/calculator/` — старые экспериментальные скрипты для ручной проверки сценариев калькулятора. Они не входят в сборку, тесты и линтинг (`eslint.config.js` их игнорирует) и могут не соответствовать текущему коду.

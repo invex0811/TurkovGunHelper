@@ -7,7 +7,6 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores([
     'dist',
-    'research/**',
     'test-results/**',
     'playwright-report/**',
     'blob-report/**',

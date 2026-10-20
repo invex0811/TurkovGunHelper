@@ -9,7 +9,7 @@
 
 ## Unit-тесты
 
-`npm test` выполняет `node --test`. Раннер сам находит файлы `*.test.js`. Файлы `*.spec.js` (e2e) и скрипты из `research/` под этот шаблон не попадают.
+`npm test` выполняет `node --test`. Раннер сам находит файлы `*.test.js`. Файлы `*.spec.js` (e2e) под этот шаблон не попадают.
 
 ```bash
 node --test tests/calculator/calculator.test.js

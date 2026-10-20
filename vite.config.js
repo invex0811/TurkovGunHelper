@@ -9,7 +9,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'prompt',
       injectRegister: false,
-      includeAssets: ['favicon.svg', 'tgh-logo.png'],
+      includeAssets: ['tgh-logo.png'],
       manifest: {
         name: 'Tarkov Gun Helper',
         short_name: 'Tarkov Gun Helper',
