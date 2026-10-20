@@ -76,8 +76,8 @@ test('section pages have their own meta with or without the trailing slash', () 
   assert.equal(getStaticRouteMeta('/module-comparison'), STATIC_PAGE_META['/module-comparison/']);
 });
 
-test('weapon routes wait for the weapon; unknown paths use the home meta', () => {
+test('weapon routes wait for the weapon; unknown paths leave the meta to the not-found page', () => {
   assert.equal(getStaticRouteMeta('/weapon/colt-m4a1/'), null);
   assert.equal(getStaticRouteMeta('/configure/5447a9cd'), null);
-  assert.equal(getStaticRouteMeta('/no-such-page'), HOME_META);
+  assert.equal(getStaticRouteMeta('/no-such-page'), null);
 });

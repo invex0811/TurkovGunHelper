@@ -15,6 +15,8 @@ import { MaterialSymbol } from './ui/MaterialSymbol.js';
 import { LegacyConfigureRoute, WeaponRoute } from './features/routing/WeaponRoutes.jsx';
 import { applyPageMeta } from './features/seo/documentMeta.js';
 import { getStaticRouteMeta } from './features/seo/pageMeta.js';
+import { FEEDBACK_URL } from './features/feedback/feedbackLink.js';
+import NotFoundState from './ui/NotFoundState.jsx';
 
 const Configurator = lazy(() => import('./pages/Configurator'));
 const Builds = lazy(() => import('./pages/Builds'));
@@ -115,6 +117,27 @@ function SettingsLink({ t }) {
   );
 }
 
+// Icon only on narrow screens, like the catalog status.
+function FeedbackLink({ t }) {
+  return (
+    <a
+      className="topbar-feedback"
+      href={FEEDBACK_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={t('feedback.description')}
+    >
+      <MaterialSymbol name="bug_report" />
+      <span className="topbar-feedback__text">{t('feedback.button')}</span>
+    </a>
+  );
+}
+
+function PageNotFound() {
+  const { t } = useI18n();
+  return <NotFoundState title={t('notFound.pageTitle')} description={t('notFound.pageDescription')} />;
+}
+
 function ConfiguratorLoading() {
   const { t } = useI18n();
   return (
@@ -150,6 +173,7 @@ function MainLayout() {
         <MainNav t={t} />
         <div className="topbar__actions">
           <CatalogStatus />
+          <FeedbackLink t={t} />
           <PriceModeSwitch />
           <SettingsLink t={t} />
         </div>
@@ -206,6 +230,7 @@ function MainLayout() {
               </LegacyConfigureRoute>
             )}
           />
+          <Route path="*" element={<PageNotFound />} />
         </Routes>
       </main>
       <PwaUpdatePrompt />

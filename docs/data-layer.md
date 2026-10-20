@@ -32,7 +32,7 @@
 | `TIMEOUT` | Истёк таймаут |
 | `ABORTED` | Запрос отменён вызывающим кодом (`isAbortError(error)` → `true`) |
 | `NETWORK_ERROR` | Сеть недоступна |
-| `NOT_FOUND` | `getWeaponDetails` не нашёл оружие по ID |
+| `NOT_FOUND` | `getWeaponDetails` не нашёл оружие по ID; конфигуратор показывает страницу 404, а не ошибку загрузки |
 
 ### Переводы
 

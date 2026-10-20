@@ -8,11 +8,11 @@ It helps players quickly find compatible modules for their preferred weapon char
 
 ## Features
 
-- Weapon catalog with search and type filters.
+- Weapon catalog with search, filters by type, caliber, and trader, sorting, and favorites.
 - Automatic generation of optimized Meta builds.
 - Custom priorities for weapon characteristics.
 - Separate PvP and PvE price modes.
-- Flea Market and trader price support.
+- Flea Market and trader price support, with your trader levels and Flea Market access.
 - Build limits for budget and weight.
 - Suppressor, magazine, sight, laser, and flashlight settings.
 - Required modules that must be included in the build.
@@ -23,7 +23,10 @@ It helps players quickly find compatible modules for their preferred weapon char
 - Direct links to weapon and module pages on tarkov.dev.
 - Local build saving with the ability to continue editing later.
 - Comparison of multiple saved builds.
+- Side-by-side comparison of weapon mods of one category.
 - Import and export of individual builds or the entire collection.
+- Sharing any build as a link.
+- English and Russian interface, dark and light themes, installable as an app (PWA).
 
 ## How to Use
 
@@ -41,6 +44,10 @@ Weapon, module, compatibility, and price data is provided by [tarkov.dev](https:
 Saved builds are stored locally in the browser. To move builds to another browser or device, export them to a file and import them again.
 
 Prices are estimates and may differ from current in-game prices.
+
+## Feedback
+
+Found a bug or have an idea? [Open an issue](https://github.com/invex0811/TurkovGunHelper/issues/new). The **Feedback** button in the site header leads to the same place.
 
 ## Development
 

@@ -16,7 +16,7 @@ Tarkov Gun Helper — frontend-only приложение на React 19 и Vite 8
 | [Хранение и перенос билдов](storage.md) | Ключи `localStorage`, снимок сохранённого билда, формат экспорта/импорта |
 | [Тестирование и CI](testing.md) | Unit-тесты на `node:test`, e2e на Playwright, фикстуры, GitHub Actions |
 | [Правила разработки](contributing.md) | Локализация, иконки, стили, аналитика, чек-лист изменений |
-| [Дорожная карта](development-roadmap.md) | План дальнейшей разработки |
+| [Дорожная карта](development-roadmap.md) | Что уже сделано и какие задачи остались |
 
 ## Коротко о главном
 

@@ -8,6 +8,7 @@ export const MATERIAL_SYMBOL_NAMES = Object.freeze([
   'arrow_forward',
   'arrow_upward',
   'bookmark',
+  'bug_report',
   'check',
   'check_circle',
   'close',

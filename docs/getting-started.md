@@ -33,7 +33,6 @@ Dev-сервер Vite поднимается на `http://localhost:5173`. На�
 | `npm run icons` | Скачивает подмножество шрифта Material Symbols для иконок из `src/ui/materialSymbolNames.js` |
 | `npm run weapons:snapshot` | Обновляет `scripts/data/weapons-snapshot.json` — список оружия, из которого строятся страницы, если tarkov.dev недоступен |
 | `npm run og-image` | Перерисовывает `public/og-image.png` (картинка превью ссылок) в Chromium из Playwright |
-| `npm run deploy` | Ручной деплой `dist/` в ветку `gh-pages` (обычно не нужен — см. ниже) |
 
 Перед первым запуском e2e установите браузер Playwright:
 
