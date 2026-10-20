@@ -152,7 +152,9 @@ function MainLayout() {
         <Link to="/" className="brand" aria-label={t('app.openWeapons')}>
           <img
             className="brand__mark"
-            src={`${import.meta.env.BASE_URL}tgh-logo.png`}
+            src="/tgh-logo-96.png"
+            width="36"
+            height="36"
             alt=""
             aria-hidden="true"
           />

@@ -67,7 +67,7 @@ export function renderStaticBody({ eyebrow, heading, paragraphs, links }) {
   return [
     '<div class="prerender">',
     '      <header class="topbar">',
-    `        <a href="/" class="brand"><img class="brand__mark" src="/tgh-logo.png" alt="" width="36" height="36" /><span class="brand__name">${escapeHtml(SITE_NAME)}</span></a>`,
+    `        <a href="/" class="brand"><img class="brand__mark" src="/tgh-logo-96.png" alt="" width="36" height="36" /><span class="brand__name">${escapeHtml(SITE_NAME)}</span></a>`,
     '      </header>',
     '      <main class="app__main prerender__main">',
     `        <p class="eyebrow-mono">${escapeHtml(eyebrow)}</p>`,

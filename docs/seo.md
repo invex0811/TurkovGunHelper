@@ -43,7 +43,7 @@ Slug — `normalizedName` оружия из tarkov.dev (`colt-m4a1-556x45-assaul
 - Страница оружия: [`WeaponRoute`](../src/features/routing/WeaponRoutes.jsx) ставит мета-теги, когда оружие найдено в каталоге. Название берётся из каталога на текущем языке.
 - Заголовок оружия строится по короткому названию и держит слово Tarkov ближе к началу: `M4A1 Build – Tarkov Meta & Budget Builds | Tarkov Gun Helper` (60 символов; поисковая выдача показывает примерно столько). Полное название остаётся в `description` и в `<h1>`. Если короткое название есть у нескольких оружий (`MDR` в двух калибрах, цветные варианты вроде `HK 416A5`), заголовок берёт полное название — иначе заголовки совпали бы (`getAmbiguousShortNames()`).
 - `index.html` содержит мета-теги главной, Open Graph, Twitter Card и JSON-LD `WebApplication`. JSON-LD остаётся только на главной.
-- Картинка для превью ссылок — [`public/og-image.png`](../public/og-image.png) (1200×630). Её рисует `npm run og-image` ([`scripts/render-og-image.mjs`](../scripts/render-og-image.mjs)) в Chromium из Playwright; после изменения дизайна PNG нужно перегенерировать и закоммитить.
+- Картинка для превью ссылок — [`public/og-image.png`](../public/og-image.png) (1200×630). Её рисует `npm run og-image` ([`scripts/render-og-image.mjs`](../scripts/render-og-image.mjs)) в Chromium из Playwright; после изменения дизайна PNG нужно перегенерировать и закоммитить. Скриншот Chromium весит ~280 КБ, поэтому перед коммитом PNG сжимается: `pngquant --quality=85-98 --strip --force --ext .png public/og-image.png` (~100 КБ, на глаз без потерь).
 
 ## Статическая генерация
 
