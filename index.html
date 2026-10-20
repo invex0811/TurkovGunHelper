@@ -8,10 +8,60 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Oswald:wght@500;600&display=swap" />
     <title>Tarkov Gun Helper - Optimal Weapon Builds</title>
+    <!-- scripts/prerender.mjs rewrites these per page; src/features/seo/pageMeta.js holds the texts. -->
+    <meta name="description" content="Generate optimal Escape from Tarkov weapon builds: lowest recoil, best ergonomics, budget and weight limits, priced with live flea market and trader offers for PvP and PvE." />
+    <link rel="canonical" href="https://tarkovgunhelper.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Tarkov Gun Helper" />
+    <meta property="og:title" content="Tarkov Gun Helper - Optimal Weapon Builds" />
+    <meta property="og:description" content="Generate optimal Escape from Tarkov weapon builds: lowest recoil, best ergonomics, budget and weight limits, priced with live flea market and trader offers for PvP and PvE." />
+    <meta property="og:url" content="https://tarkovgunhelper.com/" />
+    <meta property="og:image" content="https://tarkovgunhelper.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Tarkov Gun Helper - Optimal Weapon Builds" />
+    <meta name="twitter:description" content="Generate optimal Escape from Tarkov weapon builds: lowest recoil, best ergonomics, budget and weight limits, priced with live flea market and trader offers for PvP and PvE." />
+    <meta name="twitter:image" content="https://tarkovgunhelper.com/og-image.png" />
+    <!--json-ld-->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Tarkov Gun Helper",
+        "url": "https://tarkovgunhelper.com/",
+        "description": "Optimal weapon build generator for Escape from Tarkov with flea market and trader prices for PvP and PvE.",
+        "applicationCategory": "GameApplication",
+        "operatingSystem": "Web",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
+    <!--/json-ld-->
+    <script>
+      // The theme the app will set, applied before the static text paints.
+      try {
+        document.documentElement.dataset.theme = localStorage.getItem('tarkov-gun-helper-theme') || 'dark';
+      } catch {
+        document.documentElement.dataset.theme = 'dark';
+      }
+    </script>
   </head>
 
   <body>
-    <div id="root"></div>
+    <!-- The static text is for crawlers and the first paint; the app replaces it. -->
+    <div id="root"><!--prerender--><div class="prerender">
+      <header class="topbar">
+        <a href="/" class="brand"><img class="brand__mark" src="/tgh-logo.png" alt="" width="36" height="36" /><span class="brand__name">Tarkov Gun Helper</span></a>
+      </header>
+      <main class="app__main prerender__main">
+        <p class="eyebrow-mono">Escape from Tarkov weapon builds</p>
+        <h1 class="page-title">Escape from Tarkov weapon build generator</h1>
+        <p>Tarkov Gun Helper finds the optimal build for any Escape from Tarkov weapon: the lowest recoil, the best ergonomics, a build within your budget or under a weight limit. Every module is priced with live flea market and trader offers, for PvP and PvE.</p>
+        <p>Pick a weapon, generate a build, swap modules by hand, compare saved builds and share them as a link. Everything runs in your browser.</p>
+        <p><a href="/builds/">Saved builds</a> · <a href="/module-comparison/">Module comparison</a></p>
+        <!--weapon-links-->
+      </main>
+    </div><!--/prerender--></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

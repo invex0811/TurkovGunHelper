@@ -57,6 +57,7 @@ src/
 │   ├── ownedItems.js           # «уже есть в наличии» и итоговая стоимость
 │   ├── customConstraints.js    # оценка мягких ограничений
 │   ├── customPriorityAttributes.js
+│   ├── weaponSlugs.js          # slug страниц оружия (общий с scripts/prerender.mjs)
 │   ├── sightModes.js, scopeZoom.js, fireModes.js, itemCategories.js, ...
 ├── features/
 │   ├── configurator/           # страница конфигуратора, хуки, компоненты
@@ -66,6 +67,8 @@ src/
 │   ├── traderLevels/           # контекст уровней торговцев
 │   ├── dataStatus/             # контекст и индикатор свежести каталога
 │   ├── analytics/              # Umami
+│   ├── routing/                # маршруты оружия (slug → id), старые #/ адреса
+│   ├── seo/                    # title, description, canonical для страниц
 │   └── pwa/                    # установка и обновление PWA
 ├── i18n/                       # сообщения en/ru и провайдер
 ├── pages/                      # Home, Configurator, Builds, ModuleComparison, Settings
@@ -75,16 +78,19 @@ src/
 
 ## Маршруты
 
-Используется `HashRouter` — GitHub Pages не умеет отдавать `index.html` на произвольный путь, а с хешем это не нужно.
+Используется `BrowserRouter` с обычными адресами. GitHub Pages отдаёт для каждой страницы свой статический `index.html`, который создаёт [`scripts/prerender.mjs`](../scripts/prerender.mjs); любой другой путь получает `404.html` — копию оболочки приложения. Подробнее — в [Адреса страниц и SEO](seo.md).
 
 | Путь | Страница | Назначение |
 | --- | --- | --- |
-| `#/` | [`Home`](../src/pages/Home.jsx) | Каталог оружия: поиск, фильтры по типу, калибру и торговцу, сортировка |
-| `#/configure/:weaponId` | [`ConfiguratorPage`](../src/features/configurator/ConfiguratorPage.jsx) | Генерация и редактирование билда |
-| `#/configure/:weaponId?build=<id>` | то же | Открывает сохранённый билд для продолжения работы |
-| `#/builds` | [`Builds`](../src/pages/Builds.jsx) | Сохранённые билды, сравнение до 4 штук, импорт/экспорт |
-| `#/module-comparison` | [`ModuleComparison`](../src/pages/ModuleComparison.jsx) | Сравнение характеристик модулей одной категории |
-| `#/settings` | [`Settings`](../src/pages/Settings.jsx) | Язык, тема, уровни торговцев, параметры цен |
+| `/` | [`Home`](../src/pages/Home.jsx) | Каталог оружия: поиск, фильтры по типу, калибру и торговцу, сортировка |
+| `/weapon/:slug/` | [`WeaponRoute`](../src/features/routing/WeaponRoutes.jsx) → [`ConfiguratorPage`](../src/features/configurator/ConfiguratorPage.jsx) | Генерация и редактирование билда; slug переводится в `weapon.id` |
+| `/weapon/:slug/?build=<id>` | то же | Открывает сохранённый билд для продолжения работы |
+| `/configure/:weaponId` | [`LegacyConfigureRoute`](../src/features/routing/WeaponRoutes.jsx) | Старый адрес: редирект на `/weapon/:slug/` с сохранением query |
+| `/builds/` | [`Builds`](../src/pages/Builds.jsx) | Сохранённые билды, сравнение до 4 штук, импорт/экспорт, `?share=` — импорт по ссылке |
+| `/module-comparison/` | [`ModuleComparison`](../src/pages/ModuleComparison.jsx) | Сравнение характеристик модулей одной категории |
+| `/settings/` | [`Settings`](../src/pages/Settings.jsx) | Язык, тема, уровни торговцев, параметры цен; `#traders` прокручивает к торговцам |
+
+Адреса старого формата (`/#/builds?share=…`) переписываются в обычные ещё до запуска роутера — см. [Старые адреса](seo.md#старые-адреса). Заголовок вкладки и мета-теги ставятся при каждой смене маршрута из [`pageMeta.js`](../src/features/seo/pageMeta.js).
 
 Все страницы, кроме главной, загружаются лениво (`React.lazy`) — отдельными чанками.
 
@@ -97,7 +103,7 @@ I18nProvider            язык интерфейса (en/ru)              → u
 └─ PriceModeProvider    режим цен PvP/PvE                     → usePriceMode()
    └─ TraderLevelsProvider  уровни торговцев, строгий режим, Ref → useTraderLevels()
       └─ CatalogStatusProvider  свежесть каталога, обновление → useCatalogStatus()
-         └─ HashRouter → MainLayout (шапка, маршруты, PwaUpdatePrompt)
+         └─ BrowserRouter → MainLayout (шапка, маршруты, PwaUpdatePrompt)
 ```
 
 Каждый провайдер сам читает начальное значение из `localStorage` и сохраняет изменения обратно. Тема (`dark`/`light`) хранится отдельно хуком `useTheme` в `App.jsx` и выставляется атрибутом `data-theme` на `<html>`.
@@ -106,7 +112,7 @@ I18nProvider            язык интерфейса (en/ru)              → u
 
 ## Поток данных конфигуратора
 
-1. `ConfiguratorPage` получает `weaponId` из URL и вызывает [`useConfiguratorCatalog`](../src/features/configurator/hooks/useConfiguratorCatalog.js), который параллельно запрашивает `getWeaponDetails()` и `getAllMods()`. Оба берут данные из одного кэшированного каталога, так что сетевой запрос один.
+1. `WeaponRoute` находит `weaponId` по slug из URL и передаёт его в `ConfiguratorPage`, который вызывает [`useConfiguratorCatalog`](../src/features/configurator/hooks/useConfiguratorCatalog.js), который параллельно запрашивает `getWeaponDetails()` и `getAllMods()`. Оба берут данные из одного кэшированного каталога, так что сетевой запрос один.
 2. Если в URL есть `?build=<id>`, хук [`useSavedBuild`](../src/features/configurator/hooks/useSavedBuild.js) восстанавливает части билда из `localStorage` по ID предметов.
 3. Пользователь задаёт цель и ограничения. Они собираются в объект `options` (см. [Калькулятор](calculator.md#входные-параметры)).
 4. По кнопке **Generate Build** хук [`useBuildCalculation`](../src/features/configurator/hooks/useBuildCalculation.js) отправляет задачу в Web Worker. Новый запрос отменяет предыдущий: старый worker завершается и создаётся новый.
@@ -135,6 +141,7 @@ I18nProvider            язык интерфейса (en/ru)              → u
 
 ## Ключевые решения
 
+- **Статические страницы при сборке.** Для поисковиков у каждого оружия есть свой HTML с заголовком и текстом; приложение заменяет его после загрузки. Сервера по-прежнему нет — это файлы в `dist/`.
 - **Frontend-only.** Нет сервера, нет аккаунтов. Данные пользователя живут только в его браузере; для переноса есть экспорт в файл.
 - **Один каталог на (режим игры × язык × режим цен).** tarkov.dev отдаёт разные данные для `regular` и `pve`, а локализованные имена — отдельными файлами. Каталог нормализуется один раз и переиспользуется всеми страницами.
 - **Расчёт в Web Worker.** Поиск билда может занимать секунды, поэтому он вынесен из UI-потока и отменяем.

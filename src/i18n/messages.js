@@ -7,7 +7,6 @@ export const messages = {
   en: {
     ...uiMessages.en,
     ...settingsMessages.en,
-    'app.title': 'Tarkov Gun Helper - Optimal Weapon Builds',
     'app.tagline': 'Optimal Weapon Builds', 'app.weapons': 'Weapons', 'app.builds': 'Builds',
     'app.openWeapons': 'Open weapon list', 'app.loadingConfigurator': 'Loading configurator...',
     'language.label': 'Language', 'language.en': 'EN', 'language.ru': 'RU',
@@ -86,7 +85,6 @@ export const messages = {
   },
   ru: {
     ...uiMessages.ru,
-    'app.title': 'Tarkov Gun Helper — Оптимальные сборки оружия',
     'app.tagline': 'Оптимальные сборки оружия', 'app.weapons': 'Оружие', 'app.builds': 'Сборки',
     'app.openWeapons': 'Открыть список оружия', 'app.loadingConfigurator': 'Загрузка конфигуратора...',
     'language.label': 'Язык', 'language.en': 'EN', 'language.ru': 'RU',

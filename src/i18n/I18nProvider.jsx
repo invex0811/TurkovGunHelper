@@ -15,10 +15,10 @@ export default function I18nProvider({ children }) {
     const message = messages[language]?.[key] ?? messages[DEFAULT_LANGUAGE][key] ?? key;
     return interpolateMessage(message, values, language);
   }, [language]);
+  // The page title is set per route (features/seo), matching the static HTML.
   useEffect(() => {
     document.documentElement.lang = language;
-    document.title = t('app.title');
-  }, [language, t]);
+  }, [language]);
   const value = useMemo(() => ({ language, setLanguage, t }), [language, setLanguage, t]);
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }

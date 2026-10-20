@@ -44,6 +44,7 @@
 import {
   loadItemsCatalog,     // (gameMode, { language, priceMode, signal, forceRefresh, timeoutMs }) → catalog
   getWeapons,           // ({ priceMode, language, signal }) → weapons[]
+  loadWeaponSlugIndex,  // ({ priceMode, language, signal }) → { slugById, idBySlug, weaponById }
   getAllMods,           // (priceMode, { language, signal }) → modsById
   getWeaponDetails,     // (id, priceMode, { language, signal }) → item
   getCatalogStatus,     // (gameMode, { language, priceMode }) → статус или null

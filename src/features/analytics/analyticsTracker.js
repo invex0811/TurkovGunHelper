@@ -47,8 +47,8 @@ export function createAnalyticsTracker(win) {
   }
 
   return {
-    // HashRouter keeps the route in the hash; report it as a plain path so
-    // every screen shows up as its own page in Umami. A repeat of the same
+    // Report the route path without the query, so every screen shows up as
+    // its own page in Umami. A repeat of the same
     // path (StrictMode re-running effects) is not a new pageview.
     trackPageview(path) {
       if (path === currentPath) return;

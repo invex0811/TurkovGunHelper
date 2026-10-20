@@ -13,7 +13,7 @@ export default defineConfig([
     'blob-report/**',
   ]),
   {
-    files: ['**/*.{js,jsx}'],
+    files: ['**/*.{js,jsx,mjs}'],
     extends: [
       js.configs.recommended,
       reactHooks.configs.flat.recommended,
@@ -25,7 +25,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['tests/**/*.js', 'playwright.config.js'],
+    files: ['tests/**/*.js', 'scripts/**/*.mjs', 'playwright.config.js'],
     languageOptions: {
       globals: globals.node,
     },

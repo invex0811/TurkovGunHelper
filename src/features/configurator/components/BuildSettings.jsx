@@ -342,7 +342,7 @@ function TraderPricesSection({
         />
       </div>
       {includeTraderPrices && strictTraderLevels && (
-        <Link className="strict-trader-badge" to="/settings#traders">
+        <Link className="strict-trader-badge" to="/settings/#traders">
           <span>{t('traders.strictLevelsActive')}</span>
           <small>{t('traders.manageLevels')}</small>
         </Link>

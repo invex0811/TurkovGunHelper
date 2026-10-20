@@ -49,6 +49,8 @@ npm ci
 npm run dev
 ```
 
+Pages have plain URLs: every weapon has its own page at `/weapon/<slug>/` (for example `https://tarkovgunhelper.com/weapon/colt-m4a1-556x45-assault-rifle/`). `npm run build` creates a static HTML page with its own title and description for each weapon, plus `sitemap.xml` and `robots.txt`, so search engines can index the site. Old `/#/…` links keep working.
+
 Developer documentation (in Russian) lives in [`docs/`](docs/README.md): architecture, data layer and pricing, build calculator, storage and build transfer, testing, and contribution guidelines.
 
 ## Disclaimer

@@ -41,7 +41,7 @@ RoadMap фиксирует текущее состояние проекта ка
 На текущий момент проект содержит:
 
 - React/Vite frontend application.
-- HashRouter-based navigation.
+- BrowserRouter-based navigation с обычными адресами и статическими страницами оружия.
 - Главную страницу со списком оружия.
 - Страницу конфигуратора оружия.
 - API/data layer в `src/data/tarkovApi`.

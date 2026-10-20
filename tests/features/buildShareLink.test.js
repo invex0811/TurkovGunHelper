@@ -107,12 +107,12 @@ test('decoding rejects links longer than the parameter limit', async () => {
   );
 });
 
-test('the share URL points at the builds route of the current deployment', () => {
+test('the share URL points at the builds page without a hash', () => {
   const url = createBuildShareUrl('1.abc', {
-    origin: 'https://example.github.io',
-    pathname: '/TarkovGunHelper/',
+    origin: 'https://tarkovgunhelper.com',
+    pathname: '/weapon/colt-m4a1-556x45-assault-rifle/',
   });
-  assert.equal(url, 'https://example.github.io/TarkovGunHelper/#/builds?share=1.abc');
+  assert.equal(url, 'https://tarkovgunhelper.com/builds?share=1.abc');
 });
 
 test('copying prefers the async clipboard API', async () => {
@@ -155,7 +155,7 @@ test('copying hands a pending link to ClipboardItem so the click gesture is kept
     navigator: { clipboard: { write: async items => { written.push(...items); } } },
   });
   assert.equal(written.length, 1, 'the clipboard write starts before the link is ready');
-  resolveLink('https://example.test/#/builds?share=1.abc');
+  resolveLink('https://example.test/builds?share=1.abc');
   await copying;
-  assert.equal(await written[0].items['text/plain'].then(blob => blob.text()), 'https://example.test/#/builds?share=1.abc');
+  assert.equal(await written[0].items['text/plain'].then(blob => blob.text()), 'https://example.test/builds?share=1.abc');
 });

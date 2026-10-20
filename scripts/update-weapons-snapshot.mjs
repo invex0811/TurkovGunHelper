@@ -1,0 +1,7 @@
+// Refreshes scripts/data/weapons-snapshot.json, the weapon list the prerender
+// falls back to when tarkov.dev is unreachable. Run with
+// `npm run weapons:snapshot` and commit the result.
+import { fetchWeaponSummaries, SNAPSHOT_PATH, writeWeaponSnapshot } from './lib/weaponCatalog.mjs';
+
+const snapshot = await writeWeaponSnapshot(await fetchWeaponSummaries());
+console.log(`Wrote ${snapshot.weapons.length} weapons to ${SNAPSHOT_PATH}.`);

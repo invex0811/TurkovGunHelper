@@ -111,7 +111,12 @@ export async function decodeBuildShareParam(param) {
   return parsed;
 }
 
+// No trailing slash on purpose: a browser still running the service worker
+// of the HashRouter era resolves that old shell's relative asset paths against
+// /builds correctly and offers the update, where /builds/ would load nothing.
+// GitHub Pages redirects /builds to /builds/ and keeps the query. Old
+// #/builds?share=… links are rewritten on start.
 export function createBuildShareUrl(param, location = globalThis.location) {
   if (!location) throw new TypeError('A page location is required to create a share link.');
-  return `${location.origin}${location.pathname}#/builds?${BUILD_SHARE_PARAM}=${param}`;
+  return `${location.origin}/builds?${BUILD_SHARE_PARAM}=${param}`;
 }

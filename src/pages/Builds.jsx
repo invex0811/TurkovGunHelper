@@ -19,6 +19,8 @@ import {
 import BuildImportModal from '../ui/BuildImportModal.jsx';
 import ModalDialog from '../ui/ModalDialog.jsx';
 import { useI18n } from '../i18n/useI18n.js';
+import { usePriceMode } from '../features/priceMode/usePriceMode.js';
+import { resolveWeaponPath } from '../features/routing/resolveWeaponPath.js';
 import { getBuildGameMode, getLocalizedBuildWeapon } from './buildsLocalizedWeapons.js';
 import { MaterialSymbol } from '../ui/MaterialSymbol.js';
 
@@ -49,6 +51,7 @@ function formatMetric(value, key, language, t) {
 
 function Builds() {
   const { language, t } = useI18n();
+  const { priceMode } = usePriceMode();
   const navigate = useNavigate();
   const [builds, setBuilds] = useState(readSavedBuilds);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -140,7 +143,10 @@ function Builds() {
     : new Map();
 
   const openBuild = build => {
-    navigate(`/configure/${encodeURIComponent(build.weapon.id)}?build=${encodeURIComponent(build.id)}`);
+    resolveWeaponPath(build.weapon.id, { priceMode, language }).then(
+      path => navigate(`${path}?build=${encodeURIComponent(build.id)}`),
+      () => {},
+    );
   };
 
   const toggleComparison = (event, buildId) => {
@@ -478,9 +484,9 @@ function Builds() {
           onClose={closeSharedImport}
           sharedBuilds={sharedImport.builds}
           sharedError={sharedImport.isInvalid ? t('builds.shareInvalid') : ''}
-          onOpenShared={snapshot => navigate(
-            `/configure/${encodeURIComponent(snapshot.weapon.id)}`,
-            { state: { sharedBuild: snapshot } },
+          onOpenShared={snapshot => resolveWeaponPath(snapshot.weapon.id, { priceMode, language }).then(
+            path => navigate(path, { state: { sharedBuild: snapshot } }),
+            () => {},
           )}
           onImported={nextBuilds => {
             setBuilds(nextBuilds);

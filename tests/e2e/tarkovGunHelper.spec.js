@@ -18,7 +18,12 @@ const FOCUSABLE_SELECTOR = [
 test.beforeEach(async ({ page }) => {
   await mockTarkovApi(page);
   await page.addInitScript(({ languageKey, priceModeKey, savedBuildsKey }) => {
-    window.localStorage.removeItem(savedBuildsKey);
+    // Once per test: a full page load (every route change was a hash change
+    // before) keeps the builds the test saved.
+    if (!window.sessionStorage.getItem('e2e:saved-builds-cleared')) {
+      window.localStorage.removeItem(savedBuildsKey);
+      window.sessionStorage.setItem('e2e:saved-builds-cleared', '1');
+    }
     if (!window.localStorage.getItem(languageKey)) {
       window.localStorage.setItem(languageKey, 'en');
     }
@@ -38,7 +43,7 @@ async function createBuild(page) {
     has: page.getByRole('heading', { name: 'TW', exact: true }),
   }).click();
 
-  await expect(page).toHaveURL(/#\/configure\/weapon-1$/);
+  await expect(page).toHaveURL(/\/weapon\/test-weapon\/$/);
   await page.getByRole('button', { name: 'Generate Build', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Save build', exact: true })).toBeVisible();
   await expect(page.locator('.part-card').filter({ hasText: 'Starter Grip' })).toBeVisible();
@@ -710,7 +715,7 @@ test('owned items update costs, support mass actions, and persist with a saved b
 });
 
 test('strict trader settings expand, persist, and appear once in Configurator', async ({ page }) => {
-  await page.goto('/#/settings#traders');
+  await page.goto('/settings/#traders');
 
   const strictTraderLevels = page.getByRole('checkbox', {
     name: /Strict(?:ly enforce)? trader levels/,
@@ -753,7 +758,7 @@ test('strict trader settings expand, persist, and appear once in Configurator', 
     name: /Strict trader levels (?:active|enabled).*?(?:Manage in settings|Configure)/,
   });
   await expect(strictBadgeLink).toBeVisible();
-  await expect(strictBadgeLink).toHaveAttribute('href', '#/settings#traders');
+  await expect(strictBadgeLink).toHaveAttribute('href', '/settings/#traders');
   await expect(page.locator('.part-card').filter({ hasText: 'Starter Grip' })).toBeVisible();
   await expect(page.getByText('Trader offer unavailable', { exact: true })).toHaveCount(0);
 });
@@ -761,7 +766,7 @@ test('strict trader settings expand, persist, and appear once in Configurator', 
 test('settings page persists interface and separate trader level profiles', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('link', { name: 'Open settings' }).click();
-  await expect(page).toHaveURL(/#\/settings$/);
+  await expect(page).toHaveURL(/\/settings\/$/);
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
   await expect(page.getByText('Trader levels for PvP', { exact: true })).toHaveCount(0);
 
@@ -840,8 +845,8 @@ test('provides an installable manifest and restores the catalog offline', async 
   expect(manifest).toMatchObject({
     name: 'Tarkov Gun Helper',
     display: 'standalone',
-    start_url: './',
-    scope: './',
+    start_url: '/',
+    scope: '/',
   });
   expect(manifest.icons).toEqual(expect.arrayContaining([
     expect.objectContaining({ sizes: '192x192' }),
@@ -957,7 +962,7 @@ test('replaces a part, saves the build, and restores it', async ({ page }) => {
 });
 
 test('import and comparison dialogs trap focus and restore their triggers', async ({ page }) => {
-  await page.goto('/#/builds');
+  await page.goto('/builds/');
   const importTrigger = page.getByRole('button', { name: 'Import', exact: true });
   const bodyOverflowBefore = await page.evaluate(() => getComputedStyle(document.body).overflow);
 
@@ -978,7 +983,7 @@ test('import and comparison dialogs trap focus and restore their triggers', asyn
     copy.updatedAt = copy.createdAt;
     localStorage.setItem(savedBuildsKey, JSON.stringify([...savedBuilds, copy]));
   }, SAVED_BUILDS_KEY);
-  await page.goto('/#/builds');
+  await page.goto('/builds/');
 
   await page.getByRole('button', {
     name: 'Add Comparison Alpha to comparison',
@@ -1050,7 +1055,7 @@ test('shares a build by link and imports it from the link', async ({ page, conte
   await page.getByRole('button', { name: 'Copy link', exact: true }).click();
   await expect(page.getByText('Link copied', { exact: true })).toBeVisible();
   const configuratorLink = await page.evaluate(() => navigator.clipboard.readText());
-  expect(configuratorLink).toMatch(/#\/builds\?share=1\.[A-Za-z0-9_-]+$/);
+  expect(configuratorLink).toMatch(/^http:\/\/127\.0\.0\.1:4173\/builds\?share=1\.[A-Za-z0-9_-]+$/);
 
   await saveBuild(page, 'Linked build');
   await page.getByRole('link', { name: 'Builds', exact: true }).click();
@@ -1068,19 +1073,19 @@ test('shares a build by link and imports it from the link', async ({ page, conte
   await expect(sharedDialog.getByText('Ready to import', { exact: true })).toBeVisible();
   await sharedDialog.getByRole('button', { name: 'Import 1', exact: true }).click();
   await sharedDialog.getByRole('button', { name: 'Done', exact: true }).click();
-  await expect(page).toHaveURL(/#\/builds$/);
+  await expect(page).toHaveURL(/\/builds\/?$/);
 
   await openSavedBuild(page, 'Linked build');
   await expect(page.locator('.part-card').filter({ hasText: 'Starter Grip' })).toBeVisible();
 });
 
 test('reports a damaged build link', async ({ page }) => {
-  await page.goto('/#/builds?share=1.damaged');
+  await page.goto('/builds?share=1.damaged');
   const sharedDialog = page.getByRole('dialog', { name: 'Shared build', exact: true });
   await expect(sharedDialog.getByText('This build link is damaged or out of date.', { exact: true })).toBeVisible();
   await sharedDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(sharedDialog).toBeHidden();
-  await expect(page).toHaveURL(/#\/builds$/);
+  await expect(page).toHaveURL(/\/builds\/?$/);
 });
 
 test('opens a shared build in the configurator without saving it', async ({ page, context }) => {
