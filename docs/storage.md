@@ -21,6 +21,9 @@
 | `tarkovGunHelper.rememberRequiredModules` | то же | Запоминать обязательные модули для каждого оружия |
 | `tarkovGunHelper.rememberedRequiredModules` | то же | `{ [weaponId]: itemId[] }` |
 | `tarkovGunHelper.traderLevels` | [`traderLevels.js`](../src/data/settings/traderLevels.js) | Уровни торговцев по профилям `pvp`/`pve` |
+| `tarkovGunHelper.favoriteWeapons` | [`favoriteWeapons.js`](../src/data/settings/favoriteWeapons.js) | Массив `weapon.id` избранного оружия в порядке добавления |
+
+В `sessionStorage` лежит один ключ — `tarkovGunHelper.staleChunkReloadAt` ([`staleChunkReload.js`](../src/features/pwa/staleChunkReload.js)): время последней перезагрузки из-за устаревшего чанка, защита от цикла перезагрузок.
 
 Правила работы с хранилищем:
 

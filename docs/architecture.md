@@ -46,7 +46,7 @@ src/
 │   │                           # itemMapper.js (нормализация), translations.js
 │   ├── price/                  # priceModes.js, priceProvider.js, priceMapper.js
 │   ├── cache/                  # IndexedDB-кэш каталога и схема записей
-│   ├── settings/               # buildPreferences.js, traderLevels.js (localStorage)
+│   ├── settings/               # buildPreferences.js, traderLevels.js, favoriteWeapons.js (localStorage)
 │   └── savedBuilds.js          # CRUD сохранённых билдов
 ├── domain/
 │   ├── calculator.js           # публичный вход калькулятора
@@ -65,14 +65,16 @@ src/
 │   ├── moduleComparison/       # таблица сравнения модулей
 │   ├── priceMode/              # контекст PvP/PvE и переключатель
 │   ├── traderLevels/           # контекст уровней торговцев
+│   ├── favorites/              # контекст избранного оружия
 │   ├── dataStatus/             # контекст и индикатор свежести каталога
+│   ├── feedback/               # адрес GitHub Issues для кнопки «Feedback»
 │   ├── analytics/              # Umami
 │   ├── routing/                # маршруты оружия (slug → id), старые #/ адреса
 │   ├── seo/                    # title, description, canonical для страниц
 │   └── pwa/                    # установка и обновление PWA
 ├── i18n/                       # сообщения en/ru и провайдер
 ├── pages/                      # Home, Configurator, Builds, ModuleComparison, Settings
-├── ui/                         # общие компоненты и их чистые помощники
+├── ui/                         # общие компоненты и их чистые помощники, NotFoundState (404)
 └── workers/buildCalculator.worker.js
 ```
 
@@ -89,6 +91,9 @@ src/
 | `/builds/` | [`Builds`](../src/pages/Builds.jsx) | Сохранённые билды, сравнение до 4 штук, импорт/экспорт, `?share=` — импорт по ссылке |
 | `/module-comparison/` | [`ModuleComparison`](../src/pages/ModuleComparison.jsx) | Сравнение характеристик модулей одной категории |
 | `/settings/` | [`Settings`](../src/pages/Settings.jsx) | Язык, тема, уровни торговцев, параметры цен; `#traders` прокручивает к торговцам |
+| `*` | [`NotFoundState`](../src/ui/NotFoundState.jsx) | Неизвестный адрес: страница 404 со ссылками на список оружия и на GitHub Issues |
+
+Конфигуратор показывает ту же страницу 404, если оружия нет в каталоге: `getWeaponDetails()` бросает `TarkovApiError` с `code: 'NOT_FOUND'`, и это не считается ошибкой загрузки.
 
 Адреса старого формата (`/#/builds?share=…`) переписываются в обычные ещё до запуска роутера — см. [Старые адреса](seo.md#старые-адреса). Заголовок вкладки и мета-теги ставятся при каждой смене маршрута из [`pageMeta.js`](../src/features/seo/pageMeta.js).
 
@@ -102,8 +107,9 @@ src/
 I18nProvider            язык интерфейса (en/ru)              → useI18n()
 └─ PriceModeProvider    режим цен PvP/PvE                     → usePriceMode()
    └─ TraderLevelsProvider  уровни торговцев, строгий режим, Ref → useTraderLevels()
-      └─ CatalogStatusProvider  свежесть каталога, обновление → useCatalogStatus()
-         └─ BrowserRouter → MainLayout (шапка, маршруты, PwaUpdatePrompt)
+      └─ FavoriteWeaponsProvider  избранное оружие            → useFavoriteWeapons()
+         └─ CatalogStatusProvider  свежесть каталога, обновление → useCatalogStatus()
+            └─ BrowserRouter → MainLayout (шапка, маршруты, PwaUpdatePrompt)
 ```
 
 Каждый провайдер сам читает начальное значение из `localStorage` и сохраняет изменения обратно. Тема (`dark`/`light`) хранится отдельно хуком `useTheme` в `App.jsx` и выставляется атрибутом `data-theme` на `<html>`.
