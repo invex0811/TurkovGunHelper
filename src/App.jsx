@@ -22,14 +22,28 @@ const Settings = lazy(() => import('./pages/Settings'));
 const ModuleComparison = lazy(() => import('./pages/ModuleComparison'));
 const NotFound = lazy(() => import('./pages/NotFound.jsx'));
 
+const THEME_STORAGE_KEY = 'tarkov-gun-helper-theme';
+
+// Storage throws when the browser blocks it for the site (cookies off), and
+// a throw here would stop the whole app from rendering.
+function loadThemePreference() {
+  try {
+    return localStorage.getItem(THEME_STORAGE_KEY) || 'dark';
+  } catch {
+    return 'dark';
+  }
+}
+
 function useTheme() {
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('tarkov-gun-helper-theme') || 'dark';
-  });
+  const [theme, setTheme] = useState(loadThemePreference);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem('tarkov-gun-helper-theme', theme);
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      // The theme then lasts for this visit only.
+    }
   }, [theme]);
 
   return [theme, setTheme];

@@ -156,3 +156,26 @@ test('the home and weapon pages carry their meta in the HTML itself', async ({ r
   const robots = await (await request.get('/robots.txt')).text();
   expect(robots).toContain(`Sitemap: ${SITE_URL}/sitemap.xml`);
 });
+
+test('the app still opens when the browser blocks storage for the site', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  // Registered after beforeEach's script, so that one still runs normally.
+  await page.addInitScript(() => {
+    for (const name of ['localStorage', 'sessionStorage']) {
+      Object.defineProperty(window, name, {
+        configurable: true,
+        get() { throw new DOMException('The operation is insecure.', 'SecurityError'); },
+      });
+    }
+  });
+
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'TW', exact: true })).toBeVisible();
+  await page.goto('/weapon/test-weapon/');
+  await expect(page.getByRole('button', { name: 'Generate Build', exact: true })).toBeVisible();
+  await page.goto('/settings/');
+  await page.getByRole('button', { name: 'Light', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  expect(errors).toEqual([]);
+});

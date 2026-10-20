@@ -20,8 +20,14 @@ export class SavedBuildStorageError extends Error {
   }
 }
 
+// Reading window.localStorage itself throws when the browser blocks storage
+// for the site; callers already treat a missing storage as "not available".
 function getDefaultStorage() {
-  return typeof window === 'undefined' ? null : window.localStorage;
+  try {
+    return typeof window === 'undefined' ? null : window.localStorage;
+  } catch {
+    return null;
+  }
 }
 
 function isRecord(value) {
