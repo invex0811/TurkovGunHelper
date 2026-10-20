@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useEffect } from 'react';
-import { HashRouter as Router, Routes, Route, Link, NavLink, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, NavLink, useLocation } from 'react-router-dom';
 import Home from './pages/Home';
 import I18nProvider from './i18n/I18nProvider.jsx';
 import { useI18n } from './i18n/useI18n.js';
@@ -12,6 +12,9 @@ import CatalogStatusProvider from './features/dataStatus/CatalogStatusProvider.j
 import CatalogStatus from './features/dataStatus/CatalogStatus.jsx';
 import { usePageviewTracking } from './features/analytics/usePageviewTracking.js';
 import { MaterialSymbol } from './ui/MaterialSymbol.js';
+import { LegacyConfigureRoute, WeaponRoute } from './features/routing/WeaponRoutes.jsx';
+import { applyPageMeta } from './features/seo/documentMeta.js';
+import { getStaticRouteMeta } from './features/seo/pageMeta.js';
 
 const Configurator = lazy(() => import('./pages/Configurator'));
 const Builds = lazy(() => import('./pages/Builds'));
@@ -31,15 +34,40 @@ function useTheme() {
   return [theme, setTheme];
 }
 
+// Section links end with a slash: the static pages are <section>/index.html,
+// so that is the address the server and the canonical URL use.
 const NAV_ITEMS = [
   // The configurator belongs to the weapons section.
-  { to: '/', end: true, icon: 'my_location', labelKey: 'app.weapons', activePrefix: '/configure/' },
-  { to: '/module-comparison', icon: 'view_column', labelKey: 'moduleComparison.nav', shortLabelKey: 'moduleComparison.navShort' },
-  { to: '/builds', icon: 'layers', labelKey: 'app.builds' },
+  { to: '/', end: true, icon: 'my_location', labelKey: 'app.weapons', activePrefixes: ['/weapon/', '/configure/'] },
+  { to: '/module-comparison/', icon: 'view_column', labelKey: 'moduleComparison.nav', shortLabelKey: 'moduleComparison.navShort' },
+  { to: '/builds/', icon: 'layers', labelKey: 'app.builds' },
 ];
+
+const SETTINGS_NAV_ITEM = { to: '/settings/' };
 
 function navLinkClassName({ isActive }) {
   return `topnav__link${isActive ? ' is-active' : ''}`;
+}
+
+function withTrailingSlash(pathname) {
+  return pathname.endsWith('/') ? pathname : `${pathname}/`;
+}
+
+// NavLink alone would not mark /builds/ active at /builds (a link opened
+// without the slash), so the match ignores the trailing slash.
+function isNavItemActive(pathname, item) {
+  const current = withTrailingSlash(pathname);
+  if (item.activePrefixes?.some(prefix => current.startsWith(prefix))) return true;
+  return item.end ? current === item.to : current.startsWith(item.to);
+}
+
+// Weapon pages set their own meta once the weapon is known.
+function useStaticRouteMeta() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const meta = getStaticRouteMeta(pathname);
+    if (meta) applyPageMeta(meta);
+  }, [pathname]);
 }
 
 // Text tabs in the header; below 768px the same links become a bottom tab bar
@@ -53,9 +81,7 @@ function MainNav({ t }) {
           key={item.to}
           to={item.to}
           end={item.end}
-          className={({ isActive }) => navLinkClassName({
-            isActive: isActive || Boolean(item.activePrefix && pathname.startsWith(item.activePrefix)),
-          })}
+          className={() => navLinkClassName({ isActive: isNavItemActive(pathname, item) })}
         >
           <MaterialSymbol name={item.icon} className="topnav__icon" />
           <span className="topnav__label">{t(item.labelKey)}</span>
@@ -64,7 +90,10 @@ function MainNav({ t }) {
           )}
         </NavLink>
       ))}
-      <NavLink to="/settings" className={args => `${navLinkClassName(args)} topnav__link--mobile-only`}>
+      <NavLink
+        to="/settings/"
+        className={() => `${navLinkClassName({ isActive: isNavItemActive(pathname, SETTINGS_NAV_ITEM) })} topnav__link--mobile-only`}
+      >
         <MaterialSymbol name="settings" className="topnav__icon" />
         <span className="topnav__label">{t('settings.title')}</span>
       </NavLink>
@@ -73,10 +102,11 @@ function MainNav({ t }) {
 }
 
 function SettingsLink({ t }) {
+  const { pathname } = useLocation();
   return (
     <NavLink
-      to="/settings"
-      className={({ isActive }) => `icon-btn topbar__settings${isActive ? ' is-active' : ''}`}
+      to="/settings/"
+      className={() => `icon-btn topbar__settings${isNavItemActive(pathname, SETTINGS_NAV_ITEM) ? ' is-active' : ''}`}
       aria-label={t('settings.open')}
       title={t('settings.title')}
     >
@@ -103,6 +133,7 @@ function MainLayout() {
   const { t } = useI18n();
   const [theme, setTheme] = useTheme();
   usePageviewTracking();
+  useStaticRouteMeta();
 
   return (
     <div className="app">
@@ -152,11 +183,27 @@ function MainLayout() {
             )}
           />
           <Route
+            path="/weapon/:slug"
+            element={(
+              <WeaponRoute fallback={<ConfiguratorLoading />}>
+                {weaponId => (
+                  <Suspense fallback={<ConfiguratorLoading />}>
+                    <Configurator weaponId={weaponId} />
+                  </Suspense>
+                )}
+              </WeaponRoute>
+            )}
+          />
+          <Route
             path="/configure/:weaponId"
             element={(
-              <Suspense fallback={<ConfiguratorLoading />}>
-                <Configurator />
-              </Suspense>
+              <LegacyConfigureRoute fallback={<ConfiguratorLoading />}>
+                {weaponId => (
+                  <Suspense fallback={<ConfiguratorLoading />}>
+                    <Configurator weaponId={weaponId} />
+                  </Suspense>
+                )}
+              </LegacyConfigureRoute>
             )}
           />
         </Routes>

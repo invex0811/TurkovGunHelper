@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigationType, useSearchParams } from 'react-router-dom';
 import { getWeapons, isAbortError } from '../data/tarkovApi';
+import { getWeaponPath, getWeaponSlugIndex } from '../domain/weaponSlugs.js';
 import { selectWeaponPurchasePrice } from '../data/price/priceMapper.js';
 import {
   filterHomeWeapons,
@@ -49,7 +50,7 @@ function WeaponStat({ abbreviation, label, value }) {
   );
 }
 
-function WeaponCard({ isFavorite, language, onToggleFavorite, price, t, weapon }) {
+function WeaponCard({ isFavorite, language, onToggleFavorite, path, price, t, weapon }) {
   const type = getWeaponTypeLabel(weapon);
   const caliber = weapon.properties?.caliber;
   const ergonomics = weapon.properties?.ergonomics;
@@ -61,7 +62,7 @@ function WeaponCard({ isFavorite, language, onToggleFavorite, price, t, weapon }
   // in a link.
   return (
     <div className="weapon-card-shell">
-      <Link to={`/configure/${weapon.id}`} className="weapon-card">
+      <Link to={path} className="weapon-card">
         <div className="weapon-card__plate reticle">
           {type && <span className="weapon-card__type">{type}</span>}
           <AsyncImage
@@ -243,6 +244,7 @@ function Home() {
   }, []);
 
   const { types: weaponTypes, calibers, traders } = useMemo(() => getHomeWeaponFilterOptions(weapons), [weapons]);
+  const slugIndex = useMemo(() => getWeaponSlugIndex(weapons), [weapons]);
   // A filter from the URL that this catalog does not have (another language, a
   // stale link) falls back to all weapons instead of an empty list.
   const selectedType = weaponTypes.includes(requestedType) ? requestedType : 'All';
@@ -462,6 +464,7 @@ function Home() {
                   isFavorite={favoriteWeaponIds.has(weapon.id)}
                   language={language}
                   onToggleFavorite={toggleFavoriteWeapon}
+                  path={getWeaponPath(slugIndex.slugById.get(weapon.id))}
                   price={prices.get(weapon.id)}
                   t={t}
                   weapon={weapon}

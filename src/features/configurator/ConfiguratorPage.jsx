@@ -6,7 +6,7 @@ import {
   useMemo,
   useRef,
 } from 'react';
-import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { PRICE_CONFIDENCE } from '../../data/price/priceModes.js';
 import {
   isItemUnavailable,
@@ -1037,7 +1037,7 @@ function getRequiredModuleSearchResults(allMods, query, selectedIds, reachableId
     .slice(0, 12);
 }
 
-function Configurator() {
+function Configurator({ weaponId }) {
   const { language, t } = useI18n();
   const { priceMode, setPriceMode } = usePriceMode();
   const {
@@ -1050,7 +1050,6 @@ function Configurator() {
     () => traderLevels.profiles?.[priceMode] || {},
     [priceMode, traderLevels],
   );
-  const { weaponId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -1957,7 +1956,8 @@ function Configurator() {
   );
   const openSavedBuildOption = buildId => {
     setPendingSavedBuildId(null);
-    const weaponPath = `/configure/${encodeURIComponent(weapon.id)}`;
+    // Stay on this weapon's page, whatever address it was opened by.
+    const weaponPath = location.pathname;
     if (buildId !== NEW_BUILD_OPTION) {
       navigate(`${weaponPath}?build=${encodeURIComponent(buildId)}`);
       return;

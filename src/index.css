@@ -508,6 +508,38 @@ a {
   padding: 0 40px 48px;
 }
 
+/* Static text of index.html and the prerendered pages. It reuses the header
+   and page title of the app, so the swap to the app keeps the layout. */
+/* Two classes: the phone rule for .app__main below would reset the padding. */
+.app__main.prerender__main {
+  padding-top: 32px;
+}
+
+@media (max-width: 767px) {
+  .app__main.prerender__main {
+    padding-top: 16px;
+  }
+}
+
+.prerender__main p {
+  max-width: 72ch;
+  margin: 16px 0 0;
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.prerender__main .eyebrow-mono {
+  margin: 0;
+  color: var(--color-gold-dim);
+  font-size: 12px;
+}
+
+.prerender__main a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 /* Full-width header strip: brand, text tabs, price status and settings. */
 .topbar {
   position: sticky;

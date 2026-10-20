@@ -5,6 +5,7 @@ export {
   getWeaponDetails,
   getCatalogStatus,
   loadItemsCatalog,
+  loadWeaponSlugIndex,
   subscribeToCatalogStatus,
 } from './repository.js';
 

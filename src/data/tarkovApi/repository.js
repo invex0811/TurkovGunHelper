@@ -5,6 +5,7 @@ import { normalizeItemsCatalog } from './itemMapper.js';
 import { applyTarkovTranslations } from './translations.js';
 import { readCachedCatalog, writeCachedCatalog } from '../cache/catalogCache.js';
 import { createCatalogCacheKey } from '../cache/catalogCacheSchema.js';
+import { getWeaponSlugIndex } from '../../domain/weaponSlugs.js';
 
 export const TARKOV_API_CACHE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_LANGUAGE = 'en';
@@ -286,6 +287,11 @@ export async function getWeapons(options = {}) {
     buildableWeaponsByCatalog.set(catalog, catalog.weapons.filter(isBuildableWeapon));
   }
   return buildableWeaponsByCatalog.get(catalog);
+}
+
+// Slugs of weapon page URLs, built from the same list the catalog shows.
+export async function loadWeaponSlugIndex(options = {}) {
+  return getWeaponSlugIndex(await getWeapons(options));
 }
 
 export async function getAllMods(priceMode = DEFAULT_PRICE_MODE, options = {}) {
