@@ -2,10 +2,42 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// The fonts of the first screen, Latin subset: the page title and the brand
+// (Oswald 600) and the body text (IBM Plex Sans 400). Preloading them lets
+// the text render in its font without waiting for the CSS to be parsed.
+const PRELOADED_FONTS = [
+  /^assets\/oswald-latin-600-normal-[\w-]+\.woff2$/,
+  /^assets\/ibm-plex-sans-latin-400-normal-[\w-]+\.woff2$/,
+];
+
+function preloadFonts() {
+  return {
+    name: 'tgh-preload-fonts',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, { bundle = {} }) {
+        const files = Object.keys(bundle);
+        return PRELOADED_FONTS.map(pattern => {
+          const file = files.find(name => pattern.test(name));
+          // A renamed font file fails the build instead of dropping the preload.
+          if (!file) throw new Error(`No built font matches ${pattern}.`);
+          return {
+            tag: 'link',
+            attrs: { rel: 'preload', as: 'font', type: 'font/woff2', href: `/${file}`, crossorigin: '' },
+            injectTo: 'head',
+          };
+        });
+      },
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
+    preloadFonts(),
     VitePWA({
       registerType: 'prompt',
       injectRegister: false,
@@ -33,25 +65,22 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
-        globPatterns: ['**/*.{js,css,html,woff2}'],
+        // Fonts: the icons and the Latin text subset are precached, so the
+        // app looks the same offline; other subsets (Cyrillic and the rest)
+        // are cached when a page first needs them, see runtimeCaching.
+        globPatterns: ['**/*.{js,css,html}', 'assets/material-symbols-*.woff2', 'assets/*-latin-[0-9]*.woff2'],
         // Every route is a client route; the app shell answers them offline.
         navigateFallback: '/index.html',
         // Files a browser can open directly that are not app routes.
         navigateFallbackDenylist: [/^\/sitemap\.xml$/, /^\/robots\.txt$/],
-        // Google Fonts: the stylesheet revalidates, the font files are immutable.
+        // Font files have hashed names and never change: cache first.
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: 'StaleWhileRevalidate',
-            options: { cacheName: 'google-fonts-stylesheets' },
-          },
-          {
-            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+            urlPattern: ({ url, sameOrigin }) => sameOrigin && /^\/assets\/.+\.woff2$/.test(url.pathname),
             handler: 'CacheFirst',
             options: {
-              cacheName: 'google-fonts-webfonts',
-              cacheableResponse: { statuses: [0, 200] },
-              expiration: { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheName: 'fonts',
+              expiration: { maxEntries: 40, maxAgeSeconds: 60 * 60 * 24 * 365 },
             },
           },
         ],
